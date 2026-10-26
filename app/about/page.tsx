@@ -1,6 +1,7 @@
 "use client";
 
 import { useLang } from "@/frontend/i18n";
+import ProblemStories from "@/frontend/components/ProblemStories";
 import Link from "next/link";
 
 export default function About() {
@@ -20,6 +21,8 @@ export default function About() {
         </p>
       </section>
 
+      <ProblemStories />
+
       <section className="mx-auto max-w-5xl px-4 pb-12 sm:px-6">
         <div className="grid gap-4 sm:grid-cols-3">
           {[
@@ -38,10 +41,10 @@ export default function About() {
           <h2 className="font-display text-[26px] font-black">{t("about.where")}</h2>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             {[
-              { s: t("about.now"), d: t("about.now") },
-              { s: t("about.next"), d: t("about.next") },
-              { s: t("about.later"), d: t("about.later") },
-              { s: t("about.dream"), d: t("about.dream") },
+              { s: t("about.nowLabel"), d: t("about.now") },
+              { s: t("about.nextLabel"), d: t("about.next") },
+              { s: t("about.laterLabel"), d: t("about.later") },
+              { s: t("about.dreamLabel"), d: t("about.dream") },
             ].map((r) => (
               <div key={r.s} className="rounded-2xl bg-white/10 border border-white/15 p-5">
                 <p className="text-[12px] font-bold uppercase tracking-widest text-[#ffc53d]">{r.s}</p>
