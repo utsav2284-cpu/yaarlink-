@@ -1,0 +1,158 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Fraunces", Georgia, serif;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+
+  --color-paper: #fffbf1;
+  --color-cream: #fff4de;
+  --color-ink: #1c1917;
+  --color-muted: #78716c;
+  --color-line: #e9ddc3;
+  --color-brand: #e4572e;
+  --color-brand-deep: #c7431f;
+  --color-leaf: #17452e;
+  --color-leaf-deep: #0f3321;
+  --color-sun: #ffc53d;
+  --color-blush: #ffe8d6;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-paper);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+::selection {
+  background: #ffc53d;
+  color: #1c1917;
+}
+
+/* hand-drawn underline */
+.marker-underline {
+  background-image: linear-gradient(transparent 62%, #ffc53d 62%, #ffc53d 92%, transparent 92%);
+  padding: 0 0.1em;
+}
+
+.card-shadow {
+  box-shadow: 0 1px 0 rgba(28, 25, 23, 0.06), 0 12px 32px -16px rgba(28, 25, 23, 0.18);
+}
+
+.dotted-bg {
+  background-image: radial-gradient(#d6c9a8 1.2px, transparent 1.2px);
+  background-size: 18px 18px;
+}
+
+/*
+ * Single-column grids default to an `auto` track, which grows to fit long one-line
+ * (truncated) text and pushes cards past the screen on phones. Make the default
+ * column shrinkable; responsive utilities like sm:grid-cols-2 still override this.
+ */
+@layer base {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+html, body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+@supports (overflow-x: clip) {
+  html, body { overflow-x: clip; }
+}
+
+input, select, textarea {
+  font-size: 16px;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+}
+
+h1, h2, h3, p {
+  overflow-wrap: break-word;
+}
+
+/* ---------- Motion (subtle, and off for "reduce motion") ---------- */
+
+.reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1), transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reveal.reveal-in {
+  opacity: 1;
+  transform: none;
+}
+
+@keyframes float-a {
+  0%, 100% { transform: translateY(0) rotate(3deg); }
+  50% { transform: translateY(-7px) rotate(3deg); }
+}
+@keyframes float-b {
+  0%, 100% { transform: translateY(0) rotate(-3deg); }
+  50% { transform: translateY(6px) rotate(-3deg); }
+}
+.float-a { animation: float-a 5s ease-in-out infinite; }
+.float-b { animation: float-b 6s ease-in-out infinite; }
+
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 32s linear infinite;
+}
+.marquee:hover .marquee-track { animation-play-state: paused; }
+.marquee {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+}
+
+@keyframes hero-in {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: none; }
+}
+.hero-in { animation: hero-in 0.8s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.hero-in-2 { animation: hero-in 0.8s 0.12s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.hero-in-3 { animation: hero-in 0.8s 0.24s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@keyframes marker-grow {
+  from { background-size: 0% 100%; }
+  to { background-size: 100% 100%; }
+}
+.marker-underline {
+  background-repeat: no-repeat;
+  animation: marker-grow 0.9s 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Arrow nudges on hover for buttons with an arrow span */
+.nudge .arrow { display: inline-block; transition: transform 0.2s ease; }
+.nudge:hover .arrow { transform: translateX(4px); }
+
+.lift { transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease; }
+.lift:hover { transform: translateY(-3px); box-shadow: 0 18px 40px -20px rgba(28, 25, 23, 0.35); }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .reveal, .reveal.reveal-in { opacity: 1; transform: none; transition: none; }
+  .float-a, .float-b, .hero-in, .hero-in-2, .hero-in-3, .marker-underline { animation: none; }
+  .marquee-track { animation: none; flex-wrap: wrap; width: auto; }
+  .marquee { -webkit-mask-image: none; mask-image: none; }
+  .lift:hover { transform: none; }
+}
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }

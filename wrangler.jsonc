@@ -1,0 +1,23 @@
+{
+  // Cloudflare Workers config for YaarLink (theyaar.com).
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "yaarlink",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "yaarlink"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+  // Secrets (set with `npx wrangler secret put NAME`, never put them here):
+  //   DATABASE_URL, ADMIN_PASSWORD, SESSION_SECRET, ADMIN_SESSION_SECRET
+}
