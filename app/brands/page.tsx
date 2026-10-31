@@ -3,7 +3,9 @@
 import { useLang } from "@/frontend/i18n";
 
 import Link from "next/link";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { ApiResponseError, fetchJsonList } from "@/frontend/api-json";
+import { ListingError, ListingLoading } from "@/frontend/components/ListingState";
 import { useSearchParams } from "next/navigation";
 import { CATEGORIES, LANGUAGES, CONTENT_TYPES, PROMOTION_TYPES, normalizePromotionType } from "@/shared/constants";
 import ContactLink from "@/frontend/components/ContactLink";
@@ -17,6 +19,8 @@ function BrandInner() {
   const { t, opt, promo, apiErrorKey, formatNumber, formatCurrency } = useLang();
   const preset = normalizePromotionType(params.get("type")) ?? "";
   const [creators, setCreators] = useState<any[]>([]);
+  const [creatorsStatus, setCreatorsStatus] = useState<"loading" | "success" | "error">("loading");
+  const [creatorsErrorKey, setCreatorsErrorKey] = useState("listing.loadFailed");
   const [filter, setFilter] = useState({ lang: "", category: "" });
   const [form, setForm] = useState({
     businessName: "",
@@ -42,9 +46,47 @@ function BrandInner() {
     if (preset) setForm((f) => ({ ...f, promotionType: preset }));
   }, [preset]);
 
-  useEffect(() => {
-    fetch("/api/creators").then((r) => r.json()).then((d) => setCreators(d.creators ?? [])).catch(() => {});
+  const requestCreators = useCallback(
+    () => fetchJsonList<any>("/api/creators", "creators", { cache: "no-store" }),
+    [],
+  );
+  const handleCreatorsSuccess = useCallback((rows: any[]) => {
+    setCreators(rows);
+    setCreatorsStatus("success");
   }, []);
+  const handleCreatorsError = useCallback((error: unknown) => {
+    setCreatorsErrorKey(
+      error instanceof ApiResponseError ? apiErrorKey(error.status, error.code, "listing.loadFailed") : "api.network",
+    );
+    setCreatorsStatus("error");
+  }, [apiErrorKey]);
+
+  const fetchCreators = useCallback(async () => {
+    try {
+      handleCreatorsSuccess(await requestCreators());
+    } catch (error) {
+      handleCreatorsError(error);
+    }
+  }, [handleCreatorsError, handleCreatorsSuccess, requestCreators]);
+
+  const loadCreators = useCallback(async () => {
+    setCreatorsStatus("loading");
+    await fetchCreators();
+  }, [fetchCreators]);
+
+  useEffect(() => {
+    let alive = true;
+    requestCreators()
+      .then((rows) => {
+        if (alive) handleCreatorsSuccess(rows);
+      })
+      .catch((error: unknown) => {
+        if (alive) handleCreatorsError(error);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [handleCreatorsError, handleCreatorsSuccess, requestCreators]);
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -301,8 +343,36 @@ function BrandInner() {
                 </label>
               </div>
               <div className="mt-3 grid max-h-[420px] gap-2 overflow-y-auto">
-                {filtered.length === 0 && <p className="rounded-xl bg-white/10 p-4 text-[13.5px]">{t("browse.noneMatch")} <Link href="/creators" className="font-bold text-[#ffc53d]">{t("browse.inviteCreators")}</Link></p>}
-                {filtered.slice(0, 8).map((c) => (
+                {creatorsStatus === "loading" && creators.length === 0 ? (
+                  <ListingLoading
+                    count={3}
+                    labelKey="listing.loadingCreators"
+                    itemClassName="h-[68px] animate-pulse rounded-2xl bg-white/15"
+                  />
+                ) : creatorsStatus === "error" && creators.length === 0 ? (
+                  <ListingError
+                    errorKey={creatorsErrorKey}
+                    onRetry={() => void loadCreators()}
+                    className="rounded-xl border border-red-200/40 bg-red-950/30 p-4 text-[13.5px] font-semibold text-red-100"
+                    buttonClassName="mt-3 rounded-xl bg-[#ffc53d] px-4 py-2 text-[13px] font-extrabold text-[#1c1917] hover:bg-[#ffb703]"
+                  />
+                ) : (
+                  <>
+                    {creatorsStatus === "error" && (
+                      <ListingError
+                        errorKey={creatorsErrorKey}
+                        onRetry={() => void loadCreators()}
+                        className="rounded-xl border border-red-200/40 bg-red-950/30 p-4 text-[13.5px] font-semibold text-red-100"
+                        buttonClassName="mt-3 rounded-xl bg-[#ffc53d] px-4 py-2 text-[13px] font-extrabold text-[#1c1917] hover:bg-[#ffb703]"
+                      />
+                    )}
+                    {filtered.length === 0 && (
+                      <p className="rounded-xl bg-white/10 p-4 text-[13.5px]">
+                        {creators.length === 0 ? t("listing.noCreators") : t("listing.noCreatorMatches")}{" "}
+                        <Link href="/creators" className="font-bold text-[#ffc53d]">{t("browse.inviteCreators")}</Link>
+                      </p>
+                    )}
+                    {filtered.slice(0, 8).map((c) => (
                   <div key={c.id} className="grid gap-2 rounded-2xl bg-white/10 border border-white/10 p-3">
                     <div className="flex items-center gap-3">
                       <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#ffc53d] text-[15px] font-black text-black">{(c.name || "?").charAt(0).toUpperCase()}</span>
@@ -317,6 +387,8 @@ function BrandInner() {
                     </div>
                   </div>
                 ))}
+                  </>
+                )}
               </div>
             </div>
             <div className="rounded-[24px] border border-[#e9ddc3] bg-white p-6">

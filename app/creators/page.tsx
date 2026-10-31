@@ -3,7 +3,9 @@
 import { useLang } from "@/frontend/i18n";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { ApiResponseError, fetchJsonList } from "@/frontend/api-json";
+import { ListingError, ListingLoading } from "@/frontend/components/ListingState";
 import { CATEGORIES, LANGUAGES, CONTENT_TYPES, PLATFORMS } from "@/shared/constants";
 import PrivacyNotice from "@/frontend/components/PrivacyNotice";
 import ReportButton from "@/frontend/components/ReportButton";
@@ -12,6 +14,8 @@ export default function CreatorsPage() {
   const { t, opt, platform: platformLabel, apiErrorKey, formatNumber } = useLang();
   const [step, setStep] = useState(1);
   const [campaigns, setCampaigns] = useState<any[]>([]);
+  const [campaignsStatus, setCampaignsStatus] = useState<"loading" | "success" | "error">("loading");
+  const [campaignsErrorKey, setCampaignsErrorKey] = useState("listing.loadFailed");
   const [form, setForm] = useState({
     name: "",
     phone: "",
@@ -32,9 +36,47 @@ export default function CreatorsPage() {
   const [verificationCode, setVerificationCode] = useState("");
   const [errKey, setErrKey] = useState("");
 
-  useEffect(() => {
-    fetch("/api/campaigns").then((r) => r.json()).then((d) => setCampaigns(d.campaigns?.slice(0, 6) ?? [])).catch(() => {});
+  const requestCampaigns = useCallback(
+    () => fetchJsonList<any>("/api/campaigns", "campaigns", { cache: "no-store" }),
+    [],
+  );
+  const handleCampaignsSuccess = useCallback((rows: any[]) => {
+    setCampaigns(rows.slice(0, 6));
+    setCampaignsStatus("success");
   }, []);
+  const handleCampaignsError = useCallback((error: unknown) => {
+    setCampaignsErrorKey(
+      error instanceof ApiResponseError ? apiErrorKey(error.status, error.code, "listing.loadFailed") : "api.network",
+    );
+    setCampaignsStatus("error");
+  }, [apiErrorKey]);
+
+  const fetchCampaigns = useCallback(async () => {
+    try {
+      handleCampaignsSuccess(await requestCampaigns());
+    } catch (error) {
+      handleCampaignsError(error);
+    }
+  }, [handleCampaignsError, handleCampaignsSuccess, requestCampaigns]);
+
+  const loadCampaigns = useCallback(async () => {
+    setCampaignsStatus("loading");
+    await fetchCampaigns();
+  }, [fetchCampaigns]);
+
+  useEffect(() => {
+    let alive = true;
+    requestCampaigns()
+      .then((rows) => {
+        if (alive) handleCampaignsSuccess(rows);
+      })
+      .catch((error: unknown) => {
+        if (alive) handleCampaignsError(error);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [handleCampaignsError, handleCampaignsSuccess, requestCampaigns]);
 
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
   const toggle = (k: "languages" | "contentTypes", v: string) => {
@@ -247,8 +289,21 @@ export default function CreatorsPage() {
               <h3 className="font-display text-[22px] font-black">{t("cr.avail")}</h3>
               <p className="text-[14px] font-semibold text-[#57534e]">{t("cr.availSub")}</p>
               <div className="mt-4 grid gap-3">
-                {campaigns.length === 0 && <p className="rounded-2xl bg-white/70 p-4 text-[14px] font-semibold">{t("cr.availEmpty")}</p>}
-                {campaigns.map((c) => (
+                {campaignsStatus === "loading" && campaigns.length === 0 ? (
+                  <ListingLoading
+                    count={3}
+                    labelKey="listing.loadingCampaigns"
+                    itemClassName="h-[112px] animate-pulse rounded-2xl bg-white/60"
+                  />
+                ) : campaignsStatus === "error" && campaigns.length === 0 ? (
+                  <ListingError errorKey={campaignsErrorKey} onRetry={() => void loadCampaigns()} />
+                ) : (
+                  <>
+                    {campaignsStatus === "error" && (
+                      <ListingError errorKey={campaignsErrorKey} onRetry={() => void loadCampaigns()} />
+                    )}
+                    {campaigns.length === 0 && <p className="rounded-2xl bg-white/70 p-4 text-[14px] font-semibold">{t("cr.availEmpty")}</p>}
+                    {campaigns.map((c) => (
                   <div key={c.id} className="rounded-2xl border border-black/10 bg-white p-4">
                     <p className="text-[15px] font-extrabold leading-snug">{c.title}</p>
                     <p className="mt-1 text-[13px] text-[#78716c]">{c.businessName} • {c.location} • {opt(c.language)}</p>
@@ -262,6 +317,8 @@ export default function CreatorsPage() {
                     </div>
                   </div>
                 ))}
+                  </>
+                )}
               </div>
               <Link href="/campaigns" className="mt-4 block rounded-2xl bg-[#1c1917] py-3 text-center text-[14.5px] font-bold text-white">{t("cr.seeAll")}</Link>
             </div>

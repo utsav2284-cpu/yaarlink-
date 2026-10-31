@@ -179,7 +179,10 @@ export async function GET() {
     return Response.json({ campaigns: canonicalRows }, { headers: NO_STORE });
   } catch (e) {
     console.error(e);
-    return Response.json({ campaigns: [] }, { status: 500, headers: NO_STORE });
+    return Response.json(
+      { error: "Could not load campaigns", code: "load_failed" },
+      { status: 500, headers: NO_STORE },
+    );
   }
 }
 

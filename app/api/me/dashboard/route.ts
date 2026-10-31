@@ -1,7 +1,7 @@
 import { applicationContactOptions, isCompletedCreatorProfile } from "@/backend/application-contact";
 import { db } from "@/backend/db";
 import { applications, campaigns, creators, notifications } from "@/backend/db/schema";
-import { getSessionUser } from "@/backend/auth";
+import { getSessionUser, sessionSecretProblem } from "@/backend/auth";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { normalizeCategory, normalizeContentType, normalizeContentTypeList, normalizeLanguage, normalizeLanguageList, normalizePlatform, normalizePromotionType } from "@/shared/constants";
 
@@ -35,6 +35,13 @@ async function loadNotifications(userId: string) {
 
 /** Private data for the logged-in user only. */
 export async function GET() {
+  if (sessionSecretProblem()) {
+    return Response.json(
+      { error: "Session service is temporarily unavailable", code: "service_unavailable" },
+      { status: 503, headers: { ...NO_STORE, "Retry-After": "30" } },
+    );
+  }
+
   try {
     const user = await getSessionUser();
     if (!user) return Response.json({ error: "Please log in", code: "unauthorized" }, { status: 401, headers: NO_STORE });

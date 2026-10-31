@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { CATEGORIES, CONTENT_TYPES, LANGUAGES, PLATFORMS, PROMOTION_TYPES } from "@/shared/constants";
 import PrivacyNotice from "@/frontend/components/PrivacyNotice";
+import { ListingError } from "@/frontend/components/ListingState";
 
 type User = { id: string; name: string; email: string; phone?: string | null; role: string; emailVerifiedAt?: string | null; createdAt?: string };
 type Campaign = {
@@ -216,27 +217,60 @@ export default function DashboardPage() {
   const [decisionNotes, setDecisionNotes] = useState<Record<string, string>>({});
 
   const fetchData = useCallback(async (): Promise<Data | null> => {
-    const r = await fetch("/api/me/dashboard", { cache: "no-store" });
+    let r: Response;
+    try {
+      r = await fetch("/api/me/dashboard", { cache: "no-store" });
+    } catch {
+      throw new DisplayKeyError("api.network");
+    }
     if (r.status === 401) {
       router.replace("/login");
       return null;
     }
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new DisplayKeyError(apiErrorKey(r.status, d?.code, "api.loadFailed"));
+    if (!d || typeof d !== "object" || !d.user || typeof d.user !== "object" || typeof d.user.id !== "string") {
+      throw new DisplayKeyError("api.loadFailed");
+    }
     return d as Data;
   }, [apiErrorKey, router]);
 
   const loadData = async () => {
     const d = await fetchData();
-    if (d) setData(d);
+    if (d) {
+      setData(d);
+      setErrorKey("");
+    }
   };
 
+  const fetchInitial = useCallback(async () => {
+    try {
+      const d = await fetchData();
+      if (d) setData(d);
+    } catch (e: unknown) {
+      // Keep any previously loaded dashboard visible; the render below only
+      // replaces the page with this error when there is no data yet.
+      setErrorKey(e instanceof DisplayKeyError ? e.key : "api.loadFailed");
+    }
+  }, [fetchData]);
+
+  const retryInitialLoad = useCallback(async () => {
+    setErrorKey("");
+    await fetchInitial();
+  }, [fetchInitial]);
+
   useEffect(() => {
+    let alive = true;
     fetchData()
       .then((d) => {
-        if (d) setData(d);
+        if (alive && d) setData(d);
       })
-      .catch((e: unknown) => setErrorKey(e instanceof DisplayKeyError ? e.key : "api.loadFailed"));
+      .catch((e: unknown) => {
+        if (alive) setErrorKey(e instanceof DisplayKeyError ? e.key : "api.loadFailed");
+      });
+    return () => {
+      alive = false;
+    };
   }, [fetchData]);
 
   useEffect(() => {
@@ -283,12 +317,19 @@ export default function DashboardPage() {
     router.refresh();
   };
 
-  if (errorKey) return <div className="mx-auto max-w-4xl p-10 text-center text-red-700">{t(errorKey)}</div>;
+  if (errorKey && !data) {
+    return (
+      <div className="mx-auto max-w-4xl p-10">
+        <ListingError errorKey={errorKey} onRetry={() => void retryInitialLoad()} />
+      </div>
+    );
+  }
   if (!data)
     return (
-      <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-        <div className="h-10 w-64 animate-pulse rounded-xl bg-[#f0e6cc]" />
-        <div className="mt-6 grid gap-3 sm:grid-cols-3">
+      <div role="status" aria-live="polite" className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+        <span className="sr-only">{t("common.loading")}</span>
+        <div aria-hidden="true" className="h-10 w-64 animate-pulse rounded-xl bg-[#f0e6cc]" />
+        <div aria-hidden="true" className="mt-6 grid gap-3 sm:grid-cols-3">
           {[1, 2, 3].map((i) => <div key={i} className="h-24 animate-pulse rounded-2xl bg-[#f0e6cc]/70" />)}
         </div>
       </div>
@@ -729,6 +770,11 @@ export default function DashboardPage() {
       </div>
 
       {noticeKey && <p role="status" className="mt-5 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-[14px] font-bold text-green-800">{t(noticeKey)}</p>}
+      {errorKey && (
+        <div className="mt-5">
+          <ListingError errorKey={errorKey} onRetry={() => void retryInitialLoad()} />
+        </div>
+      )}
       {actionErrorKey && <p role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[14px] font-bold text-red-700">{t(actionErrorKey)}</p>}
 
       {!user.emailVerifiedAt && (

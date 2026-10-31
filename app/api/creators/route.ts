@@ -180,10 +180,13 @@ export async function GET() {
       languages: row.languages ? (normalizeLanguageList(row.languages, true) ?? []).join(", ") : row.languages,
       contentTypes: row.contentTypes ? (normalizeContentTypeList(row.contentTypes, true) ?? []).join(", ") : row.contentTypes,
     }));
-    return Response.json({ creators: canonicalRows });
+    return Response.json({ creators: canonicalRows }, { headers: NO_STORE });
   } catch (e) {
     console.error(e);
-    return Response.json({ creators: [] }, { status: 500 });
+    return Response.json(
+      { error: "Could not load creators", code: "load_failed" },
+      { status: 500, headers: NO_STORE },
+    );
   }
 }
 

@@ -1,13 +1,28 @@
-import { getSessionUser } from "@/backend/auth";
+import { getSessionUser, sessionSecretProblem } from "@/backend/auth";
 
 export const dynamic = "force-dynamic";
 
+const NO_STORE = { "Cache-Control": "no-store" };
+
 export async function GET() {
+  if (sessionSecretProblem()) {
+    return Response.json(
+      { error: "Session service is temporarily unavailable", code: "service_unavailable" },
+      { status: 503, headers: { ...NO_STORE, "Retry-After": "30" } },
+    );
+  }
+
   try {
     const user = await getSessionUser();
-    return Response.json({ user }, { headers: { "Cache-Control": "no-store" } });
+    return Response.json({ user }, { headers: NO_STORE });
   } catch (e) {
     console.error(e);
-    return Response.json({ user: null }, { headers: { "Cache-Control": "no-store" } });
+    // A database/session-store outage is not evidence that the visitor is
+    // logged out. Clients use this 503 to show a retry state instead of
+    // switching to logged-out controls.
+    return Response.json(
+      { error: "Session service is temporarily unavailable", code: "service_unavailable" },
+      { status: 503, headers: { ...NO_STORE, "Retry-After": "30" } },
+    );
   }
 }
