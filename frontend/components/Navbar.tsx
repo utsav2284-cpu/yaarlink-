@@ -13,9 +13,6 @@ export function Logo({ dark = false }: { dark?: boolean }) {
       </span>
       <span className={`text-[22px] font-extrabold tracking-tight ${dark ? "text-white" : "text-[#1c1917]"}`}>
         yaar<span className="text-[#e4572e]">link</span>
-        <span className="ml-1.5 hidden rounded-full bg-[#ffc53d] px-2 py-0.5 align-middle text-[10px] font-bold uppercase tracking-wider text-[#1c1917] sm:inline-block">
-          Beta
-        </span>
       </span>
     </Link>
   );
