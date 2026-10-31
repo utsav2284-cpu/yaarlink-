@@ -13,10 +13,10 @@ export async function POST(req: Request) {
     if (String(b.website_url || "").trim()) return Response.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
     const name = String(b.name || "").trim();
     const message = String(b.message || "").trim();
-    if (!name || !message) return Response.json({ error: "Name and message required" }, { status: 400 });
-    if (name.length > 100 || message.length > 2000) return Response.json({ error: "Please keep the form within the allowed length." }, { status: 400 });
+    if (!name || !message) return Response.json({ error: "Name and message required", code: !name ? "name_required" : "message_required" }, { status: 400 });
+    if (name.length > 100 || message.length > 2000) return Response.json({ error: "Please keep the form within the allowed length.", code: "field_too_long" }, { status: 400 });
     const email = b.email ? String(b.email).toLowerCase().trim() : "";
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return Response.json({ error: "Please enter a valid email." }, { status: 400 });
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return Response.json({ error: "Please enter a valid email.", code: "invalid_email" }, { status: 400 });
     const requestedKind = typeof b.kind === "string" ? b.kind.trim().toLowerCase() : "";
     const kind = requestedKind === "creator" || requestedKind === "other" ? requestedKind : "brand";
     const [row] = await db
@@ -32,6 +32,6 @@ export async function POST(req: Request) {
     return Response.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     console.error(e);
-    return Response.json({ error: "Could not send" }, { status: 500 });
+    return Response.json({ error: "Could not send", code: "request_failed" }, { status: 500 });
   }
 }

@@ -29,7 +29,7 @@ export async function POST(req: Request) {
   try {
     const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
     if (!body) {
-      return Response.json({ error: "Name, email and password required" }, { status: 400, headers: NO_STORE });
+      return Response.json({ error: "Name, email and password required", code: "invalid_request" }, { status: 400, headers: NO_STORE });
     }
 
     const name = String(body.name || "").trim();
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
     const password = String(body.password || "");
 
     if (!name || !email || !password) {
-      return Response.json({ error: "Name, email and password required" }, { status: 400, headers: NO_STORE });
+      return Response.json({ error: "Name, email and password required", code: "invalid_request" }, { status: 400, headers: NO_STORE });
     }
     if (body.legalConsent !== true) {
       return Response.json(
@@ -46,11 +46,11 @@ export async function POST(req: Request) {
       );
     }
     if (email.length > 160 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return Response.json({ error: "Please enter a valid email." }, { status: 400, headers: NO_STORE });
+      return Response.json({ error: "Please enter a valid email.", code: "invalid_email" }, { status: 400, headers: NO_STORE });
     }
     if (password.length < 10 || password.length > 256) {
       return Response.json(
-        { error: "Password must be between 10 and 256 characters." },
+        { error: "Password must be between 10 and 256 characters.", code: "password_policy" },
         { status: 400, headers: NO_STORE },
       );
     }
@@ -60,7 +60,7 @@ export async function POST(req: Request) {
 
     if (emailDeliveryProblem()) {
       return Response.json(
-        { error: "Email verification is temporarily unavailable." },
+        { error: "Email verification is temporarily unavailable.", code: "service_unavailable" },
         { status: 503, headers: NO_STORE },
       );
     }
@@ -102,6 +102,6 @@ export async function POST(req: Request) {
     // generic response if a unique index still resolves a race.
     if (isPendingSignupUniqueViolation(error)) return verificationRequiredResponse();
     console.error(error);
-    return Response.json({ error: "Could not sign up" }, { status: 500, headers: NO_STORE });
+    return Response.json({ error: "Could not sign up", code: "request_failed" }, { status: 500, headers: NO_STORE });
   }
 }

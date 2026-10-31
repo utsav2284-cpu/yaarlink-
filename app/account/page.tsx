@@ -45,6 +45,9 @@ const labelClass = "grid gap-1.5 text-[13.5px] font-bold";
 const primaryButtonClass = "rounded-2xl bg-[#1c1917] px-5 py-3 text-[14.5px] font-extrabold text-white hover:bg-black disabled:opacity-60";
 const secondaryButtonClass = "rounded-2xl border border-[#e9ddc3] bg-white px-5 py-3 text-[14.5px] font-extrabold text-[#1c1917] hover:border-[#1c1917] disabled:opacity-60";
 
+/** Marks an already-localized message that is safe to show; other exceptions stay hidden. */
+class ActionError extends Error {}
+
 function Section({ title, help, children, danger = false }: { title: string; help?: string; children: React.ReactNode; danger?: boolean }) {
   return (
     <section className={`rounded-[24px] border bg-white p-6 card-shadow ${danger ? "border-red-200" : "border-[#e9ddc3]"}`}>
@@ -57,7 +60,7 @@ function Section({ title, help, children, danger = false }: { title: string; hel
 
 export default function AccountPage() {
   const router = useRouter();
-  const { lang, t } = useLang();
+  const { t, formatDateTime: formatDate } = useLang();
   const [data, setData] = useState<AccountData | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [notice, setNotice] = useState("");
@@ -147,7 +150,7 @@ export default function AccountPage() {
     try {
       await action();
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : t("account.actionFailed"));
+      setActionError(e instanceof ActionError ? e.message : t("account.actionFailed"));
     } finally {
       setBusyKey("");
     }
@@ -160,13 +163,10 @@ export default function AccountPage() {
       body: JSON.stringify(body),
     });
     const d = (await res.json().catch(() => null)) as ApiData | null;
-    if (!res.ok) throw new Error(errorMessage(res.status, d?.code));
+    if (!res.ok) throw new ActionError(errorMessage(res.status, d?.code));
     return d ?? {};
   };
 
-  const locale = lang === "hi" ? "hi-IN" : lang === "pa" ? "pa-IN" : "en-IN";
-  const formatDate = (value: string) =>
-    new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 
   if (!data) {
     return (
@@ -199,7 +199,7 @@ export default function AccountPage() {
   const submitEmailChange = (e: React.FormEvent) => {
     e.preventDefault();
     run("change-email", async () => {
-      if (emailForm.newEmail.trim().toLowerCase() === user.email) throw new Error(t("account.errorEmailUnchanged"));
+      if (emailForm.newEmail.trim().toLowerCase() === user.email) throw new ActionError(t("account.errorEmailUnchanged"));
       const result = await patchAccount({ action: "request_email_change", ...emailForm });
       setNotice(result.status === "already_sent" ? t("account.alreadySent") : t("account.emailChangeSent"));
       setEmailForm((f) => ({ ...f, currentPassword: "" }));
@@ -227,10 +227,10 @@ export default function AccountPage() {
     e.preventDefault();
     run("change-password", async () => {
       if (passwordForm.newPassword.length < 10 || passwordForm.newPassword.length > 256) {
-        throw new Error(t("auth.passwordPolicy"));
+        throw new ActionError(t("auth.passwordPolicy"));
       }
       if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-        throw new Error(t("auth.passwordsDoNotMatch"));
+        throw new ActionError(t("auth.passwordsDoNotMatch"));
       }
       await patchAccount({
         action: "change_password",
@@ -271,7 +271,7 @@ export default function AccountPage() {
       });
       if (!res.ok) {
         const d = (await res.json().catch(() => null)) as ApiData | null;
-        throw new Error(errorMessage(res.status, d?.code));
+        throw new ActionError(errorMessage(res.status, d?.code));
       }
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
@@ -302,7 +302,7 @@ export default function AccountPage() {
         body: JSON.stringify(deleteForm),
       });
       const d = (await res.json().catch(() => null)) as ApiData | null;
-      if (!res.ok) throw new Error(errorMessage(res.status, d?.code));
+      if (!res.ok) throw new ActionError(errorMessage(res.status, d?.code));
       router.push("/");
       router.refresh();
     });

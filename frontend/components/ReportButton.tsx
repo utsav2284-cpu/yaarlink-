@@ -14,7 +14,7 @@ type Props = {
 };
 
 export default function ReportButton({ targetType, targetId, targetName, className = "", buttonClassName = "" }: Props) {
-  const { t } = useLang();
+  const { t, apiErrorKey } = useLang();
   const uid = useId().replace(/:/g, "");
   const [open, setOpen] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -22,7 +22,7 @@ export default function ReportButton({ targetType, targetId, targetName, classNa
   const [details, setDetails] = useState("");
   const [contact, setContact] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [errorKey, setErrorKey] = useState("");
 
   const formId = `report-form-${uid}`;
   const title = t(targetType === "campaign" ? "report.campaignTitle" : "report.creatorTitle");
@@ -31,7 +31,7 @@ export default function ReportButton({ targetType, targetId, targetName, classNa
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setBusy(true);
-    setError("");
+    setErrorKey("");
     try {
       const res = await fetch("/api/reports", {
         method: "POST",
@@ -44,11 +44,15 @@ export default function ReportButton({ targetType, targetId, targetName, classNa
           reporterContact: contact.trim() || undefined,
         }),
       });
-      if (!res.ok) throw new Error("Report failed");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErrorKey(apiErrorKey(res.status, data?.code, "report.error"));
+        return;
+      }
       setSubmitted(true);
       setOpen(false);
     } catch {
-      setError(t("report.error"));
+      setErrorKey("report.error");
     } finally {
       setBusy(false);
     }
@@ -129,9 +133,9 @@ export default function ReportButton({ targetType, targetId, targetName, classNa
 
           <PrivacyNotice textKey="privacy.reportNotice" compact className="mt-3" />
 
-          {error && (
+          {errorKey && (
             <p role="alert" className="mt-2 rounded-lg bg-red-50 px-2 py-1.5 text-[12px] font-semibold text-red-700">
-              {error}
+              {t(errorKey)}
             </p>
           )}
 

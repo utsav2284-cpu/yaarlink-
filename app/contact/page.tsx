@@ -18,28 +18,10 @@ import {
 
 type Kind = "brand" | "creator" | "other";
 
-const KIND_INFO: Record<Kind, { label: string; emoji: string; wa: string; placeholder: string; subject: string }> = {
-  brand: {
-    label: "I'm a Brand",
-    emoji: "🏪",
-    wa: "Hi YaarLink! 👋 I run a business and want to promote it with creators. Can we talk?",
-    placeholder: "e.g. I run a salon in Chandigarh and want Diwali promos from local pages. Budget around ₹10,000.",
-    subject: "Brand enquiry — YaarLink",
-  },
-  creator: {
-    label: "I'm a Creator",
-    emoji: "🎥",
-    wa: "Hi YaarLink! 👋 I'm a creator / page owner and want to join your network for paid campaigns.",
-    placeholder: "e.g. I run a Punjabi meme page with 50K followers and want paid Story promotions.",
-    subject: "Creator enquiry — YaarLink",
-  },
-  other: {
-    label: "Something else",
-    emoji: "💬",
-    wa: "Hi YaarLink! 👋 I have a question.",
-    placeholder: "Partnerships, press, jobs, feedback — anything.",
-    subject: "Hello YaarLink",
-  },
+const KIND_INFO: Record<Kind, { emoji: string }> = {
+  brand: { emoji: "🏪" },
+  creator: { emoji: "🎥" },
+  other: { emoji: "💬" },
 };
 
 function IconWhatsApp({ className = "" }: { className?: string }) {
@@ -65,11 +47,15 @@ export default function ContactPage() {
   const [form, setForm] = useState({ name: "", email: "", phone: "", message: "" });
   const [done, setDone] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState("");
-  const { t } = useLang();
+  const [errKey, setErrKey] = useState("");
+  const { t, apiErrorKey, formatNumber } = useLang();
   const [copied, setCopied] = useState<string | null>(null);
   const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
-  const info = KIND_INFO[kind];
+  const info = {
+    wa: t(kind === "brand" ? "cont.brandWa" : kind === "creator" ? "cont.creatorWa" : "cont.otherWa"),
+    placeholder: t(kind === "brand" ? "cont.brandPlaceholder" : kind === "creator" ? "cont.creatorPlaceholder" : "cont.otherPlaceholder"),
+    subject: t(kind === "brand" ? "cont.brandSubject" : kind === "creator" ? "cont.creatorSubject" : "cont.otherSubject"),
+  };
 
   // Inside a preview frame (e.g. arena.ai) browsers block outside links — show a hint.
   const [inFrame, setInFrame] = useState(false);
@@ -103,15 +89,15 @@ export default function ContactPage() {
       setCopied(label);
       setTimeout(() => setCopied(null), 1800);
     } else {
-      window.prompt("Copy this:", value);
+      window.prompt(t("cont.copyThis"), value);
     }
   };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErr("");
+    setErrKey("");
     if (!form.email.trim() && !form.phone.trim()) {
-      setErr(t("cont.errNoContact"));
+      setErrKey("cont.errNoContact");
       return;
     }
     setSaving(true);
@@ -121,10 +107,14 @@ export default function ContactPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...form, kind }),
       });
-      if (!res.ok) throw new Error("Failed");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErrKey(apiErrorKey(res.status, data?.code, "cont.errSend"));
+        return;
+      }
       setDone(true);
     } catch {
-      setErr(t("cont.errSend"));
+      setErrKey("cont.errSend");
     } finally {
       setSaving(false);
     }
@@ -137,7 +127,7 @@ export default function ContactPage() {
         <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
           <p className="inline-flex items-center gap-2 rounded-full border border-[#e9ddc3] bg-white px-3.5 py-1.5 text-[12.5px] font-bold text-[#57534e]">
             <span className="h-2 w-2 rounded-full bg-green-600" />
-            Real people reply · {SITE.hours}
+            {t("cont.realPeople")} · {t("site.hours")}
           </p>
           <h1 className="font-display mt-4 text-[36px] font-black leading-tight sm:text-[52px]">
             {t("cont.title")} <span className="marker-underline">{t("cont.titleB")}</span>
@@ -170,11 +160,8 @@ export default function ContactPage() {
       <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
         {inFrame && (
           <div className="mb-6 rounded-2xl border border-[#ffc53d] bg-[#fff4de] p-4 text-[14px] text-[#57534e]">
-            <p className="font-extrabold text-[#1c1917]">👀 You&apos;re viewing a preview</p>
-            <p className="mt-1">
-              This preview window blocks WhatsApp, Instagram, call and email links. They work normally on your live site.
-              Here, tapping a button shows a QR code — scan it with your phone to open WhatsApp, Instagram, call or email.
-            </p>
+            <p className="font-extrabold text-[#1c1917]">{t("cont.previewTitle")}</p>
+            <p className="mt-1">{t("cont.previewBody")}</p>
           </div>
         )}
         {/* CHANNELS */}
@@ -186,7 +173,7 @@ export default function ContactPage() {
                 <IconWhatsApp className="h-7 w-7 text-white" />
               </span>
               <span className="rounded-full bg-[#ffc53d] px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider text-[#1c1917]">
-                Fastest
+                {t("cont.fastest")}
               </span>
             </div>
             <p className="mt-4 text-[19px] font-extrabold">{t("cont.wa")}</p>
@@ -202,7 +189,7 @@ export default function ContactPage() {
             <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#fff4de] text-[24px]">📞</span>
             <p className="mt-4 text-[19px] font-extrabold">{t("cont.call")}</p>
             <p className="text-[14.5px] font-semibold text-[#57534e]">{SITE.phoneDisplay}</p>
-            <p className="mt-1 text-[13px] text-[#a8a29e]">{SITE.hours}</p>
+            <p className="mt-1 text-[13px] text-[#a8a29e]">{t("site.hours")}</p>
             <div className="mt-5 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
               <ContactLink kind="call" href={callLink} value={SITE.phoneDisplay} title={t("cont.call")} className="rounded-xl bg-[#1c1917] py-3 text-center text-[14.5px] font-extrabold text-white hover:bg-black">
                 {t("cont.callBtn")}
@@ -225,7 +212,7 @@ export default function ContactPage() {
             <p className="truncate text-[14.5px] font-semibold text-[#57534e]">{SITE.email}</p>
             <p className="mt-1 text-[13px] text-[#a8a29e]">{t("cont.emailSub")}</p>
             <div className="mt-5 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-              <ContactLink kind="email" href={mailtoLink(info.subject)} webHref={gmailComposeLink(info.subject)} value={SITE.email} title="Email us" className="rounded-xl bg-[#1c1917] py-3 text-center text-[14.5px] font-extrabold text-white hover:bg-black">
+              <ContactLink kind="email" href={mailtoLink(info.subject)} webHref={gmailComposeLink(info.subject)} value={SITE.email} title={t("cont.emailUs")} className="rounded-xl bg-[#1c1917] py-3 text-center text-[14.5px] font-extrabold text-white hover:bg-black">
                 {t("cont.emailBtn")}
               </ContactLink>
               <button
@@ -265,7 +252,7 @@ export default function ContactPage() {
               <p className="text-[48px]">💌</p>
               <h2 className="font-display mt-2 text-[28px] font-black">{t("cont.sentTitle")}</h2>
               <p className="mt-2 text-[15px] text-[#57534e]">
-                {t("cont.sentBody2")} {form.name.split(" ")[0] || "yaar"} — {t("cont.sentBody")}
+                {t("cont.sentBody2")} {form.name.split(" ")[0] || t("cont.friendFallback")} — {t("cont.sentBody")}
               </p>
               <p className="mt-1 text-[14px] text-[#78716c]">{t("cont.sentHint")}</p>
               <div className="mt-5 flex flex-col justify-center gap-2 sm:flex-row">
@@ -291,11 +278,11 @@ export default function ContactPage() {
                 </label>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="grid gap-1.5">
-                    <span className="text-[13.5px] font-bold">Phone / WhatsApp</span>
+                    <span className="text-[13.5px] font-bold">{t("cont.phoneWhatsApp")}</span>
                     <input value={form.phone} onChange={(e) => set("phone", e.target.value)} inputMode="tel" placeholder="98XXX XXXXX" className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                   </label>
                   <label className="grid gap-1.5">
-                    <span className="text-[13.5px] font-bold">Email</span>
+                    <span className="text-[13.5px] font-bold">{t("cont.email")}</span>
                     <input value={form.email} onChange={(e) => set("email", e.target.value)} type="email" placeholder="you@gmail.com" className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                   </label>
                 </div>
@@ -304,7 +291,7 @@ export default function ContactPage() {
                   <textarea value={form.message} onChange={(e) => set("message", e.target.value)} required rows={5} placeholder={info.placeholder} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                 </label>
                 <PrivacyNotice textKey="privacy.contactNotice" />
-                {err && <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[14px] font-bold text-red-700">{err}</p>}
+                {errKey && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[14px] font-bold text-red-700">{t(errKey)}</p>}
                 <button disabled={saving} className="rounded-2xl bg-[#e4572e] py-4 text-[16px] font-extrabold text-white hover:bg-[#c7431f] disabled:opacity-60">
                   {saving ? t("cont.sending") : t("cont.send")}
                 </button>
@@ -317,13 +304,13 @@ export default function ContactPage() {
               <p className="text-[12.5px] font-bold uppercase tracking-widest text-[#ffc53d]">{t("cont.nextTitle")}</p>
               <ol className="mt-3 grid gap-3">
                 {[
-                  ["1", t("cont.next1")],
-                  ["2", t("cont.next2")],
-                  ["3", kind === "creator" ? t("cont.next3Creator") : t("cont.next3Brand")],
-                ].map(([n, t]) => (
+                  [1, t("cont.next1")],
+                  [2, t("cont.next2")],
+                  [3, kind === "creator" ? t("cont.next3Creator") : t("cont.next3Brand")],
+                ].map(([n, text]) => (
                   <li key={n} className="flex items-start gap-3">
-                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#ffc53d] text-[13px] font-black text-[#1c1917]">{n}</span>
-                    <span className="text-[14.5px] text-white/85">{t}</span>
+                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#ffc53d] text-[13px] font-black text-[#1c1917]">{formatNumber(Number(n), { useGrouping: false })}</span>
+                    <span className="text-[14.5px] text-white/85">{text}</span>
                   </li>
                 ))}
               </ol>
@@ -339,7 +326,7 @@ export default function ContactPage() {
             </div>
 
             <div className="rounded-[24px] border border-[#e9ddc3] bg-[#fffbf1] p-6">
-              <p className="text-[15px] font-extrabold">📍 {SITE.city}</p>
+              <p className="text-[15px] font-extrabold">📍 {t("site.city")}</p>
               <p className="mt-1 text-[14px] text-[#57534e]">{t("cont.city")}</p>
             </div>
           </div>
@@ -348,7 +335,7 @@ export default function ContactPage() {
 
       {/* Floating WhatsApp button (mobile) */}
       {whatsappLink && (
-        <ContactLink kind="whatsapp" href={whatsappWithText(info.wa)} value={SITE.phoneDisplay} title={t("cont.wa")} ariaLabel="Chat on WhatsApp" className="fixed bottom-5 right-5 z-40 grid h-14 w-14 place-items-center rounded-full bg-[#25D366] text-white shadow-[0_10px_25px_-5px_rgba(0,0,0,0.35)] sm:hidden">
+        <ContactLink kind="whatsapp" href={whatsappWithText(info.wa)} value={SITE.phoneDisplay} title={t("cont.wa")} ariaLabel={t("cont.waBtn")} className="fixed bottom-5 right-5 z-40 grid h-14 w-14 place-items-center rounded-full bg-[#25D366] text-white shadow-[0_10px_25px_-5px_rgba(0,0,0,0.35)] sm:hidden">
           <IconWhatsApp className="h-7 w-7" />
         </ContactLink>
       )}

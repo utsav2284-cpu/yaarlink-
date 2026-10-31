@@ -23,7 +23,7 @@ const NO_STORE = { "Cache-Control": "no-store" } as const;
 
 function invalidResponse() {
   return Response.json(
-    { error: "This verification link or password is not valid." },
+    { error: "This verification link or password is not valid.", code: "invalid_token" },
     { status: 400, headers: NO_STORE },
   );
 }
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
 
     if (sessionSecretProblem()) {
       return Response.json(
-        { error: "Account creation is temporarily unavailable." },
+        { error: "Account creation is temporarily unavailable.", code: "service_unavailable" },
         { status: 503, headers: NO_STORE },
       );
     }
@@ -95,6 +95,6 @@ export async function POST(req: Request) {
     // longer usable. The page directs the person to log in in that case.
     if (isUserEmailUniqueViolation(error)) return invalidResponse();
     console.error(error);
-    return Response.json({ error: "Could not verify email" }, { status: 500, headers: NO_STORE });
+    return Response.json({ error: "Could not verify email", code: "request_failed" }, { status: 500, headers: NO_STORE });
   }
 }

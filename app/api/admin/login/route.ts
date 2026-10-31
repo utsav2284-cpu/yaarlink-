@@ -10,18 +10,18 @@ function failedAttemptResponse(clientKey: string, error: string) {
   const lockFor = registerAuthFailure(clientKey);
   if (lockFor > 0) {
     return Response.json(
-      { error: "Too many failed attempts. Please try again later." },
+      { error: "Too many failed attempts. Please try again later.", code: "rate_limited" },
       { status: 429, headers: { "Retry-After": String(lockFor), ...NO_STORE } },
     );
   }
-  return Response.json({ error }, { status: 401, headers: NO_STORE });
+  return Response.json({ error, code: "admin_wrong_credentials" }, { status: 401, headers: NO_STORE });
 }
 
 export async function POST(req: Request) {
   // Refuse to operate unless a distinct admin signing secret is configured.
   // An invalid TOTP secret also fails closed instead of silently using password-only auth.
   if (adminSecretProblem() || adminTotpProblem()) {
-    return Response.json({ error: "Admin login is not configured." }, { status: 503, headers: NO_STORE });
+    return Response.json({ error: "Admin login is not configured.", code: "admin_not_configured" }, { status: 503, headers: NO_STORE });
   }
   const clientKey = getClientKey(req, "admin-login");
   const rl = rateLimit(clientKey, 5, 5 * 60_000);
@@ -40,7 +40,7 @@ export async function POST(req: Request) {
         outcome: "failure",
         details: { reason: "missing_password", mfaConfigured: mfaUsed },
       });
-      return Response.json({ error: "Password required" }, { status: 400, headers: NO_STORE });
+      return Response.json({ error: "Password required", code: "password_required" }, { status: 400, headers: NO_STORE });
     }
 
     if (!(await verifyAdminPassword(password))) {
@@ -76,6 +76,6 @@ export async function POST(req: Request) {
       outcome: "failure",
       details: { reason: "server_error" },
     });
-    return Response.json({ error: "Could not log in" }, { status: 500, headers: NO_STORE });
+    return Response.json({ error: "Could not log in", code: "admin_login_failed" }, { status: 500, headers: NO_STORE });
   }
 }

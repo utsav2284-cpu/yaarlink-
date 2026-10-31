@@ -14,7 +14,7 @@ import { SITE, instagramDmLink, whatsappWithText } from "@/config/site";
 
 function BrandInner() {
   const params = useSearchParams();
-  const { t, opt, promo } = useLang();
+  const { t, opt, promo, apiErrorKey, formatNumber, formatCurrency } = useLang();
   const preset = normalizePromotionType(params.get("type")) ?? "";
   const [creators, setCreators] = useState<any[]>([]);
   const [filter, setFilter] = useState({ lang: "", category: "" });
@@ -36,7 +36,7 @@ function BrandInner() {
   const [done, setDone] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
   const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState("");
+  const [errKey, setErrKey] = useState("");
 
   useEffect(() => {
     if (preset) setForm((f) => ({ ...f, promotionType: preset }));
@@ -58,13 +58,13 @@ function BrandInner() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErr("");
+    setErrKey("");
     if (!form.businessName || !form.title) {
-      setErr(t("brand.errMissing"));
+      setErrKey("brand.errMissing");
       return;
     }
     if (budgetNum < 500) {
-      setErr(t("brand.errBudget"));
+      setErrKey("brand.errBudget");
       return;
     }
     setSaving(true);
@@ -74,13 +74,16 @@ function BrandInner() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...form, budget: budgetNum }),
       });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error || "Failed");
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErrKey(apiErrorKey(res.status, d?.code));
+        return;
+      }
       setVerificationCode(d.campaign?.verificationCode ?? "");
       setDone(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
-    } catch (e: any) {
-      setErr(e.message);
+    } catch {
+      setErrKey("api.network");
     } finally {
       setSaving(false);
     }
@@ -209,7 +212,7 @@ function BrandInner() {
                   <input
                     id="budget"
                     inputMode="numeric"
-                    value={budgetAmount ? Number(budgetAmount).toLocaleString("en-IN") : ""}
+                    value={budgetAmount ? formatNumber(Number(budgetAmount)) : ""}
                     onChange={(e) => setBudgetAmount(e.target.value.replace(/[^0-9]/g, "").slice(0, 8))}
                     placeholder={t("brand.budgetPlaceholder")}
                     className="w-full rounded-xl bg-transparent px-2 py-3 text-[20px] font-extrabold outline-none"
@@ -223,7 +226,7 @@ function BrandInner() {
                       onClick={() => setBudgetAmount(String(v))}
                       className={`rounded-full border px-3.5 py-1.5 text-[13px] font-bold ${Number(budgetAmount) === v ? "border-[#1c1917] bg-[#1c1917] text-white" : "border-[#e9ddc3] bg-white"}`}
                     >
-                      ₹{v.toLocaleString("en-IN")}
+                      {formatCurrency(v)}
                     </button>
                   ))}
                 </div>
@@ -265,7 +268,7 @@ function BrandInner() {
 
               <PrivacyNotice textKey="privacy.campaignNotice" />
 
-              {err && <p className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-[14px] font-bold text-red-700">{err}</p>}
+              {errKey && <p role="alert" className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-[14px] font-bold text-red-700">{t(errKey)}</p>}
 
               <button disabled={saving} className="rounded-2xl bg-[#e4572e] py-4 text-[16.5px] font-extrabold text-white hover:bg-[#c7431f] disabled:opacity-60">
                 {saving ? t("brand.submitting") : t("brand.submit")}
@@ -298,14 +301,14 @@ function BrandInner() {
                 </label>
               </div>
               <div className="mt-3 grid max-h-[420px] gap-2 overflow-y-auto">
-                {filtered.length === 0 && <p className="rounded-xl bg-white/10 p-4 text-[13.5px]">No creators match yet — new profiles join daily. <Link href="/creators" className="font-bold text-[#ffc53d]">Invite creators →</Link></p>}
+                {filtered.length === 0 && <p className="rounded-xl bg-white/10 p-4 text-[13.5px]">{t("browse.noneMatch")} <Link href="/creators" className="font-bold text-[#ffc53d]">{t("browse.inviteCreators")}</Link></p>}
                 {filtered.slice(0, 8).map((c) => (
                   <div key={c.id} className="grid gap-2 rounded-2xl bg-white/10 border border-white/10 p-3">
                     <div className="flex items-center gap-3">
                       <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#ffc53d] text-[15px] font-black text-black">{(c.name || "?").charAt(0).toUpperCase()}</span>
                       <div className="min-w-0">
                         <p className="truncate text-[14px] font-bold">{c.name}</p>
-                        <p className="truncate text-[12px] text-white/60">{opt(c.category)} • {(c.followers || 0).toLocaleString("en-IN")} • {opt(c.languages)}</p>
+                        <p className="truncate text-[12px] text-white/60">{opt(c.category)} • {formatNumber(c.followers || 0)} {t("browse.followers")} • {opt(c.languages)}</p>
                       </div>
                     </div>
                     <div>
@@ -332,9 +335,9 @@ function BrandInner() {
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <ContactLink
                   kind="whatsapp"
-                  href={whatsappWithText("Hi YaarLink! 👋 I'd like a price quote for promoting my business with creators.")}
+                  href={whatsappWithText(t("price.quoteMessage"))}
                   value={SITE.phoneDisplay}
-                  title="Get a quote on WhatsApp"
+                  title={t("price.quoteWhatsAppTitle")}
                   className="rounded-xl bg-[#25D366] py-3 text-center text-[14px] font-extrabold text-white hover:brightness-95"
                 >
                   {t("price.wa")}
@@ -343,7 +346,7 @@ function BrandInner() {
                   kind="instagram"
                   href={instagramDmLink}
                   value={"@" + SITE.instagram}
-                  title="Get a quote on Instagram"
+                  title={t("price.quoteInstagramTitle")}
                   className="rounded-xl border border-[#1c1917] py-3 text-center text-[14px] font-extrabold hover:bg-[#1c1917] hover:text-white"
                 >
                   {t("price.ig")}
@@ -359,8 +362,9 @@ function BrandInner() {
 }
 
 export default function BrandsPage() {
+  const { t } = useLang();
   return (
-    <Suspense fallback={<div className="p-10 text-center">Loading…</div>}>
+    <Suspense fallback={<div className="p-10 text-center">{t("common.loading")}</div>}>
       <BrandInner />
     </Suspense>
   );

@@ -5,7 +5,7 @@ import ProblemStories from "@/frontend/components/ProblemStories";
 import Link from "next/link";
 
 export default function About() {
-  const { t } = useLang();
+  const { t, formatNumber } = useLang();
   return (
     <div>
       <section className="mx-auto max-w-4xl px-4 py-12 sm:px-6">
@@ -55,11 +55,13 @@ export default function About() {
         </div>
 
         <div className="mt-6 rounded-[28px] border border-[#e9ddc3] bg-white p-8 text-center">
-          <h2 className="font-display text-[26px] font-black">Want to build with us?</h2>
-          <p className="mt-2 text-[15px] text-[#57534e]">We are onboarding our first 100 brands and 200 creators personally.</p>
+          <h2 className="font-display text-[26px] font-black">{t("about.ctaTitle")}</h2>
+          <p className="mt-2 text-[15px] text-[#57534e]">
+            {t("about.ctaBody").replace("{brands}", formatNumber(100)).replace("{creators}", formatNumber(200))}
+          </p>
           <div className="mt-5 flex justify-center gap-2">
-            <Link href="/signup" className="rounded-2xl bg-[#e4572e] px-6 py-3 text-[15px] font-bold text-white">Join YaarLink →</Link>
-            <Link href="/contact" className="rounded-2xl border border-[#1c1917] px-6 py-3 text-[15px] font-bold">Talk to us</Link>
+            <Link href="/signup" className="rounded-2xl bg-[#e4572e] px-6 py-3 text-[15px] font-bold text-white">{t("about.join")}</Link>
+            <Link href="/contact" className="rounded-2xl border border-[#1c1917] px-6 py-3 text-[15px] font-bold">{t("about.talk")}</Link>
           </div>
         </div>
       </section>

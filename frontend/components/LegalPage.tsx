@@ -1276,7 +1276,7 @@ export default function LegalPage({ page }: { page: LegalPageKind }) {
         </h2>
         <p className="mt-2 max-w-3xl text-[15px] leading-relaxed text-white/85">{common.contactBody}</p>
         <p className="mt-4 break-all text-[15px] font-extrabold">
-          {SITE.email} <span className="mx-1 text-white/50">·</span> {SITE.phoneDisplay} <span className="mx-1 text-white/50">·</span> {SITE.city}
+          {SITE.email} <span className="mx-1 text-white/50">·</span> {SITE.phoneDisplay} <span className="mx-1 text-white/50">·</span> {t("site.city")}
         </p>
         <div className="mt-5 flex flex-wrap gap-2.5">
           <a href={mailtoLink(common.emailSubject)} className="rounded-2xl bg-white px-5 py-3 text-[14.5px] font-extrabold text-[#17452e] hover:bg-[#fff4de]">

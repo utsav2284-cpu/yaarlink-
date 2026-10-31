@@ -7,7 +7,7 @@ const NO_STORE = { "Cache-Control": "private, no-store" };
 
 export async function POST(req: Request) {
   // Same configuration gate as login — do not touch the admin cookie without a valid secret.
-  if (adminSecretProblem()) return Response.json({ error: "Admin login is not configured." }, { status: 503, headers: NO_STORE });
+  if (adminSecretProblem()) return Response.json({ error: "Admin login is not configured.", code: "admin_not_configured" }, { status: 503, headers: NO_STORE });
 
   const wasAdmin = await isAdmin().catch(() => false);
   try {
@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     console.error("[admin-logout] could not revoke admin sessions", error);
     await clearAdminSession().catch(() => undefined);
     return Response.json(
-      { error: "This browser was signed out, but server-side session revocation failed. Log in again and choose Lock admin to revoke all sessions." },
+      { error: "This browser was signed out, but server-side session revocation failed. Log in again and choose Lock admin to revoke all sessions.", code: "admin_session_revoke_failed" },
       { status: 500, headers: NO_STORE },
     );
   }

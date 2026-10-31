@@ -20,18 +20,18 @@ export async function POST(req: Request) {
 
   try {
     const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!body) return Response.json({ error: "Invalid report" }, { status: 400 });
+    if (!body) return Response.json({ error: "Invalid report", code: "invalid_request" }, { status: 400 });
 
     const targetType = body.targetType as ReportTargetType;
     const targetId = body.targetId;
     const reason = body.reason as ReportReason;
 
     if (targetType !== "campaign" && targetType !== "creator") {
-      return Response.json({ error: "Invalid report target" }, { status: 400 });
+      return Response.json({ error: "Invalid report target", code: "invalid_target" }, { status: 400 });
     }
-    if (!isUuid(targetId)) return Response.json({ error: "Invalid report target" }, { status: 400 });
+    if (!isUuid(targetId)) return Response.json({ error: "Invalid report target", code: "invalid_target" }, { status: 400 });
     if (!REPORT_REASONS.includes(reason)) {
-      return Response.json({ error: "Please choose a valid report reason." }, { status: 400 });
+      return Response.json({ error: "Please choose a valid report reason.", code: "invalid_report_reason" }, { status: 400 });
     }
 
     // Reports are accepted only for listings that are public right now.
@@ -41,14 +41,14 @@ export async function POST(req: Request) {
         .from(creators)
         .where(and(eq(creators.id, targetId), eq(creators.status, "approved"), eq(creators.verificationStatus, "verified")))
         .limit(1);
-      if (!target.length) return Response.json({ error: "This creator is not currently public." }, { status: 404 });
+      if (!target.length) return Response.json({ error: "This creator is not currently public.", code: "target_not_public" }, { status: 404 });
     } else {
       const target = await db
         .select({ id: campaigns.id })
         .from(campaigns)
         .where(and(eq(campaigns.id, targetId), eq(campaigns.status, "open"), eq(campaigns.verificationStatus, "verified")))
         .limit(1);
-      if (!target.length) return Response.json({ error: "This campaign is not currently public." }, { status: 404 });
+      if (!target.length) return Response.json({ error: "This campaign is not currently public.", code: "target_not_public" }, { status: 404 });
     }
 
     const user = await getSessionUser().catch(() => null);
@@ -67,7 +67,7 @@ export async function POST(req: Request) {
         )
         .limit(1);
       if (existing.length) {
-        return Response.json({ error: "You already have an open report for this listing." }, { status: 409 });
+        return Response.json({ error: "You already have an open report for this listing.", code: "report_already_open" }, { status: 409 });
       }
     }
 
@@ -89,6 +89,6 @@ export async function POST(req: Request) {
     return Response.json({ report }, { status: 201, headers: { "Cache-Control": "private, no-store" } });
   } catch (e) {
     console.error(e);
-    return Response.json({ error: "Could not send report" }, { status: 500 });
+    return Response.json({ error: "Could not send report", code: "request_failed" }, { status: 500 });
   }
 }

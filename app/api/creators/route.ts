@@ -42,7 +42,7 @@ type CreatorProfileValues = {
   bio: string | null;
 };
 
-type ParseResult = { ok: true; values: CreatorProfileValues } | { ok: false; error: string };
+type ParseResult = { ok: true; values: CreatorProfileValues } | { ok: false; error: string; code: string };
 
 function bodyRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
@@ -61,48 +61,48 @@ function optionalText(value: unknown, maxLength: number): string | null {
 function parseCreatorProfile(body: Record<string, unknown>, user: SessionUser, current?: Creator): ParseResult {
   const rawName = hasField(body, "name") ? body.name : current?.name;
   const name = optionalText(rawName, 100);
-  if (!name) return { ok: false, error: "Name is required" };
+  if (!name) return { ok: false, error: "Name is required", code: "name_required" };
 
   const rawEmail = hasField(body, "email") ? body.email : current?.email;
   const emailInput = rawEmail == null ? "" : String(rawEmail).toLowerCase().trim();
   const email = emailInput || (current && hasField(body, "email") ? null : user.email);
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: "Please enter a valid email." };
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: "Please enter a valid email.", code: "invalid_email" };
 
   const rawPlatform = hasField(body, "platform") ? body.platform : current?.platform;
   const hasPlatform = !(rawPlatform == null || (typeof rawPlatform === "string" && !rawPlatform.trim()));
   const platform = hasPlatform ? normalizePlatform(rawPlatform) : "Instagram";
-  if (!platform) return { ok: false, error: "Please choose a valid platform." };
+  if (!platform) return { ok: false, error: "Please choose a valid platform.", code: "invalid_platform" };
 
   const rawCategory = hasField(body, "category") ? body.category : current?.category;
   const hasCategory = !(rawCategory == null || (typeof rawCategory === "string" && !rawCategory.trim()));
   const category = hasCategory ? normalizeCategory(rawCategory) : null;
-  if (hasCategory && !category) return { ok: false, error: "Please choose a valid category." };
+  if (hasCategory && !category) return { ok: false, error: "Please choose a valid category.", code: "invalid_category" };
 
   const rawLanguages = hasField(body, "languages") ? body.languages : current?.languages;
   const languages = rawLanguages == null || rawLanguages === "" ? ["English"] : normalizeLanguageList(rawLanguages);
-  if (!languages || languages.length === 0) return { ok: false, error: "Please select at least one valid language." };
+  if (!languages || languages.length === 0) return { ok: false, error: "Please select at least one valid language.", code: "invalid_languages" };
 
   const rawContentTypes = hasField(body, "contentTypes") ? body.contentTypes : current?.contentTypes;
   const contentTypes = rawContentTypes == null || rawContentTypes === "" ? ["Story"] : normalizeContentTypeList(rawContentTypes);
-  if (!contentTypes || contentTypes.length === 0) return { ok: false, error: "Please select valid content types." };
+  if (!contentTypes || contentTypes.length === 0) return { ok: false, error: "Please select valid content types.", code: "invalid_content_types" };
 
   const rawInstagram = hasField(body, "instagram") ? body.instagram : current?.instagram;
   const instagram = rawInstagram ? normalizeInstagramUrl(rawInstagram) : null;
-  if (rawInstagram && !instagram) return { ok: false, error: "Please enter a valid Instagram handle or profile URL." };
+  if (rawInstagram && !instagram) return { ok: false, error: "Please enter a valid Instagram handle or profile URL.", code: "invalid_instagram" };
 
   const rawYoutube = hasField(body, "youtube") ? body.youtube : current?.youtube;
   const youtube = rawYoutube ? normalizeYouTubeUrl(rawYoutube) : null;
-  if (rawYoutube && !youtube) return { ok: false, error: "Please enter a valid YouTube channel handle or URL." };
+  if (rawYoutube && !youtube) return { ok: false, error: "Please enter a valid YouTube channel handle or URL.", code: "invalid_youtube" };
 
   const rawProfileUrl = hasField(body, "profileUrl") ? body.profileUrl : current?.profileUrl;
   let profileUrl = rawProfileUrl ? normalizeProfileUrl(rawProfileUrl, platform) : null;
-  if (rawProfileUrl && !profileUrl) return { ok: false, error: "Please enter a valid profile URL." };
+  if (rawProfileUrl && !profileUrl) return { ok: false, error: "Please enter a valid profile URL.", code: "invalid_profile_url" };
 
   // If the creator gave a social handle but left the profile-link field
   // blank, use the cleaned social URL as the main profile link.
   profileUrl ??= instagram ?? youtube;
   if (!profileUrl) {
-    return { ok: false, error: "Please add your Instagram, YouTube, or other profile link so account ownership can be verified." };
+    return { ok: false, error: "Please add your Instagram, YouTube, or other profile link so account ownership can be verified.", code: "profile_link_required" };
   }
   const resolvedInstagram = instagram ?? normalizeInstagramUrl(profileUrl);
   const resolvedYouTube = youtube ?? normalizeYouTubeUrl(profileUrl);
@@ -111,7 +111,7 @@ function parseCreatorProfile(body: Record<string, unknown>, user: SessionUser, c
   const followers =
     typeof rawFollowers === "string" ? parseInt(rawFollowers.replace(/[^0-9]/g, "") || "0", 10) : Number(rawFollowers || 0);
   if (!Number.isInteger(followers) || followers < 0 || followers > 100_000_000) {
-    return { ok: false, error: "Please enter a valid follower count." };
+    return { ok: false, error: "Please enter a valid follower count.", code: "invalid_followers" };
   }
 
   return {
@@ -192,13 +192,13 @@ export async function POST(req: Request) {
   if (!rl.ok) return limitedResponse(rl.retryAfter);
   try {
     const body = bodyRecord(await req.json().catch(() => null));
-    if (!body) return Response.json({ error: "Invalid creator profile" }, { status: 400, headers: NO_STORE });
+    if (!body) return Response.json({ error: "Invalid creator profile", code: "invalid_request" }, { status: 400, headers: NO_STORE });
     const user = await getSessionUser().catch(() => null);
-    if (!user) return Response.json({ error: "Please log in as a creator before creating your profile." }, { status: 401, headers: NO_STORE });
-    if (user.role !== "creator") return Response.json({ error: "Only creator accounts can create creator profiles." }, { status: 403, headers: NO_STORE });
+    if (!user) return Response.json({ error: "Please log in as a creator before creating your profile.", code: "unauthorized" }, { status: 401, headers: NO_STORE });
+    if (user.role !== "creator") return Response.json({ error: "Only creator accounts can create creator profiles.", code: "forbidden" }, { status: 403, headers: NO_STORE });
 
     const parsed = parseCreatorProfile(body, user);
-    if (!parsed.ok) return Response.json({ error: parsed.error }, { status: 400, headers: NO_STORE });
+    if (!parsed.ok) return Response.json({ error: parsed.error, code: parsed.code }, { status: 400, headers: NO_STORE });
 
     const now = new Date();
     const values = {
@@ -218,7 +218,7 @@ export async function POST(req: Request) {
       // Signup creates a starter `incomplete` row; completing the profile
       // updates that same row instead of creating a second profile.
       if (existing.status !== "incomplete") {
-        return Response.json({ error: "You already have a creator profile. You can manage it from your dashboard." }, { status: 409, headers: NO_STORE });
+        return Response.json({ error: "You already have a creator profile. You can manage it from your dashboard.", code: "creator_profile_exists" }, { status: 409, headers: NO_STORE });
       }
       const [row] = await db.update(creators).set(values).where(eq(creators.id, existing.id)).returning(returningProfile);
       return Response.json({ creator: row }, { headers: NO_STORE });
@@ -228,7 +228,7 @@ export async function POST(req: Request) {
     return Response.json({ creator: row }, { headers: NO_STORE });
   } catch (e) {
     console.error(e);
-    return Response.json({ error: "Could not save creator" }, { status: 500, headers: NO_STORE });
+    return Response.json({ error: "Could not save creator", code: "request_failed" }, { status: 500, headers: NO_STORE });
   }
 }
 
@@ -243,18 +243,18 @@ export async function PATCH(req: Request) {
   try {
     const body = bodyRecord(await req.json().catch(() => null));
     if (!body || !CREATOR_FIELDS.some((field) => hasField(body, field))) {
-      return Response.json({ error: "No creator profile changes were provided." }, { status: 400, headers: NO_STORE });
+      return Response.json({ error: "No creator profile changes were provided.", code: "no_changes" }, { status: 400, headers: NO_STORE });
     }
 
     const user = await getSessionUser().catch(() => null);
-    if (!user) return Response.json({ error: "Please log in as a creator to edit your profile." }, { status: 401, headers: NO_STORE });
-    if (user.role !== "creator") return Response.json({ error: "Only creator accounts can edit creator profiles." }, { status: 403, headers: NO_STORE });
+    if (!user) return Response.json({ error: "Please log in as a creator to edit your profile.", code: "unauthorized" }, { status: 401, headers: NO_STORE });
+    if (user.role !== "creator") return Response.json({ error: "Only creator accounts can edit creator profiles.", code: "forbidden" }, { status: 403, headers: NO_STORE });
 
     const [existing] = await db.select().from(creators).where(eq(creators.userId, user.id)).limit(1);
-    if (!existing) return Response.json({ error: "Creator profile not found." }, { status: 404, headers: NO_STORE });
+    if (!existing) return Response.json({ error: "Creator profile not found.", code: "creator_profile_not_found" }, { status: 404, headers: NO_STORE });
 
     const parsed = parseCreatorProfile(body, user, existing);
-    if (!parsed.ok) return Response.json({ error: parsed.error }, { status: 400, headers: NO_STORE });
+    if (!parsed.ok) return Response.json({ error: parsed.error, code: parsed.code }, { status: 400, headers: NO_STORE });
 
     const materialFields: Array<keyof CreatorProfileValues> = [
       "name",
@@ -316,11 +316,11 @@ export async function PATCH(req: Request) {
       )
       .where(and(eq(creators.id, existing.id), eq(creators.userId, user.id)))
       .returning(returningProfile);
-    if (!row) return Response.json({ error: "Creator profile not found." }, { status: 404, headers: NO_STORE });
+    if (!row) return Response.json({ error: "Creator profile not found.", code: "creator_profile_not_found" }, { status: 404, headers: NO_STORE });
     return Response.json({ creator: row, reviewRequired: materialChanged }, { headers: NO_STORE });
   } catch (e) {
     console.error(e);
-    return Response.json({ error: "Could not update creator profile" }, { status: 500, headers: NO_STORE });
+    return Response.json({ error: "Could not update creator profile", code: "request_failed" }, { status: 500, headers: NO_STORE });
   }
 }
 
@@ -329,14 +329,14 @@ export async function DELETE(req: Request) {
   if (!rl.ok) return limitedResponse(rl.retryAfter);
   try {
     const user = await getSessionUser().catch(() => null);
-    if (!user) return Response.json({ error: "Please log in as a creator to delete your profile." }, { status: 401, headers: NO_STORE });
-    if (user.role !== "creator") return Response.json({ error: "Only creator accounts can delete creator profiles." }, { status: 403, headers: NO_STORE });
+    if (!user) return Response.json({ error: "Please log in as a creator to delete your profile.", code: "unauthorized" }, { status: 401, headers: NO_STORE });
+    if (user.role !== "creator") return Response.json({ error: "Only creator accounts can delete creator profiles.", code: "forbidden" }, { status: 403, headers: NO_STORE });
 
     const [row] = await db.delete(creators).where(eq(creators.userId, user.id)).returning({ id: creators.id });
-    if (!row) return Response.json({ error: "Creator profile not found." }, { status: 404, headers: NO_STORE });
+    if (!row) return Response.json({ error: "Creator profile not found.", code: "creator_profile_not_found" }, { status: 404, headers: NO_STORE });
     return Response.json({ ok: true, deleted: true }, { headers: NO_STORE });
   } catch (e) {
     console.error(e);
-    return Response.json({ error: "Could not delete creator profile" }, { status: 500, headers: NO_STORE });
+    return Response.json({ error: "Could not delete creator profile", code: "request_failed" }, { status: 500, headers: NO_STORE });
   }
 }

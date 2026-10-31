@@ -9,7 +9,7 @@ import PrivacyNotice from "@/frontend/components/PrivacyNotice";
 import ReportButton from "@/frontend/components/ReportButton";
 
 export default function CreatorsPage() {
-  const { t, opt, platform: platformLabel } = useLang();
+  const { t, opt, platform: platformLabel, apiErrorKey, formatNumber } = useLang();
   const [step, setStep] = useState(1);
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [form, setForm] = useState({
@@ -30,7 +30,7 @@ export default function CreatorsPage() {
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
-  const [err, setErr] = useState("");
+  const [errKey, setErrKey] = useState("");
 
   useEffect(() => {
     fetch("/api/campaigns").then((r) => r.json()).then((d) => setCampaigns(d.campaigns?.slice(0, 6) ?? [])).catch(() => {});
@@ -48,9 +48,9 @@ export default function CreatorsPage() {
   const canNext2 = form.profileUrl.trim() || form.instagram.trim() || form.youtube.trim();
 
   const submit = async () => {
-    setErr("");
+    setErrKey("");
     if (!form.category || form.languages.length === 0) {
-      setErr(t("cr.err"));
+      setErrKey("cr.err");
       return;
     }
     setSaving(true);
@@ -60,13 +60,16 @@ export default function CreatorsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...form, followers: form.followers || 0 }),
       });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error || "Failed");
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErrKey(apiErrorKey(res.status, d?.code));
+        return;
+      }
       setVerificationCode(d.creator?.verificationCode ?? "");
       setDone(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
-    } catch (e: any) {
-      setErr(e.message);
+    } catch {
+      setErrKey("api.network");
     } finally {
       setSaving(false);
     }
@@ -118,7 +121,7 @@ export default function CreatorsPage() {
           <div className="rounded-[24px] border border-[#e9ddc3] bg-white p-6 sm:p-8 card-shadow">
             <div className="flex items-center justify-between">
               <h2 className="font-display text-[24px] font-black">{t("cr.formTitle")}</h2>
-              <span className="text-[13px] font-bold text-[#a8a29e]">{t("cr.step")} {step} {t("cr.of")}</span>
+              <span className="text-[13px] font-bold text-[#a8a29e]">{t("cr.step")} {formatNumber(step, { useGrouping: false })} {t("cr.of")}</span>
             </div>
             {/* progress */}
             <div className="mt-3 flex gap-2">
@@ -147,7 +150,7 @@ export default function CreatorsPage() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="grid gap-1.5">
                     <span className="text-[13.5px] font-bold">{t("cr.city")}</span>
-                    <input value={form.location} onChange={(e) => set("location", e.target.value)} placeholder="e.g. Ludhiana" className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                    <input value={form.location} onChange={(e) => set("location", e.target.value)} placeholder={t("cr.phCity")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                   </label>
                   <label className="grid gap-1.5">
                     <span className="text-[13.5px] font-bold">{t("cr.platform")}</span>
@@ -227,7 +230,7 @@ export default function CreatorsPage() {
                   <textarea value={form.bio} onChange={(e) => set("bio", e.target.value)} rows={3} placeholder={t("cr.phBio")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                 </label>
                 <PrivacyNotice textKey="privacy.creatorNotice" />
-                {err && <p className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-[14px] font-bold text-red-700">{err}</p>}
+                {errKey && <p role="alert" className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-[14px] font-bold text-red-700">{t(errKey)}</p>}
                 <div className="flex gap-2">
                   <button onClick={() => setStep(2)} className="flex-1 rounded-2xl border border-[#e9ddc3] py-3.5 text-[15px] font-bold">{t("cr.back")}</button>
                   <button onClick={submit} disabled={saving} className="flex-[2] rounded-2xl bg-[#e4572e] py-3.5 text-[15.5px] font-extrabold text-white hover:bg-[#c7431f] disabled:opacity-60">
@@ -250,8 +253,8 @@ export default function CreatorsPage() {
                     <p className="text-[15px] font-extrabold leading-snug">{c.title}</p>
                     <p className="mt-1 text-[13px] text-[#78716c]">{c.businessName} • {c.location} • {opt(c.language)}</p>
                     <div className="mt-2 flex items-center justify-between">
-                      <span className="rounded-full bg-[#17452e] px-3 py-1 text-[12.5px] font-bold text-white">💰 Paid • {opt(c.format)}</span>
-                      <Link href="/campaigns" className="text-[13.5px] font-bold text-[#e4572e]">View →</Link>
+                      <span className="rounded-full bg-[#17452e] px-3 py-1 text-[12.5px] font-bold text-white">{t("cr.paid")} • {opt(c.format)}</span>
+                      <Link href="/campaigns" className="text-[13.5px] font-bold text-[#e4572e]">{t("cr.view")}</Link>
                     </div>
                     <div className="mt-2">
                       <span className="text-[11.5px] font-bold text-green-800">{t("listing.reviewed")}</span>
@@ -260,14 +263,14 @@ export default function CreatorsPage() {
                   </div>
                 ))}
               </div>
-              <Link href="/campaigns" className="mt-4 block rounded-2xl bg-[#1c1917] py-3 text-center text-[14.5px] font-bold text-white">See all →</Link>
+              <Link href="/campaigns" className="mt-4 block rounded-2xl bg-[#1c1917] py-3 text-center text-[14.5px] font-bold text-white">{t("cr.seeAll")}</Link>
             </div>
             <div className="rounded-[24px] border border-[#e9ddc3] bg-white p-6">
-              <h4 className="text-[16px] font-extrabold">Why creators join us</h4>
+              <h4 className="text-[16px] font-extrabold">{t("cr.whyTitle")}</h4>
               <ul className="mt-2 grid gap-2 text-[14px] text-[#57534e]">
-                <li>🤝 <b>Direct deals</b> — no spammy middlemen</li>
-                <li>💸 <b>Fair pay</b> — we tell brands real rates</li>
-                <li>🗣️ <b>Your language</b> — Punjabi & Hindi deals, not just English</li>
+                <li>🤝 <b>{t("cr.whyDirectTitle")}</b> — {t("cr.whyDirect")}</li>
+                <li>💸 <b>{t("cr.whyPayTitle")}</b> — {t("cr.whyPay")}</li>
+                <li>🗣️ <b>{t("cr.whyLanguageTitle")}</b> — {t("cr.whyLanguage")}</li>
               </ul>
             </div>
           </div>

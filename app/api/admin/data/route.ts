@@ -11,7 +11,7 @@ const NO_STORE = { "Cache-Control": "private, no-store" };
 // Owner-only: full data including campaign budgets and contact details.
 export async function GET() {
   try {
-    if (!(await isAdmin())) return Response.json({ error: "Not allowed" }, { status: 401, headers: NO_STORE });
+    if (!(await isAdmin())) return Response.json({ error: "Not allowed", code: "unauthorized" }, { status: 401, headers: NO_STORE });
     const [c, cr, a, co, r, auditLogs] = await Promise.all([
       db.select().from(campaigns).orderBy(desc(campaigns.createdAt)).limit(200),
       db.select().from(creators).orderBy(desc(creators.createdAt)).limit(200),
@@ -38,20 +38,28 @@ export async function GET() {
       [...rows].sort((x, y) => (x.status === "pending" ? 0 : 1) - (y.status === "pending" ? 0 : 1));
     const campaignLabels = new Map(canonicalCampaigns.map((row) => [row.id, `${row.title} (${row.businessName})`]));
     const creatorLabels = new Map(canonicalCreators.map((row) => [row.id, row.name]));
-    const enrichedApplications = a.map((row) => ({
-      ...row,
-      campaignLabel: campaignLabels.get(row.campaignId) ?? "Deleted campaign",
-      creatorLabel: creatorLabels.get(row.creatorId) ?? row.creatorName,
-    }));
+    const enrichedApplications = a.map((row) => {
+      const campaignLabel = campaignLabels.get(row.campaignId) ?? null;
+      return {
+        ...row,
+        campaignLabel,
+        campaignMissing: campaignLabel === null,
+        creatorLabel: creatorLabels.get(row.creatorId) ?? row.creatorName,
+      };
+    });
     const enrichedReports = [...r]
       .sort((x, y) => (x.status === "open" ? 0 : 1) - (y.status === "open" ? 0 : 1))
-      .map((row) => ({
-        ...row,
-        targetLabel:
+      .map((row) => {
+        const targetLabel =
           row.targetType === "campaign"
-            ? (campaignLabels.get(row.targetId) ?? "Deleted campaign")
-            : (creatorLabels.get(row.targetId) ?? "Deleted creator"),
-      }));
+            ? (campaignLabels.get(row.targetId) ?? null)
+            : (creatorLabels.get(row.targetId) ?? null);
+        return {
+          ...row,
+          targetLabel,
+          targetMissing: targetLabel === null,
+        };
+      });
     return Response.json(
       {
         campaigns: pendingFirst(canonicalCampaigns),
@@ -65,6 +73,6 @@ export async function GET() {
     );
   } catch (e) {
     console.error(e);
-    return Response.json({ error: "Could not load data" }, { status: 500, headers: NO_STORE });
+    return Response.json({ error: "Could not load data", code: "load_failed" }, { status: 500, headers: NO_STORE });
   }
 }
