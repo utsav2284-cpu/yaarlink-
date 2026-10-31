@@ -1,91 +1,101 @@
-import { db } from "@/backend/db";
-import { brands, creators, users } from "@/backend/db/schema";
-import { hashPassword, setSessionCookie } from "@/backend/auth";
-import { eq } from "drizzle-orm";
-import { getClientKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
+import { hashPassword } from "@/backend/auth";
+import { emailDeliveryProblem, sendSignupVerificationEmail } from "@/backend/email";
+import {
+  buildSignupVerificationUrl,
+  claimPendingSignup,
+  isPendingSignupUniqueViolation,
+  markPendingSignupEmailSent,
+} from "@/backend/email-verification";
+import { getClientKey, hashKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
 
 export const dynamic = "force-dynamic";
 
-function isEmailUniqueViolation(error: unknown): boolean {
-  let current: unknown = error;
-  const seen = new Set<unknown>();
-  while (current && typeof current === "object" && !seen.has(current)) {
-    seen.add(current);
-    const record = current as { code?: unknown; constraint?: unknown; detail?: unknown; cause?: unknown };
-    if (record.code === "23505") {
-      const constraint = typeof record.constraint === "string" ? record.constraint : "";
-      const detail = typeof record.detail === "string" ? record.detail : "";
-      if (constraint === "users_email_key" || constraint === "users_email_lower_key" || detail.includes("(email)=")) return true;
-    }
-    current = record.cause;
-  }
-  return false;
+const NO_STORE = { "Cache-Control": "no-store" } as const;
+
+function verificationRequiredResponse() {
+  // New, pending, throttled, and already-registered addresses intentionally
+  // receive the same status/body and no session cookie. The account is not
+  // created here; that happens only in the verify-email endpoint.
+  return Response.json(
+    { ok: true, status: "verification_required" },
+    { status: 202, headers: NO_STORE },
+  );
 }
 
 export async function POST(req: Request) {
   const rl = rateLimit(getClientKey(req, "signup"), 5, 15 * 60_000);
   if (!rl.ok) return limitedResponse(rl.retryAfter);
-  try {
-    const b = await req.json();
-    const name = String(b.name || "").trim();
-    const email = String(b.email || "").toLowerCase().trim();
-    const password = String(b.password || "");
-    if (!name || !email || !password) return Response.json({ error: "Name, email and password required" }, { status: 400 });
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return Response.json({ error: "Please enter a valid email." }, { status: 400 });
-    if (password.length < 10) return Response.json({ error: "Password must be at least 10 characters." }, { status: 400 });
 
-    const existing = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
-    // M4: don't disclose whether the email is already registered — respond exactly like a fresh signup.
-    if (existing.length) return Response.json({ ok: true }, { status: 200, headers: { "Cache-Control": "no-store" } });
+  try {
+    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!body) {
+      return Response.json({ error: "Name, email and password required" }, { status: 400, headers: NO_STORE });
+    }
+
+    const name = String(body.name || "").trim();
+    const email = String(body.email || "").toLowerCase().trim();
+    const password = String(body.password || "");
+
+    if (!name || !email || !password) {
+      return Response.json({ error: "Name, email and password required" }, { status: 400, headers: NO_STORE });
+    }
+    if (email.length > 160 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return Response.json({ error: "Please enter a valid email." }, { status: 400, headers: NO_STORE });
+    }
+    if (password.length < 10 || password.length > 256) {
+      return Response.json(
+        { error: "Password must be between 10 and 256 characters." },
+        { status: 400, headers: NO_STORE },
+      );
+    }
+
+    const emailRl = rateLimit(`signup-email:${hashKey(email)}`, 5, 60 * 60_000);
+    if (!emailRl.ok) return limitedResponse(emailRl.retryAfter);
+
+    if (emailDeliveryProblem()) {
+      return Response.json(
+        { error: "Email verification is temporarily unavailable." },
+        { status: 503, headers: NO_STORE },
+      );
+    }
 
     const cleanName = name.slice(0, 100);
-    const cleanEmail = email.slice(0, 160);
-    const cleanPhone = b.phone ? String(b.phone).slice(0, 20) : null;
-    const role = b.role === "creator" ? "creator" : "brand";
+    const cleanPhone = body.phone ? String(body.phone).trim().slice(0, 20) || null : null;
+    const role = body.role === "creator" ? "creator" : "brand";
+
+    // Hash before the account/pending branch so a known address does not get
+    // an obviously cheaper code path than a new one.
     const passwordHash = await hashPassword(password);
-
-    // Keep the auth account and its role-specific record in sync: brand
-    // signups also land in `brands`, creator signups in `creators`.
-    const row = await db.transaction(async (tx) => {
-      const [user] = await tx
-        .insert(users)
-        .values({
-          name: cleanName,
-          email: cleanEmail,
-          phone: cleanPhone,
-          role,
-          passwordHash,
-        })
-        .returning({ id: users.id, name: users.name, email: users.email, role: users.role });
-
-      if (role === "brand") {
-        await tx.insert(brands).values({
-          userId: user.id,
-          name: cleanName,
-          email: cleanEmail,
-          phone: cleanPhone,
-          status: "active",
-        });
-      } else {
-        await tx.insert(creators).values({
-          userId: user.id,
-          name: cleanName,
-          email: cleanEmail,
-          phone: cleanPhone,
-          status: "incomplete",
-        });
-      }
-
-      return user;
+    const claim = await claimPendingSignup({
+      name: cleanName,
+      email,
+      phone: cleanPhone,
+      role,
+      passwordHash,
     });
 
-    await setSessionCookie(row.id, 0);
-    return Response.json({ user: row }, { headers: { "Cache-Control": "no-store" } });
-  } catch (e) {
-    // A parallel signup can pass the existence read and lose at the DB unique
-    // index. Preserve the anti-enumeration response for that case.
-    if (isEmailUniqueViolation(e)) return Response.json({ ok: true }, { status: 200, headers: { "Cache-Control": "no-store" } });
-    console.error(e);
-    return Response.json({ error: "Could not sign up" }, { status: 500 });
+    if (claim.kind === "send") {
+      try {
+        await sendSignupVerificationEmail({
+          to: email,
+          name: cleanName,
+          verificationUrl: buildSignupVerificationUrl(req, claim.token),
+        });
+        await markPendingSignupEmailSent(claim.pendingId, claim.tokenHash);
+      } catch {
+        // Do not expose provider failures only for unregistered addresses;
+        // that would become an enumeration signal. The pending claim's
+        // cooldown still lets the legitimate user retry shortly afterwards.
+        console.error("Signup verification email failed", { pendingId: claim.pendingId });
+      }
+    }
+
+    return verificationRequiredResponse();
+  } catch (error) {
+    // Parallel requests are serialized by an advisory lock, but preserve the
+    // generic response if a unique index still resolves a race.
+    if (isPendingSignupUniqueViolation(error)) return verificationRequiredResponse();
+    console.error(error);
+    return Response.json({ error: "Could not sign up" }, { status: 500, headers: NO_STORE });
   }
 }

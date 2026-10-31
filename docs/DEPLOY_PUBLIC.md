@@ -18,6 +18,12 @@ Set these as Cloudflare Worker secrets (or your deployment provider's server-sid
 - `ADMIN_PASSWORD`
 - `SESSION_SECRET`
 - `ADMIN_SESSION_SECRET`
+- `RESEND_API_KEY`
+- `EMAIL_FROM`
+
+Verify the `EMAIL_FROM` sending domain in Resend before deployment. Signup verification fails
+closed with HTTP 503 when either email setting is missing; it never falls back to creating an
+unverified account. `APP_URL` may optionally pin the public origin used in verification links.
 
 Generate the two signing secrets with:
 
@@ -43,6 +49,9 @@ too short, admin login returns HTTP 503; it does not fall back to password-only 
 - Admin access uses an HttpOnly signed session cookie; the admin password is never stored in browser storage.
 - Login/signup/admin/public-write endpoints have request throttling. `admin-login` also has a hard
   client lockout with exponential backoff after repeated failures (per Worker isolate).
+- Signup returns one generic verification-required response for new, pending, and already
+  registered addresses and sets no session cookie. User/profile rows are created only after the
+  emailed one-time link and the signup password are verified.
 - Session cookies are `__Host-`-prefixed and always `Secure`; logout revokes the session server-side.
 - Admin tokens carry a DB-backed session version; admin logout increments it, revoking copied or
   previously issued admin cookies, and the admin page clears loaded data from browser state.

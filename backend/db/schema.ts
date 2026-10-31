@@ -10,6 +10,9 @@ export const users = pgTable(
     phone: text("phone"),
     role: text("role").notNull().default("brand"),
     passwordHash: text("password_hash").notNull(),
+    // Set when a signup completes email verification. Pre-C5 accounts remain
+    // null and are grandfathered so this rollout does not lock them out.
+    emailVerifiedAt: timestamp("email_verified_at"),
     // Bumped on logout so previously issued session cookies stop working (server-side revocation).
     tokenVersion: integer("token_version").notNull().default(0),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -22,6 +25,45 @@ export const users = pgTable(
       "users_email_canonical_check",
       sql`${table.email} = lower(btrim(${table.email})) and ${table.email} ~ '^[^[:space:]@]+@[^[:space:]@]+\\.[^[:space:]@]+$'`,
     ),
+  ],
+);
+
+// A signup is held here until the recipient proves control of the inbox.
+// No users/brands/creators row exists while a signup is only pending, so an
+// unverified request cannot permanently claim somebody else's email address.
+export const pendingSignups = pgTable(
+  "pending_signups",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    name: text("name").notNull(),
+    email: text("email").notNull(),
+    phone: text("phone"),
+    role: text("role").notNull().default("brand"),
+    passwordHash: text("password_hash").notNull(),
+    // Only the SHA-256 hash of the emailed, high-entropy token is persisted.
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    verificationAttempts: integer("verification_attempts").notNull().default(0),
+    emailSendCount: integer("email_send_count").notNull().default(0),
+    lastEmailAttemptAt: timestamp("last_email_attempt_at").defaultNow().notNull(),
+    lastEmailSentAt: timestamp("last_email_sent_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    unique("pending_signups_email_key").on(table.email),
+    unique("pending_signups_token_hash_key").on(table.tokenHash),
+    uniqueIndex("pending_signups_email_lower_key").on(sql`lower(${table.email})`),
+    index("pending_signups_expires_at_idx").on(table.expiresAt),
+    check("pending_signups_role_check", sql`${table.role} in ('brand', 'creator')`),
+    check(
+      "pending_signups_email_canonical_check",
+      sql`${table.email} = lower(btrim(${table.email})) and ${table.email} ~ '^[^[:space:]@]+@[^[:space:]@]+\\.[^[:space:]@]+$'`,
+    ),
+    check("pending_signups_token_hash_check", sql`${table.tokenHash} ~ '^[0-9a-f]{64}$'`),
+    check("pending_signups_verification_attempts_check", sql`${table.verificationAttempts} between 0 and 5`),
+    check("pending_signups_email_send_count_check", sql`${table.emailSendCount} between 0 and 5`),
+    check("pending_signups_expires_after_creation_check", sql`${table.expiresAt} > ${table.createdAt}`),
   ],
 );
 
@@ -297,3 +339,4 @@ export type Creator = typeof creators.$inferSelect;
 export type Campaign = typeof campaigns.$inferSelect;
 export type Report = typeof reports.$inferSelect;
 export type AppUser = typeof users.$inferSelect;
+export type PendingSignup = typeof pendingSignups.$inferSelect;
