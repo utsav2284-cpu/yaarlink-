@@ -87,6 +87,7 @@ export default function DashboardPage() {
 
   const { user } = data;
   const isBrand = user.role === "brand";
+  const completedProfiles = (data.profiles ?? []).filter((profile) => profile.status !== "incomplete");
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
@@ -165,12 +166,12 @@ export default function DashboardPage() {
       ) : (
         <>
           <div className="mt-6 grid gap-3 sm:grid-cols-3">
-            <Stat value={data.profiles?.length ?? 0} label={t("dash.statProfiles")} />
+            <Stat value={completedProfiles.length} label={t("dash.statProfiles")} />
             <Stat value={data.applications.length} label={t("dash.statApplied")} />
             <Stat value={data.openCampaigns?.length ?? 0} label={t("dash.statOpen")} />
           </div>
 
-          {(data.profiles ?? []).length === 0 && (
+          {completedProfiles.length === 0 && (
             <div className="mt-6 flex flex-col items-start justify-between gap-3 rounded-2xl bg-[#ffc53d] p-5 sm:flex-row sm:items-center">
               <p className="text-[15px] font-bold">{t("dash.completeProfile")}</p>
               <Link href="/creators" className="rounded-xl bg-[#1c1917] px-5 py-2.5 text-[14px] font-bold text-white">{t("dash.completeBtn")}</Link>
