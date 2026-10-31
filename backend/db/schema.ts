@@ -67,6 +67,79 @@ export const pendingSignups = pgTable(
   ],
 );
 
+// One reusable row per user/purpose holds the latest one-time account action
+// token. Only a purpose-separated SHA-256 hash is stored. Requesting a new
+// link replaces the previous hash, and consuming a sensitive action marks the
+// row used so an emailed link cannot be replayed.
+export const accountTokens = pgTable(
+  "account_tokens",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    purpose: text("purpose").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    // The address the recipient must prove control of. Password-reset tokens
+    // act on the account's current address and therefore have no target.
+    targetEmail: text("target_email"),
+    expiresAt: timestamp("expires_at").notNull(),
+    usedAt: timestamp("used_at"),
+    emailSendCount: integer("email_send_count").notNull().default(0),
+    lastEmailAttemptAt: timestamp("last_email_attempt_at").defaultNow().notNull(),
+    lastEmailSentAt: timestamp("last_email_sent_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    unique("account_tokens_user_purpose_key").on(table.userId, table.purpose),
+    unique("account_tokens_token_hash_key").on(table.tokenHash),
+    index("account_tokens_expires_at_idx").on(table.expiresAt),
+    index("account_tokens_target_email_idx").on(table.targetEmail),
+    check(
+      "account_tokens_purpose_check",
+      sql`${table.purpose} in ('password_reset', 'email_verification', 'email_change')`,
+    ),
+    check("account_tokens_token_hash_check", sql`${table.tokenHash} ~ '^[0-9a-f]{64}$'`),
+    check(
+      "account_tokens_target_email_check",
+      sql`(${table.purpose} = 'password_reset' and ${table.targetEmail} is null) or (${table.purpose} in ('email_verification', 'email_change') and ${table.targetEmail} = lower(btrim(${table.targetEmail})) and ${table.targetEmail} ~ '^[^[:space:]@]+@[^[:space:]@]+\\.[^[:space:]@]+$')`,
+    ),
+    check("account_tokens_email_send_count_check", sql`${table.emailSendCount} between 0 and 5`),
+    check("account_tokens_expires_after_creation_check", sql`${table.expiresAt} > ${table.createdAt}`),
+    check("account_tokens_used_after_creation_check", sql`${table.usedAt} is null or ${table.usedAt} >= ${table.createdAt}`),
+  ],
+);
+
+// A signed cookie carries one of these IDs. Keeping the session server-side
+// lets the account owner see and revoke individual devices instead of only
+// invalidating every cookie through users.token_version.
+export const userSessions = pgTable(
+  "user_sessions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tokenVersion: integer("token_version").notNull(),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    revokedAt: timestamp("revoked_at"),
+  },
+  (table) => [
+    index("user_sessions_user_last_seen_idx").on(table.userId, table.lastSeenAt.desc()),
+    index("user_sessions_user_active_idx").on(table.userId, table.revokedAt, table.expiresAt),
+    index("user_sessions_expires_at_idx").on(table.expiresAt),
+    check("user_sessions_token_version_check", sql`${table.tokenVersion} >= 0`),
+    check("user_sessions_user_agent_check", sql`${table.userAgent} is null or char_length(${table.userAgent}) <= 500`),
+    check("user_sessions_expires_after_creation_check", sql`${table.expiresAt} > ${table.createdAt}`),
+    check("user_sessions_last_seen_check", sql`${table.lastSeenAt} >= ${table.createdAt}`),
+    check("user_sessions_revoked_check", sql`${table.revokedAt} is null or ${table.revokedAt} >= ${table.createdAt}`),
+  ],
+);
+
 export const brands = pgTable(
   "brands",
   {
@@ -385,5 +458,7 @@ export type Campaign = typeof campaigns.$inferSelect;
 export type Report = typeof reports.$inferSelect;
 export type AppUser = typeof users.$inferSelect;
 export type PendingSignup = typeof pendingSignups.$inferSelect;
+export type AccountToken = typeof accountTokens.$inferSelect;
+export type UserSession = typeof userSessions.$inferSelect;
 export type Application = typeof applications.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;

@@ -178,3 +178,162 @@ export async function sendMarketplaceNotificationEmail({
       `,
   });
 }
+
+async function sendAccountActionEmail({
+  to,
+  name,
+  subject,
+  heading,
+  intro,
+  actionLabel,
+  actionUrl,
+  expiryText,
+  ignoreText,
+}: {
+  to: string;
+  name: string;
+  subject: string;
+  heading: string;
+  intro: string;
+  actionLabel: string;
+  actionUrl: string;
+  expiryText: string;
+  ignoreText: string;
+}) {
+  const safeName = escapeHtml(name);
+  const safeHeading = escapeHtml(heading);
+  const safeIntro = escapeHtml(intro);
+  const safeLabel = escapeHtml(actionLabel);
+  const safeUrl = escapeHtml(actionUrl);
+  const safeExpiry = escapeHtml(expiryText);
+  const safeIgnore = escapeHtml(ignoreText);
+
+  await sendEmail({
+    to,
+    subject,
+    text: [
+      `Hi ${name},`,
+      "",
+      intro,
+      "",
+      actionUrl,
+      "",
+      expiryText,
+      "",
+      ignoreText,
+    ].join("\n"),
+    html: `
+        <div style="font-family:Arial,sans-serif;color:#1c1917;line-height:1.5;max-width:560px;margin:0 auto;padding:24px">
+          <h1 style="font-size:24px;margin:0 0 16px">${safeHeading}</h1>
+          <p>Hi ${safeName},</p>
+          <p>${safeIntro}</p>
+          <p style="margin:24px 0">
+            <a href="${safeUrl}" style="background:#e4572e;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:10px;display:inline-block">${safeLabel}</a>
+          </p>
+          <p>${safeExpiry}</p>
+          <p>If the button does not work, copy and paste this address into your browser:</p>
+          <p style="word-break:break-all"><a href="${safeUrl}">${safeUrl}</a></p>
+          <p style="color:#57534e">${safeIgnore}</p>
+        </div>
+      `,
+  });
+}
+
+export async function sendPasswordResetEmail({ to, name, resetUrl }: { to: string; name: string; resetUrl: string }) {
+  await sendAccountActionEmail({
+    to,
+    name,
+    subject: "Reset your YaarLink password",
+    heading: "Reset your password",
+    intro: "We received a request to reset the password for your YaarLink account.",
+    actionLabel: "Reset password",
+    actionUrl: resetUrl,
+    expiryText: "This one-time link expires in 30 minutes. Resetting your password signs out all devices.",
+    ignoreText: "If you did not request this, you can ignore this email and your password will not change.",
+  });
+}
+
+export async function sendExistingAccountEmailVerificationEmail({
+  to,
+  name,
+  verificationUrl,
+}: {
+  to: string;
+  name: string;
+  verificationUrl: string;
+}) {
+  await sendAccountActionEmail({
+    to,
+    name,
+    subject: "Verify your YaarLink account email",
+    heading: "Verify your account email",
+    intro: "Please confirm that this is the email address for your YaarLink account.",
+    actionLabel: "Verify email",
+    actionUrl: verificationUrl,
+    expiryText: "This one-time link expires in 24 hours.",
+    ignoreText: "If you did not request this, you can ignore this email.",
+  });
+}
+
+export async function sendEmailChangeVerificationEmail({
+  to,
+  name,
+  verificationUrl,
+}: {
+  to: string;
+  name: string;
+  verificationUrl: string;
+}) {
+  await sendAccountActionEmail({
+    to,
+    name,
+    subject: "Confirm your new YaarLink email",
+    heading: "Confirm your new email",
+    intro: "Please confirm this address as the new login and recovery email for your YaarLink account.",
+    actionLabel: "Confirm new email",
+    actionUrl: verificationUrl,
+    expiryText: "This one-time link expires in 30 minutes. Confirming it signs out all devices, after which you will log in with this new address.",
+    ignoreText: "If you did not request this change, ignore this email. The account email will not change unless this link is confirmed.",
+  });
+}
+
+export async function sendAccountSecurityNoticeEmail({
+  to,
+  name,
+  subject,
+  heading,
+  message,
+  actionLabel,
+  actionUrl,
+}: {
+  to: string;
+  name: string;
+  subject: string;
+  heading: string;
+  message: string;
+  actionLabel: string;
+  actionUrl: string;
+}) {
+  const safeName = escapeHtml(name);
+  const safeHeading = escapeHtml(heading);
+  const safeMessage = escapeHtml(message);
+  const safeLabel = escapeHtml(actionLabel);
+  const safeUrl = escapeHtml(actionUrl);
+
+  await sendEmail({
+    to,
+    subject,
+    text: [`Hi ${name},`, "", message, "", actionUrl].join("\n"),
+    html: `
+        <div style="font-family:Arial,sans-serif;color:#1c1917;line-height:1.5;max-width:560px;margin:0 auto;padding:24px">
+          <h1 style="font-size:24px;margin:0 0 16px">${safeHeading}</h1>
+          <p>Hi ${safeName},</p>
+          <p>${safeMessage}</p>
+          <p style="margin:24px 0">
+            <a href="${safeUrl}" style="background:#1c1917;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:10px;display:inline-block">${safeLabel}</a>
+          </p>
+          <p style="color:#57534e">This notice was sent because of security activity on your YaarLink account.</p>
+        </div>
+      `,
+  });
+}
