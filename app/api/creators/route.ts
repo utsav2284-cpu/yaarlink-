@@ -3,6 +3,7 @@ import { creators } from "@/backend/db/schema";
 import { desc, eq, isNull, ne, or } from "drizzle-orm";
 import { getSessionUser } from "@/backend/auth";
 import { getClientKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
+import { normalizeInstagramUrl, normalizeProfileUrl, normalizeYouTubeUrl } from "@/backend/social-url";
 
 export const dynamic = "force-dynamic";
 
@@ -50,8 +51,18 @@ export async function POST(req: Request) {
     if (!b.name) return Response.json({ error: "Name is required" }, { status: 400 });
     const email = b.email ? String(b.email).toLowerCase().trim() : "";
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return Response.json({ error: "Please enter a valid email." }, { status: 400 });
-    const urlFields = ["instagram", "youtube", "profileUrl"] as const;
-    for (const field of urlFields) { if (b[field]) { try { const u = new URL(String(b[field])); if (!["http:", "https:"].includes(u.protocol)) throw new Error(); } catch { return Response.json({ error: `Please enter a valid ${field} URL.` }, { status: 400 }); } } }
+    const instagram = b.instagram ? normalizeInstagramUrl(b.instagram) : null;
+    if (b.instagram && !instagram) return Response.json({ error: "Please enter a valid Instagram handle or profile URL." }, { status: 400 });
+    const youtube = b.youtube ? normalizeYouTubeUrl(b.youtube) : null;
+    if (b.youtube && !youtube) return Response.json({ error: "Please enter a valid YouTube channel handle or URL." }, { status: 400 });
+    let profileUrl = b.profileUrl ? normalizeProfileUrl(b.profileUrl, b.platform) : null;
+    if (b.profileUrl && !profileUrl) return Response.json({ error: "Please enter a valid profile URL." }, { status: 400 });
+
+    // If the creator gave a social handle but left the profile-link field
+    // blank, use the cleaned social URL as the main profile link.
+    profileUrl ??= instagram ?? youtube;
+    const resolvedInstagram = instagram ?? (profileUrl ? normalizeInstagramUrl(profileUrl) : null);
+    const resolvedYouTube = youtube ?? (profileUrl ? normalizeYouTubeUrl(profileUrl) : null);
     const followers = typeof b.followers === "string" ? parseInt(b.followers.replace(/[^0-9]/g, "") || "0", 10) : Number(b.followers || 0);
     if (!Number.isInteger(followers) || followers < 0 || followers > 100_000_000) return Response.json({ error: "Please enter a valid follower count." }, { status: 400 });
     const values = {
@@ -59,9 +70,9 @@ export async function POST(req: Request) {
       name: String(b.name).slice(0, 100),
       email: email ? email.slice(0, 120) : null,
       phone: b.phone ? String(b.phone).slice(0, 20) : null,
-      instagram: b.instagram ? String(b.instagram).slice(0, 160) : null,
-      youtube: b.youtube ? String(b.youtube).slice(0, 160) : null,
-      profileUrl: b.profileUrl ? String(b.profileUrl).slice(0, 200) : null,
+      instagram: resolvedInstagram?.slice(0, 160) ?? null,
+      youtube: resolvedYouTube?.slice(0, 160) ?? null,
+      profileUrl: profileUrl?.slice(0, 200) ?? null,
       platform: b.platform ? String(b.platform).slice(0, 40) : "Instagram",
       followers: isNaN(followers) ? 0 : followers,
       category: b.category ? String(b.category).slice(0, 60) : null,
