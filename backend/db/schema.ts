@@ -12,9 +12,22 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const brands = pgTable("brands", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .unique()
+    .references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  email: text("email"),
+  phone: text("phone"),
+  status: text("status").default("active"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const creators = pgTable("creators", {
   id: uuid("id").defaultRandom().primaryKey(),
-  userId: uuid("user_id"),
+  userId: uuid("user_id").unique(),
   name: text("name").notNull(),
   email: text("email"),
   phone: text("phone"),
@@ -82,6 +95,7 @@ export const settings = pgTable("settings", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export type Brand = typeof brands.$inferSelect;
 export type Creator = typeof creators.$inferSelect;
 export type Campaign = typeof campaigns.$inferSelect;
 export type AppUser = typeof users.$inferSelect;

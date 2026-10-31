@@ -1,5 +1,5 @@
 import { db } from "@/backend/db";
-import { users } from "@/backend/db/schema";
+import { brands, creators, users } from "@/backend/db/schema";
 import { hashPassword, setSessionCookie } from "@/backend/auth";
 import { eq } from "drizzle-orm";
 import { getClientKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
@@ -22,16 +22,46 @@ export async function POST(req: Request) {
     // M4: don't disclose whether the email is already registered — respond exactly like a fresh signup.
     if (existing.length) return Response.json({ ok: true }, { status: 200, headers: { "Cache-Control": "no-store" } });
 
-    const [row] = await db
-      .insert(users)
-      .values({
-        name: name.slice(0, 100),
-        email: email.slice(0, 160),
-        phone: b.phone ? String(b.phone).slice(0, 20) : null,
-        role: b.role === "creator" ? "creator" : "brand",
-        passwordHash: await hashPassword(password),
-      })
-      .returning({ id: users.id, name: users.name, email: users.email, role: users.role });
+    const cleanName = name.slice(0, 100);
+    const cleanEmail = email.slice(0, 160);
+    const cleanPhone = b.phone ? String(b.phone).slice(0, 20) : null;
+    const role = b.role === "creator" ? "creator" : "brand";
+    const passwordHash = await hashPassword(password);
+
+    // Keep the auth account and its role-specific record in sync: brand
+    // signups also land in `brands`, creator signups in `creators`.
+    const row = await db.transaction(async (tx) => {
+      const [user] = await tx
+        .insert(users)
+        .values({
+          name: cleanName,
+          email: cleanEmail,
+          phone: cleanPhone,
+          role,
+          passwordHash,
+        })
+        .returning({ id: users.id, name: users.name, email: users.email, role: users.role });
+
+      if (role === "brand") {
+        await tx.insert(brands).values({
+          userId: user.id,
+          name: cleanName,
+          email: cleanEmail,
+          phone: cleanPhone,
+          status: "active",
+        });
+      } else {
+        await tx.insert(creators).values({
+          userId: user.id,
+          name: cleanName,
+          email: cleanEmail,
+          phone: cleanPhone,
+          status: "incomplete",
+        });
+      }
+
+      return user;
+    });
 
     await setSessionCookie(row.id, 0);
     return Response.json({ user: row }, { headers: { "Cache-Control": "no-store" } });
