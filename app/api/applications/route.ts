@@ -1,10 +1,15 @@
+import {
+  isCompletedCreatorProfile,
+  resolveApplicationContact,
+  sameApplicationContact,
+} from "@/backend/application-contact";
 import { db } from "@/backend/db";
 import { applications, campaigns, creators, users } from "@/backend/db/schema";
 import { isAdmin } from "@/backend/admin";
 import { getSessionUser } from "@/backend/auth";
 import { isUuid } from "@/backend/moderation";
 import { createApplicationNotification, sendApplicationNotificationEmailBestEffort } from "@/backend/notifications";
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { getClientKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
 import type { ApplicationStatus, NotificationKind } from "@/shared/constants";
 
@@ -26,6 +31,10 @@ function cleanText(value: unknown, maxLength: number): string | null | undefined
   if (typeof value !== "string") return undefined;
   const cleaned = value.trim();
   return cleaned ? cleaned.slice(0, maxLength) : null;
+}
+
+function isOpenCampaign(campaign: { status: string; verificationStatus: string }) {
+  return campaign.status === "open" && campaign.verificationStatus === "verified";
 }
 
 type EmailNotice = {
@@ -65,7 +74,7 @@ export async function POST(req: Request) {
       .where(eq(campaigns.id, campaignId))
       .limit(1);
     if (!camp.length) return Response.json({ error: "Campaign not found", code: "campaign_not_found" }, { status: 404, headers: NO_STORE });
-    if (camp[0].status !== "open" || camp[0].verificationStatus !== "verified") {
+    if (!isOpenCampaign(camp[0])) {
       return Response.json({ error: "This campaign is no longer accepting applications.", code: "campaign_closed" }, { status: 400, headers: NO_STORE });
     }
 
@@ -74,20 +83,25 @@ export async function POST(req: Request) {
     if (user.role !== "creator") return Response.json({ error: "Only creator accounts can apply to campaigns.", code: "forbidden" }, { status: 403, headers: NO_STORE });
 
     const [initialCreatorProfile] = await db
-      .select({ id: creators.id, name: creators.name })
+      .select()
       .from(creators)
       .where(eq(creators.userId, user.id))
       .limit(1);
-    if (!initialCreatorProfile) return Response.json({ error: "Please complete your creator profile before applying.", code: "creator_profile_incomplete" }, { status: 400, headers: NO_STORE });
+    if (!isCompletedCreatorProfile(initialCreatorProfile)) {
+      return Response.json({ error: "Please complete your creator profile before applying.", code: "creator_profile_incomplete" }, { status: 400, headers: NO_STORE });
+    }
 
-    const creatorName = typeof body.creatorName === "string" ? body.creatorName.trim().slice(0, 100) : "";
-    if (!creatorName) return Response.json({ error: "Please add your name / page name", code: "name_required" }, { status: 400, headers: NO_STORE });
+    // The brand-facing applicant name is always the completed creator
+    // profile's name. Request-body names are deliberately ignored so an
+    // applicant cannot apply under someone else's name/page name.
+    let creatorName = initialCreatorProfile.name.trim();
 
-    // Never reuse the account phone/email as the brand-facing contact. The
-    // creator must enter the exact contact for this application and confirm
-    // that YaarLink may share it with this campaign's brand.
-    const contact = typeof body.creatorContact === "string" ? body.creatorContact.trim().slice(0, 120) : "";
-    if (contact.length < 3) {
+    // The creator chooses which already-saved account/profile contact to
+    // share and explicitly confirms that choice. Formatting variations are
+    // normalized to the saved canonical contact; arbitrary contacts are not
+    // accepted, and account details are never substituted silently.
+    const contactInput = typeof body.creatorContact === "string" ? body.creatorContact.trim() : "";
+    if (contactInput.length < 3) {
       return Response.json(
         { error: "Please enter the contact you want this brand to use.", code: "contact_required" },
         { status: 400, headers: NO_STORE },
@@ -99,25 +113,39 @@ export async function POST(req: Request) {
         { status: 400, headers: NO_STORE },
       );
     }
+    const initialContact = resolveApplicationContact(contactInput, user, initialCreatorProfile);
+    if (!initialContact) {
+      return Response.json(
+        { error: "Use a phone, email, or social profile saved on your account or completed creator profile.", code: "application_contact_not_owned" },
+        { status: 400, headers: NO_STORE },
+      );
+    }
+    let contact = initialContact.value;
     const message = cleanText(body.message, 1000) ?? null;
 
     type PostOutcome =
       | { kind: "created" | "reactivated"; application: typeof applications.$inferSelect; email: EmailNotice }
-      | { kind: "duplicate" | "closed" | "profile_missing" | "campaign_missing" };
+      | { kind: "duplicate" | "closed" | "profile_incomplete" | "contact_not_owned" | "campaign_missing" };
 
     const outcome: PostOutcome = await db.transaction(async (tx) => {
       // Locking the campaign makes pause/close and apply/reactivate decisions
       // serialize instead of racing based on the preliminary check above.
       const [campaign] = await tx.select().from(campaigns).where(eq(campaigns.id, campaignId)).limit(1).for("update");
       if (!campaign) return { kind: "campaign_missing" } as const;
-      if (campaign.status !== "open" || campaign.verificationStatus !== "verified") return { kind: "closed" } as const;
+      if (!isOpenCampaign(campaign)) return { kind: "closed" } as const;
 
       const [creatorProfile] = await tx
-        .select({ id: creators.id, name: creators.name })
+        .select()
         .from(creators)
         .where(eq(creators.userId, user.id))
-        .limit(1);
-      if (!creatorProfile) return { kind: "profile_missing" } as const;
+        .limit(1)
+        .for("update");
+      if (!isCompletedCreatorProfile(creatorProfile)) return { kind: "profile_incomplete" } as const;
+
+      const lockedContact = resolveApplicationContact(contactInput, user, creatorProfile);
+      if (!lockedContact) return { kind: "contact_not_owned" } as const;
+      creatorName = creatorProfile.name.trim();
+      contact = lockedContact.value;
 
       const [brandUser] = await tx
         .select({ id: users.id, name: users.name, email: users.email })
@@ -126,6 +154,10 @@ export async function POST(req: Request) {
         .limit(1);
       if (!brandUser) return { kind: "campaign_missing" } as const;
 
+      // Duplicate protection is deliberately keyed only to this signed-in
+      // creator + campaign (also the DB unique constraint). Contacts are
+      // never compared with other applicants, so a shared phone/handle can
+      // neither block another creator nor reveal whether it was used before.
       const [existing] = await tx
         .select()
         .from(applications)
@@ -133,22 +165,6 @@ export async function POST(req: Request) {
         .limit(1)
         .for("update");
       if (existing && existing.status !== "withdrawn") return { kind: "duplicate" } as const;
-
-      if (contact) {
-        const [duplicateContact] = await tx
-          .select({ id: applications.id })
-          .from(applications)
-          .where(
-            and(
-              eq(applications.campaignId, campaignId),
-              eq(applications.creatorContact, contact),
-              ne(applications.status, "withdrawn"),
-              ...(existing ? [ne(applications.id, existing.id)] : []),
-            ),
-          )
-          .limit(1);
-        if (duplicateContact) return { kind: "duplicate" } as const;
-      }
 
       const now = new Date();
       if (existing) {
@@ -239,7 +255,13 @@ export async function POST(req: Request) {
     }
     if (outcome.kind === "duplicate") return Response.json({ error: "You have already applied to this campaign.", code: "already_applied" }, { status: 400, headers: NO_STORE });
     if (outcome.kind === "closed") return Response.json({ error: "This campaign is no longer accepting applications.", code: "campaign_closed" }, { status: 400, headers: NO_STORE });
-    if (outcome.kind === "profile_missing") return Response.json({ error: "Please complete your creator profile before applying.", code: "creator_profile_incomplete" }, { status: 400, headers: NO_STORE });
+    if (outcome.kind === "profile_incomplete") return Response.json({ error: "Please complete your creator profile before applying.", code: "creator_profile_incomplete" }, { status: 400, headers: NO_STORE });
+    if (outcome.kind === "contact_not_owned") {
+      return Response.json(
+        { error: "Use a phone, email, or social profile saved on your account or completed creator profile.", code: "application_contact_not_owned" },
+        { status: 400, headers: NO_STORE },
+      );
+    }
     return Response.json({ error: "Campaign not found", code: "campaign_not_found" }, { status: 404, headers: NO_STORE });
   } catch (e) {
     console.error(e);
@@ -278,7 +300,7 @@ export async function PATCH(req: Request) {
     }
 
     const nextMessage = hasField(body, "message") ? cleanText(body.message, 1000) ?? null : undefined;
-    const nextContact = hasField(body, "creatorContact") ? String(body.creatorContact).trim().slice(0, 120) : undefined;
+    const nextContact = hasField(body, "creatorContact") ? String(body.creatorContact).trim() : undefined;
     if (nextContact !== undefined && nextContact.length < 3) {
       return Response.json({ error: "Please enter a valid contact for the brand.", code: "invalid_application_contact" }, { status: 400, headers: NO_STORE });
     }
@@ -300,7 +322,8 @@ export async function PATCH(req: Request) {
             | "invalid_input"
             | "invalid_transition"
             | "closed"
-            | "duplicate_contact"
+            | "profile_incomplete"
+            | "contact_not_owned"
             | "contact_required"
             | "consent_required";
           currentStatus?: string;
@@ -323,34 +346,41 @@ export async function PATCH(req: Request) {
       if (action in BRAND_ACTIONS && !isCampaignOwner) return { kind: "forbidden" } as const;
 
       const now = new Date();
-      const ensureContactIsFree = async () => {
-        if (!nextContact) return true;
-        const [duplicate] = await tx
-          .select({ id: applications.id })
-          .from(applications)
-          .where(
-            and(
-              eq(applications.campaignId, campaign.id),
-              eq(applications.creatorContact, nextContact),
-              ne(applications.status, "withdrawn"),
-              ne(applications.id, application.id),
-            ),
-          )
-          .limit(1);
-        return !duplicate;
-      };
 
       if (action === "edit") {
         if (nextMessage === undefined && nextContact === undefined) return { kind: "invalid_input" } as const;
         if (application.status !== "applied" && application.status !== "shortlisted") {
           return { kind: "invalid_transition", currentStatus: application.status } as const;
         }
-        if (!(await ensureContactIsFree())) return { kind: "duplicate_contact" } as const;
+
+        const [creatorProfile] = await tx
+          .select()
+          .from(creators)
+          .where(eq(creators.id, application.creatorId))
+          .limit(1)
+          .for("update");
+
+        let editedContact = application.creatorContact;
+        if (nextContact !== undefined) {
+          if (sameApplicationContact(nextContact, application.creatorContact)) {
+            // Keeping the same normalized contact is allowed even for a
+            // legacy application. If it now matches the creator's saved
+            // account/profile contacts, store the canonical saved value.
+            editedContact = resolveApplicationContact(nextContact, user, creatorProfile)?.value ?? application.creatorContact;
+          } else {
+            if (!isCompletedCreatorProfile(creatorProfile)) return { kind: "profile_incomplete" } as const;
+            const resolvedContact = resolveApplicationContact(nextContact, user, creatorProfile);
+            if (!resolvedContact) return { kind: "contact_not_owned" } as const;
+            editedContact = resolvedContact.value;
+          }
+        }
+
         const [updated] = await tx
           .update(applications)
           .set({
+            ...(creatorProfile?.name?.trim() ? { creatorName: creatorProfile.name.trim() } : {}),
             ...(nextMessage !== undefined ? { message: nextMessage } : {}),
-            ...(nextContact !== undefined ? { creatorContact: nextContact } : {}),
+            ...(nextContact !== undefined ? { creatorContact: editedContact } : {}),
             updatedAt: now,
           })
           .where(eq(applications.id, id))
@@ -398,14 +428,26 @@ export async function PATCH(req: Request) {
 
       if (action === "reactivate") {
         if (application.status !== "withdrawn") return { kind: "invalid_transition", currentStatus: application.status } as const;
-        if (campaign.status !== "open" || campaign.verificationStatus !== "verified") return { kind: "closed" } as const;
-        // Reactivation shares the saved application contact with the brand
-        // again, including contacts created before explicit-consent UI was
-        // added. Require a fresh confirmation and a usable contact.
+        if (!isOpenCampaign(campaign)) return { kind: "closed" } as const;
+        // Reactivation shares an application contact with the brand again,
+        // including contacts created before explicit-consent UI was added.
+        // Require fresh consent, a completed profile, and a contact saved on
+        // that creator's own account/profile. The previous contact may be
+        // reused only when it still resolves to one of those saved contacts.
         const effectiveContact = (nextContact ?? application.creatorContact ?? "").trim();
         if (effectiveContact.length < 3) return { kind: "contact_required" } as const;
         if (!contactSharingConsent) return { kind: "consent_required" } as const;
-        if (!(await ensureContactIsFree())) return { kind: "duplicate_contact" } as const;
+
+        const [creatorProfile] = await tx
+          .select()
+          .from(creators)
+          .where(eq(creators.id, application.creatorId))
+          .limit(1)
+          .for("update");
+        if (!isCompletedCreatorProfile(creatorProfile)) return { kind: "profile_incomplete" } as const;
+        const resolvedContact = resolveApplicationContact(effectiveContact, user, creatorProfile);
+        if (!resolvedContact) return { kind: "contact_not_owned" } as const;
+
         const [brandUser] = await tx
           .select({ id: users.id, name: users.name, email: users.email })
           .from(users)
@@ -415,8 +457,10 @@ export async function PATCH(req: Request) {
         const [updated] = await tx
           .update(applications)
           .set({
+            creatorId: creatorProfile.id,
+            creatorName: creatorProfile.name.trim(),
+            creatorContact: resolvedContact.value,
             ...(nextMessage !== undefined ? { message: nextMessage } : {}),
-            ...(nextContact !== undefined ? { creatorContact: nextContact } : {}),
             status: "applied",
             decisionNote: null,
             decisionAt: null,
@@ -503,8 +547,14 @@ export async function PATCH(req: Request) {
     if (outcome.kind === "forbidden") return Response.json({ error: "You cannot manage this application.", code: "forbidden" }, { status: 403, headers: NO_STORE });
     if (outcome.kind === "not_found") return Response.json({ error: "Application not found.", code: "application_not_found" }, { status: 404, headers: NO_STORE });
     if (outcome.kind === "invalid_input") return Response.json({ error: "No application changes were provided.", code: "no_changes" }, { status: 400, headers: NO_STORE });
-    if (outcome.kind === "duplicate_contact") {
-      return Response.json({ error: "That contact is already used by another application for this campaign.", code: "application_contact_conflict" }, { status: 409, headers: NO_STORE });
+    if (outcome.kind === "profile_incomplete") {
+      return Response.json({ error: "Please complete your creator profile before applying.", code: "creator_profile_incomplete" }, { status: 400, headers: NO_STORE });
+    }
+    if (outcome.kind === "contact_not_owned") {
+      return Response.json(
+        { error: "Use a phone, email, or social profile saved on your account or completed creator profile.", code: "application_contact_not_owned" },
+        { status: 400, headers: NO_STORE },
+      );
     }
     if (outcome.kind === "contact_required") {
       return Response.json(

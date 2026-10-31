@@ -97,7 +97,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
             "Account information: your name, email address, optional phone number, account role (brand or creator), email-verification status, account dates, and a hashed password. We do not store your plain-text password.",
             "Pending-signup information: the details submitted before email verification and a hashed one-time verification token. A usable account is created only after verification.",
             "Profile and campaign information: business or creator names, contact details, social profile links, category, languages, location, audience or follower information, campaign descriptions, budget, verification codes, and moderation status.",
-            "Application and communication information: the application name, contact and message you enter, application status and decision notes, notifications, contact-form messages, and listing reports.",
+            "Application and communication information: the creator-profile name, the saved account/profile contact you select, the message you enter, application status and decision notes, notifications, contact-form messages, and listing reports.",
             "Technical and security information: session identifiers, browser/device user-agent information, sign-in and activity times, IP addresses used for rate limits, security and admin audit logs, and limited hosting or email-delivery logs.",
             "Preferences: your selected site language is stored in your browser's local storage.",
           ],
@@ -128,7 +128,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
         {
           heading: "5. Applications and sharing",
           paragraphs: [
-            "When you apply to a campaign, only the name, contact and message entered in that application form are shared with that campaign's brand. YaarLink does not automatically substitute your account phone number or account email address. You must enter the exact contact you want the brand to use and confirm the sharing before submission.",
+            "When you apply to a campaign, only your creator-profile name, the phone, email or social contact saved on your account or completed creator profile that you select for that application, and your message are shared with that campaign's brand. YaarLink does not automatically substitute an account phone number, account email address or any other saved contact you do not select. You must select the saved contact you want the brand to use and confirm the sharing before submission.",
           ],
           bullets: [
             "The campaign brand and authorised YaarLink administrators can view application details needed to operate and moderate the marketplace.",
@@ -212,8 +212,8 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
         {
           heading: "4. Applications and contacts",
           bullets: [
-            "Only eligible creator accounts with a creator profile may apply to campaigns.",
-            "A creator chooses the exact application contact. By confirming submission, the creator authorises YaarLink to show the entered name, contact and message to that campaign's brand.",
+            "Only eligible creator accounts with a completed creator profile may apply to campaigns.",
+            "A creator chooses one phone, email or social contact saved on their account or completed creator profile. By confirming submission, the creator authorises YaarLink to show the creator-profile name, selected contact and message to that campaign's brand.",
             "A brand may use applicant information only to evaluate and manage that application or campaign and related agreed work. The brand must not sell, rent, publish, spam or use it for unrelated marketing.",
             "An application or status on YaarLink does not by itself create employment, agency, partnership or a payment guarantee. Brands and creators should confirm deliverables, usage rights, dates, price and payment method before work starts.",
           ],
@@ -461,7 +461,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
             "अकाउंट जानकारी: नाम, ईमेल, वैकल्पिक फोन, अकाउंट भूमिका (ब्रांड या क्रिएटर), ईमेल-सत्यापन स्थिति, अकाउंट तिथियाँ और हैश किया गया पासवर्ड। हम आपका सादा पासवर्ड सेव नहीं करते।",
             "लंबित साइन-अप जानकारी: ईमेल सत्यापन से पहले दी गई जानकारी और हैश किया गया एक-बार का सत्यापन टोकन। उपयोग योग्य अकाउंट सत्यापन के बाद ही बनता है।",
             "प्रोफाइल और कैंपेन जानकारी: बिज़नेस या क्रिएटर नाम, संपर्क विवरण, सोशल प्रोफाइल लिंक, कैटेगरी, भाषाएँ, स्थान, ऑडियंस या फॉलोअर जानकारी, कैंपेन विवरण, बजट, सत्यापन कोड और मॉडरेशन स्थिति।",
-            "आवेदन और संचार जानकारी: आवेदन में लिखा नाम, संपर्क और संदेश, आवेदन स्थिति और निर्णय नोट, सूचनाएँ, संपर्क-फॉर्म संदेश और लिस्टिंग रिपोर्ट।",
+            "आवेदन और संचार जानकारी: क्रिएटर प्रोफ़ाइल का नाम, आपके द्वारा चुना गया सेव अकाउंट/प्रोफ़ाइल संपर्क, लिखा गया संदेश, आवेदन स्थिति और निर्णय नोट, सूचनाएँ, संपर्क-फॉर्म संदेश और लिस्टिंग रिपोर्ट।",
             "तकनीकी और सुरक्षा जानकारी: सेशन पहचान, ब्राउज़र/डिवाइस यूज़र-एजेंट, साइन-इन और गतिविधि समय, रेट-लिमिट, सुरक्षा और एडमिन ऑडिट लॉग के लिए IP पते तथा सीमित होस्टिंग या ईमेल-डिलीवरी लॉग।",
             "पसंद: आपकी चुनी गई साइट भाषा ब्राउज़र के लोकल स्टोरेज में सेव होती है।",
           ],
@@ -492,7 +492,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
         {
           heading: "5. आवेदन और शेयरिंग",
           paragraphs: [
-            "जब आप किसी कैंपेन के लिए अप्लाई करते हैं, तो सिर्फ़ उसी आवेदन फॉर्म में लिखा नाम, संपर्क और संदेश उस कैंपेन के ब्रांड के साथ शेयर होता है। YaarLink अपने आप आपका अकाउंट फोन या अकाउंट ईमेल नहीं जोड़ता। आपको वही संपर्क लिखना होगा जो आप ब्रांड को उपयोग करने देना चाहते हैं और भेजने से पहले शेयरिंग की पुष्टि करनी होगी।",
+            "जब आप किसी कैंपेन के लिए अप्लाई करते हैं, तो सिर्फ़ आपकी क्रिएटर प्रोफ़ाइल का नाम, आपके अकाउंट या पूरी क्रिएटर प्रोफ़ाइल में सेव वह फोन, ईमेल या सोशल संपर्क जो आप उस आवेदन के लिए चुनते हैं, और आपका संदेश उस कैंपेन के ब्रांड के साथ शेयर होता है। YaarLink अपने आप आपका अकाउंट फोन, अकाउंट ईमेल या कोई अन्य सेव संपर्क नहीं जोड़ता जिसे आपने नहीं चुना। आपको वही सेव संपर्क चुनना होगा जो आप ब्रांड को उपयोग करने देना चाहते हैं और भेजने से पहले शेयरिंग की पुष्टि करनी होगी।",
           ],
           bullets: [
             "कैंपेन ब्रांड और अधिकृत YaarLink एडमिन मार्केटप्लेस चलाने और मॉडरेशन के लिए आवश्यक आवेदन विवरण देख सकते हैं।",
@@ -576,8 +576,8 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
         {
           heading: "4. आवेदन और संपर्क",
           bullets: [
-            "सिर्फ़ क्रिएटर प्रोफाइल वाले योग्य क्रिएटर अकाउंट कैंपेन के लिए अप्लाई कर सकते हैं।",
-            "क्रिएटर खुद आवेदन संपर्क चुनता है। भेजने की पुष्टि करके क्रिएटर YaarLink को लिखा नाम, संपर्क और संदेश उस कैंपेन के ब्रांड को दिखाने की अनुमति देता है।",
+            "सिर्फ़ पूरी क्रिएटर प्रोफाइल वाले योग्य क्रिएटर अकाउंट कैंपेन के लिए अप्लाई कर सकते हैं।",
+            "क्रिएटर अपने अकाउंट या पूरी क्रिएटर प्रोफाइल में सेव एक फोन, ईमेल या सोशल संपर्क चुनता है। भेजने की पुष्टि करके क्रिएटर YaarLink को क्रिएटर प्रोफाइल का नाम, चुना गया संपर्क और संदेश उस कैंपेन के ब्रांड को दिखाने की अनुमति देता है।",
             "ब्रांड आवेदक जानकारी सिर्फ़ उस आवेदन या कैंपेन तथा संबंधित सहमत काम का मूल्यांकन और संचालन करने के लिए उपयोग कर सकता है। वह उसे बेच, किराए पर दे, प्रकाशित, स्पैम या असंबंधित मार्केटिंग के लिए उपयोग नहीं कर सकता।",
             "YaarLink पर आवेदन या स्थिति अपने आप रोजगार, एजेंसी, साझेदारी या पेमेंट गारंटी नहीं बनाती। काम शुरू होने से पहले ब्रांड और क्रिएटर डिलीवरेबल, उपयोग अधिकार, तिथि, कीमत और पेमेंट तरीका पुष्ट करें।",
           ],
@@ -825,7 +825,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
             "ਅਕਾਊਂਟ ਜਾਣਕਾਰੀ: ਨਾਮ, ਈਮੇਲ, ਵਿਕਲਪਿਕ ਫੋਨ, ਅਕਾਊਂਟ ਭੂਮਿਕਾ (ਬ੍ਰਾਂਡ ਜਾਂ ਕ੍ਰਿਏਟਰ), ਈਮੇਲ-ਤਸਦੀਕ ਸਥਿਤੀ, ਅਕਾਊਂਟ ਤਾਰੀਖਾਂ ਅਤੇ ਹੈਸ਼ ਕੀਤਾ ਪਾਸਵਰਡ। ਅਸੀਂ ਤੁਹਾਡਾ ਸਾਦਾ ਪਾਸਵਰਡ ਸੇਵ ਨਹੀਂ ਕਰਦੇ।",
             "ਲੰਬਿਤ ਸਾਈਨ-ਅੱਪ ਜਾਣਕਾਰੀ: ਈਮੇਲ ਤਸਦੀਕ ਤੋਂ ਪਹਿਲਾਂ ਦਿੱਤੀ ਜਾਣਕਾਰੀ ਅਤੇ ਹੈਸ਼ ਕੀਤਾ ਇੱਕ-ਵਾਰੀ ਤਸਦੀਕ ਟੋਕਨ। ਵਰਤੋਂਯੋਗ ਅਕਾਊਂਟ ਤਸਦੀਕ ਤੋਂ ਬਾਅਦ ਹੀ ਬਣਦਾ ਹੈ।",
             "ਪ੍ਰੋਫਾਈਲ ਅਤੇ ਕੈਂਪੇਨ ਜਾਣਕਾਰੀ: ਕਾਰੋਬਾਰ ਜਾਂ ਕ੍ਰਿਏਟਰ ਨਾਮ, ਸੰਪਰਕ ਵੇਰਵੇ, ਸੋਸ਼ਲ ਪ੍ਰੋਫਾਈਲ ਲਿੰਕ, ਕੈਟੇਗਰੀ, ਭਾਸ਼ਾਵਾਂ, ਥਾਂ, ਆਡੀਅੰਸ ਜਾਂ ਫਾਲੋਅਰ ਜਾਣਕਾਰੀ, ਕੈਂਪੇਨ ਵੇਰਵੇ, ਬਜਟ, ਤਸਦੀਕ ਕੋਡ ਅਤੇ ਮਾਡਰੇਸ਼ਨ ਸਥਿਤੀ।",
-            "ਅਰਜ਼ੀ ਅਤੇ ਸੰਚਾਰ ਜਾਣਕਾਰੀ: ਅਰਜ਼ੀ ਵਿੱਚ ਲਿਖਿਆ ਨਾਮ, ਸੰਪਰਕ ਅਤੇ ਸੁਨੇਹਾ, ਅਰਜ਼ੀ ਸਥਿਤੀ ਅਤੇ ਫੈਸਲਾ ਨੋਟ, ਸੂਚਨਾਵਾਂ, ਸੰਪਰਕ-ਫਾਰਮ ਸੁਨੇਹੇ ਅਤੇ ਲਿਸਟਿੰਗ ਰਿਪੋਰਟਾਂ।",
+            "ਅਰਜ਼ੀ ਅਤੇ ਸੰਚਾਰ ਜਾਣਕਾਰੀ: ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਦਾ ਨਾਮ, ਤੁਹਾਡਾ ਚੁਣਿਆ ਸੇਵ ਅਕਾਊਂਟ/ਪ੍ਰੋਫਾਈਲ ਸੰਪਰਕ, ਲਿਖਿਆ ਸੁਨੇਹਾ, ਅਰਜ਼ੀ ਸਥਿਤੀ ਅਤੇ ਫੈਸਲਾ ਨੋਟ, ਸੂਚਨਾਵਾਂ, ਸੰਪਰਕ-ਫਾਰਮ ਸੁਨੇਹੇ ਅਤੇ ਲਿਸਟਿੰਗ ਰਿਪੋਰਟਾਂ।",
             "ਤਕਨੀਕੀ ਅਤੇ ਸੁਰੱਖਿਆ ਜਾਣਕਾਰੀ: ਸੈਸ਼ਨ ਪਛਾਣ, ਬ੍ਰਾਊਜ਼ਰ/ਡਿਵਾਈਸ ਯੂਜ਼ਰ-ਏਜੰਟ, ਸਾਈਨ-ਇਨ ਅਤੇ ਗਤੀਵਿਧੀ ਸਮੇਂ, ਰੇਟ-ਲਿਮਿਟ, ਸੁਰੱਖਿਆ ਅਤੇ ਐਡਮਿਨ ਆਡਿਟ ਲੌਗ ਲਈ IP ਪਤੇ ਅਤੇ ਸੀਮਤ ਹੋਸਟਿੰਗ ਜਾਂ ਈਮੇਲ-ਡਿਲੀਵਰੀ ਲੌਗ।",
             "ਪਸੰਦ: ਤੁਹਾਡੀ ਚੁਣੀ ਸਾਈਟ ਭਾਸ਼ਾ ਬ੍ਰਾਊਜ਼ਰ ਦੇ ਲੋਕਲ ਸਟੋਰੇਜ ਵਿੱਚ ਸੇਵ ਹੁੰਦੀ ਹੈ।",
           ],
@@ -856,7 +856,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
         {
           heading: "5. ਅਰਜ਼ੀਆਂ ਅਤੇ ਸਾਂਝ",
           paragraphs: [
-            "ਜਦੋਂ ਤੁਸੀਂ ਕਿਸੇ ਕੈਂਪੇਨ ਲਈ ਅਪਲਾਈ ਕਰਦੇ ਹੋ, ਤਾਂ ਸਿਰਫ਼ ਉਸੇ ਅਰਜ਼ੀ ਫਾਰਮ ਵਿੱਚ ਲਿਖਿਆ ਨਾਮ, ਸੰਪਰਕ ਅਤੇ ਸੁਨੇਹਾ ਉਸ ਕੈਂਪੇਨ ਦੇ ਬ੍ਰਾਂਡ ਨਾਲ ਸਾਂਝਾ ਹੁੰਦਾ ਹੈ। YaarLink ਆਪਣੇ ਆਪ ਤੁਹਾਡਾ ਅਕਾਊਂਟ ਫੋਨ ਜਾਂ ਅਕਾਊਂਟ ਈਮੇਲ ਨਹੀਂ ਜੋੜਦਾ। ਤੁਹਾਨੂੰ ਉਹੀ ਸੰਪਰਕ ਲਿਖਣਾ ਹੋਵੇਗਾ ਜੋ ਤੁਸੀਂ ਬ੍ਰਾਂਡ ਨੂੰ ਵਰਤਣ ਦੇਣਾ ਚਾਹੁੰਦੇ ਹੋ ਅਤੇ ਭੇਜਣ ਤੋਂ ਪਹਿਲਾਂ ਸਾਂਝ ਦੀ ਪੁਸ਼ਟੀ ਕਰਨੀ ਹੋਵੇਗੀ।",
+            "ਜਦੋਂ ਤੁਸੀਂ ਕਿਸੇ ਕੈਂਪੇਨ ਲਈ ਅਪਲਾਈ ਕਰਦੇ ਹੋ, ਤਾਂ ਸਿਰਫ਼ ਤੁਹਾਡੀ ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਦਾ ਨਾਮ, ਤੁਹਾਡੇ ਅਕਾਊਂਟ ਜਾਂ ਪੂਰੀ ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਵਿੱਚ ਸੇਵ ਉਹ ਫੋਨ, ਈਮੇਲ ਜਾਂ ਸੋਸ਼ਲ ਸੰਪਰਕ ਜੋ ਤੁਸੀਂ ਉਸ ਅਰਜ਼ੀ ਲਈ ਚੁਣਦੇ ਹੋ, ਅਤੇ ਤੁਹਾਡਾ ਸੁਨੇਹਾ ਉਸ ਕੈਂਪੇਨ ਦੇ ਬ੍ਰਾਂਡ ਨਾਲ ਸਾਂਝਾ ਹੁੰਦਾ ਹੈ। YaarLink ਆਪਣੇ ਆਪ ਤੁਹਾਡਾ ਅਕਾਊਂਟ ਫੋਨ, ਅਕਾਊਂਟ ਈਮੇਲ ਜਾਂ ਕੋਈ ਹੋਰ ਸੇਵ ਸੰਪਰਕ ਨਹੀਂ ਜੋੜਦਾ ਜੋ ਤੁਸੀਂ ਨਹੀਂ ਚੁਣਿਆ। ਤੁਹਾਨੂੰ ਉਹੀ ਸੇਵ ਸੰਪਰਕ ਚੁਣਨਾ ਹੋਵੇਗਾ ਜੋ ਤੁਸੀਂ ਬ੍ਰਾਂਡ ਨੂੰ ਵਰਤਣ ਦੇਣਾ ਚਾਹੁੰਦੇ ਹੋ ਅਤੇ ਭੇਜਣ ਤੋਂ ਪਹਿਲਾਂ ਸਾਂਝ ਦੀ ਪੁਸ਼ਟੀ ਕਰਨੀ ਹੋਵੇਗੀ।",
           ],
           bullets: [
             "ਕੈਂਪੇਨ ਬ੍ਰਾਂਡ ਅਤੇ ਅਧਿਕਾਰਤ YaarLink ਐਡਮਿਨ ਮਾਰਕੀਟਪਲੇਸ ਚਲਾਉਣ ਅਤੇ ਮਾਡਰੇਸ਼ਨ ਲਈ ਲੋੜੀਂਦੇ ਅਰਜ਼ੀ ਵੇਰਵੇ ਵੇਖ ਸਕਦੇ ਹਨ।",
@@ -940,8 +940,8 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
         {
           heading: "4. ਅਰਜ਼ੀਆਂ ਅਤੇ ਸੰਪਰਕ",
           bullets: [
-            "ਸਿਰਫ਼ ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਵਾਲੇ ਯੋਗ ਕ੍ਰਿਏਟਰ ਅਕਾਊਂਟ ਕੈਂਪੇਨ ਲਈ ਅਪਲਾਈ ਕਰ ਸਕਦੇ ਹਨ।",
-            "ਕ੍ਰਿਏਟਰ ਖੁਦ ਅਰਜ਼ੀ ਸੰਪਰਕ ਚੁਣਦਾ ਹੈ। ਭੇਜਣ ਦੀ ਪੁਸ਼ਟੀ ਕਰਕੇ ਕ੍ਰਿਏਟਰ YaarLink ਨੂੰ ਲਿਖਿਆ ਨਾਮ, ਸੰਪਰਕ ਅਤੇ ਸੁਨੇਹਾ ਉਸ ਕੈਂਪੇਨ ਦੇ ਬ੍ਰਾਂਡ ਨੂੰ ਦਿਖਾਉਣ ਦੀ ਇਜਾਜ਼ਤ ਦਿੰਦਾ ਹੈ।",
+            "ਸਿਰਫ਼ ਪੂਰੀ ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਵਾਲੇ ਯੋਗ ਕ੍ਰਿਏਟਰ ਅਕਾਊਂਟ ਕੈਂਪੇਨ ਲਈ ਅਪਲਾਈ ਕਰ ਸਕਦੇ ਹਨ।",
+            "ਕ੍ਰਿਏਟਰ ਆਪਣੇ ਅਕਾਊਂਟ ਜਾਂ ਪੂਰੀ ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਵਿੱਚ ਸੇਵ ਇੱਕ ਫੋਨ, ਈਮੇਲ ਜਾਂ ਸੋਸ਼ਲ ਸੰਪਰਕ ਚੁਣਦਾ ਹੈ। ਭੇਜਣ ਦੀ ਪੁਸ਼ਟੀ ਕਰਕੇ ਕ੍ਰਿਏਟਰ YaarLink ਨੂੰ ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਦਾ ਨਾਮ, ਚੁਣਿਆ ਸੰਪਰਕ ਅਤੇ ਸੁਨੇਹਾ ਉਸ ਕੈਂਪੇਨ ਦੇ ਬ੍ਰਾਂਡ ਨੂੰ ਦਿਖਾਉਣ ਦੀ ਇਜਾਜ਼ਤ ਦਿੰਦਾ ਹੈ।",
             "ਬ੍ਰਾਂਡ ਬਿਨੈਕਾਰ ਜਾਣਕਾਰੀ ਸਿਰਫ਼ ਉਸ ਅਰਜ਼ੀ ਜਾਂ ਕੈਂਪੇਨ ਅਤੇ ਸੰਬੰਧਿਤ ਸਹਿਮਤ ਕੰਮ ਦਾ ਮੁਲਾਂਕਣ ਤੇ ਸੰਚਾਲਨ ਕਰਨ ਲਈ ਵਰਤ ਸਕਦਾ ਹੈ। ਉਹ ਉਸ ਨੂੰ ਵੇਚ, ਕਿਰਾਏ 'ਤੇ, ਪ੍ਰਕਾਸ਼ਿਤ, ਸਪੈਮ ਜਾਂ ਅਸੰਬੰਧਿਤ ਮਾਰਕੀਟਿੰਗ ਲਈ ਨਹੀਂ ਵਰਤ ਸਕਦਾ।",
             "YaarLink 'ਤੇ ਅਰਜ਼ੀ ਜਾਂ ਸਥਿਤੀ ਆਪਣੇ ਆਪ ਰੁਜ਼ਗਾਰ, ਏਜੰਸੀ, ਭਾਈਵਾਲੀ ਜਾਂ ਪੇਮੈਂਟ ਗਾਰੰਟੀ ਨਹੀਂ ਬਣਾਉਂਦੀ। ਕੰਮ ਸ਼ੁਰੂ ਹੋਣ ਤੋਂ ਪਹਿਲਾਂ ਬ੍ਰਾਂਡ ਅਤੇ ਕ੍ਰਿਏਟਰ ਡਿਲੀਵਰੇਬਲ, ਵਰਤੋਂ ਹੱਕ, ਤਾਰੀਖਾਂ, ਕੀਮਤ ਅਤੇ ਪੇਮੈਂਟ ਤਰੀਕਾ ਪੁਸ਼ਟ ਕਰਨ।",
           ],
