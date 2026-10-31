@@ -1,7 +1,8 @@
 import { db } from "@/backend/db";
 import { creators } from "@/backend/db/schema";
-import { desc, eq, isNull, ne, or } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { getSessionUser } from "@/backend/auth";
+import { createVerificationCode } from "@/backend/moderation";
 import { getClientKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
 import { normalizeInstagramUrl, normalizeProfileUrl, normalizeYouTubeUrl } from "@/backend/social-url";
 import { normalizeCategory, normalizeContentTypeList, normalizeLanguageList, normalizePlatform } from "@/shared/constants";
@@ -20,21 +21,26 @@ export async function GET() {
         profileUrl: creators.profileUrl,
         platform: creators.platform,
         followers: creators.followers,
+        verifiedFollowers: creators.verifiedFollowers,
         category: creators.category,
         languages: creators.languages,
         location: creators.location,
         contentTypes: creators.contentTypes,
         bio: creators.bio,
         status: creators.status,
+        verificationStatus: creators.verificationStatus,
         createdAt: creators.createdAt,
       })
       .from(creators)
-      // Signup creates a starter row; only completed profiles are public.
-      .where(or(isNull(creators.status), ne(creators.status, "incomplete")))
+      // Fail closed: a profile is public only after an admin has approved it
+      // and verified ownership of the linked social account.
+      .where(and(eq(creators.status, "approved"), eq(creators.verificationStatus, "verified")))
       .orderBy(desc(creators.createdAt))
       .limit(50);
     const canonicalRows = rows.map((row) => ({
       ...row,
+      // Public cards show the count checked during review, not the raw claim.
+      followers: row.verifiedFollowers ?? row.followers,
       platform: normalizePlatform(row.platform) ?? "Instagram",
       category: normalizeCategory(row.category) ?? row.category,
       languages: row.languages ? (normalizeLanguageList(row.languages, true) ?? []).join(", ") : row.languages,
@@ -84,6 +90,7 @@ export async function POST(req: Request) {
     // If the creator gave a social handle but left the profile-link field
     // blank, use the cleaned social URL as the main profile link.
     profileUrl ??= instagram ?? youtube;
+    if (!profileUrl) return Response.json({ error: "Please add your Instagram, YouTube, or other profile link so account ownership can be verified." }, { status: 400 });
     const resolvedInstagram = instagram ?? (profileUrl ? normalizeInstagramUrl(profileUrl) : null);
     const resolvedYouTube = youtube ?? (profileUrl ? normalizeYouTubeUrl(profileUrl) : null);
     const followers = typeof b.followers === "string" ? parseInt(b.followers.replace(/[^0-9]/g, "") || "0", 10) : Number(b.followers || 0);
@@ -104,6 +111,11 @@ export async function POST(req: Request) {
       contentTypes: contentTypes.join(", "),
       bio: b.bio ? String(b.bio).slice(0, 500) : null,
       status: "pending",
+      verificationCode: createVerificationCode(),
+      verificationStatus: "pending",
+      verifiedFollowers: null,
+      moderationNote: null,
+      reviewedAt: null,
     };
 
     const existing = await db.select({ id: creators.id, status: creators.status }).from(creators).where(eq(creators.userId, user.id)).limit(1);
@@ -115,14 +127,14 @@ export async function POST(req: Request) {
         .update(creators)
         .set(values)
         .where(eq(creators.id, existing[0].id))
-        .returning({ id: creators.id, name: creators.name });
+        .returning({ id: creators.id, name: creators.name, status: creators.status, verificationCode: creators.verificationCode, verificationStatus: creators.verificationStatus });
       return Response.json({ creator: row });
     }
 
     const [row] = await db
       .insert(creators)
       .values(values)
-      .returning({ id: creators.id, name: creators.name });
+      .returning({ id: creators.id, name: creators.name, status: creators.status, verificationCode: creators.verificationCode, verificationStatus: creators.verificationStatus });
     return Response.json({ creator: row });
   } catch (e) {
     console.error(e);

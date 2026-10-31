@@ -1,7 +1,7 @@
 import { db } from "@/backend/db";
 import { applications, campaigns, creators } from "@/backend/db/schema";
 import { getSessionUser } from "@/backend/auth";
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { normalizeCategory, normalizeContentType, normalizeContentTypeList, normalizeLanguage, normalizeLanguageList, normalizePlatform, normalizePromotionType } from "@/shared/constants";
 
 export const dynamic = "force-dynamic";
@@ -66,7 +66,7 @@ export async function GET() {
         promotionType: campaigns.promotionType,
       })
       .from(campaigns)
-      .where(eq(campaigns.status, "open"))
+      .where(and(eq(campaigns.status, "open"), eq(campaigns.verificationStatus, "verified")))
       .orderBy(desc(campaigns.createdAt))
       .limit(6);
     const canonicalProfiles = profiles.map((row) => ({

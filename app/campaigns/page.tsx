@@ -5,6 +5,7 @@ import { useLang } from "@/frontend/i18n";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { LANGUAGES } from "@/shared/constants";
+import ReportButton from "@/frontend/components/ReportButton";
 
 export default function CampaignsPage() {
   const { t, opt, promo } = useLang();
@@ -124,9 +125,10 @@ export default function CampaignsPage() {
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((c) => (
             <div key={c.id} className="lift flex flex-col rounded-3xl border border-[#e9ddc3] bg-white p-6 card-shadow">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full bg-[#fff4de] border border-[#e9ddc3] px-3 py-1 text-[12px] font-bold">{promo(c.promotionType)}</span>
                 <span className="rounded-full bg-green-50 border border-green-200 px-3 py-1 text-[12px] font-bold text-green-800">{t("camp.open")}</span>
+                <span className="rounded-full bg-green-50 border border-green-200 px-3 py-1 text-[12px] font-bold text-green-800">{t("listing.reviewed")}</span>
               </div>
               <h3 className="mt-3 text-[18px] font-extrabold leading-snug">{c.title}</h3>
               <p className="mt-1 text-[13.5px] font-semibold text-[#78716c]">{c.businessName} • {c.location}</p>
@@ -161,6 +163,7 @@ export default function CampaignsPage() {
                   <button onClick={() => apply(c.id)} disabled={applyingId === c.id} className="rounded-xl bg-[#e4572e] py-2.5 text-[14px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-60">{applyingId === c.id ? t("camp.applySending") : t("camp.applySend")}</button>
                 </div>
               )}
+              <ReportButton targetType="campaign" targetId={c.id} targetName={c.title} className="mt-3" />
             </div>
           ))}
         </div>

@@ -273,3 +273,13 @@ export function parseBudget(b: string): number {
 export function formatINR(n: number) {
   return "₹" + Number(n || 0).toLocaleString("en-IN");
 }
+
+/** Public-listing review states. Only approved/open + verified rows are public. */
+export const CREATOR_REVIEW_STATUSES = ["incomplete", "pending", "approved", "rejected", "suspended"] as const;
+export const CAMPAIGN_REVIEW_STATUSES = ["pending", "open", "rejected", "closed"] as const;
+export const VERIFICATION_STATUSES = ["unverified", "pending", "verified", "failed"] as const;
+
+/** Canonical report reasons stored in the DB; UI labels come from i18n. */
+export const REPORT_REASONS = ["impersonation", "scam", "spam", "incorrect-info", "other"] as const;
+export type ReportReason = (typeof REPORT_REASONS)[number];
+export type ReportTargetType = "campaign" | "creator";

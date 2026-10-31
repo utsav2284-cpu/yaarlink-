@@ -6,6 +6,7 @@ import { useLang } from "@/frontend/i18n";
 import { PROMOTION_TYPES } from "@/shared/constants";
 import { SITE } from "@/config/site";
 import DomainShare from "@/frontend/components/DomainShare";
+import ReportButton from "@/frontend/components/ReportButton";
 import Reveal from "@/frontend/components/Reveal";
 
 type Campaign = {
@@ -317,7 +318,7 @@ export default function HomePage() {
                   <Link key={c.id} href="/campaigns" className="flex items-center justify-between gap-3 rounded-2xl border border-[#e9ddc3] bg-white p-4 hover:border-[#1c1917]">
                     <div>
                       <p className="text-[15px] font-extrabold">{c.title}</p>
-                      <p className="text-[13px] text-[#78716c]">{c.businessName} • {c.location} • {opt(c.language)} • {opt(c.format)}</p>
+                      <p className="text-[13px] text-[#78716c]">{c.businessName} • {c.location} • {opt(c.language)} • {opt(c.format)} • {t("listing.reviewed")}</p>
                     </div>
                     <span className="shrink-0 rounded-full bg-[#17452e] px-3 py-1.5 text-[13px] font-bold text-white">{promo(c.promotionType)}</span>
                   </Link>
@@ -344,6 +345,10 @@ export default function HomePage() {
                       </div>
                     </div>
                     <p className="mt-2 text-[12.5px] font-semibold text-[#57534e]">{cr.location} • {opt(cr.languages)}</p>
+                    <div className="mt-2">
+                      <span className="text-[11.5px] font-bold text-green-800">{t("listing.reviewed")}</span>
+                      <ReportButton targetType="creator" targetId={cr.id} targetName={cr.name} className="mt-1 text-right" />
+                    </div>
                   </div>
                 ))}
               </div>

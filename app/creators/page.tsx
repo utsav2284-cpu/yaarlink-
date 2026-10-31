@@ -5,6 +5,7 @@ import { useLang } from "@/frontend/i18n";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { CATEGORIES, LANGUAGES, CONTENT_TYPES, PLATFORMS } from "@/shared/constants";
+import ReportButton from "@/frontend/components/ReportButton";
 
 export default function CreatorsPage() {
   const { t, opt, platform: platformLabel } = useLang();
@@ -27,6 +28,7 @@ export default function CreatorsPage() {
   });
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
+  const [verificationCode, setVerificationCode] = useState("");
   const [err, setErr] = useState("");
 
   useEffect(() => {
@@ -59,6 +61,7 @@ export default function CreatorsPage() {
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Failed");
+      setVerificationCode(d.creator?.verificationCode ?? "");
       setDone(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e: any) {
@@ -77,9 +80,17 @@ export default function CreatorsPage() {
           <p className="mt-2 text-[15.5px] text-[#57534e]">
             {t("cr.doneBody")}
           </p>
+          {verificationCode && (
+            <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left">
+              <p className="text-[12px] font-bold uppercase tracking-widest text-amber-800">{t("verify.creatorCode")}</p>
+              <p className="mt-1 font-mono text-[22px] font-black tracking-wider">{verificationCode}</p>
+              <p className="mt-1 text-[13.5px] leading-relaxed text-[#57534e]">{t("verify.creatorHelp")}</p>
+              <p className="mt-1 text-[12.5px] font-semibold text-[#78716c]">{t("verify.dashboardNote")}</p>
+            </div>
+          )}
           <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
-            <Link href="/campaigns" className="rounded-2xl bg-[#1c1917] px-6 py-3.5 text-[15px] font-bold text-white">{t("cr.browse")}</Link>
-            <Link href="/dashboard" className="rounded-2xl border border-[#e9ddc3] bg-[#fffbf1] px-6 py-3.5 text-[15px] font-bold">{t("cr.dashboard")}</Link>
+            <Link href="/dashboard" className="rounded-2xl bg-[#1c1917] px-6 py-3.5 text-[15px] font-bold text-white">{t("cr.dashboard")}</Link>
+            <Link href="/campaigns" className="rounded-2xl border border-[#e9ddc3] bg-[#fffbf1] px-6 py-3.5 text-[15px] font-bold">{t("cr.browse")}</Link>
           </div>
         </div>
       </div>
@@ -239,6 +250,10 @@ export default function CreatorsPage() {
                     <div className="mt-2 flex items-center justify-between">
                       <span className="rounded-full bg-[#17452e] px-3 py-1 text-[12.5px] font-bold text-white">💰 Paid • {opt(c.format)}</span>
                       <Link href="/campaigns" className="text-[13.5px] font-bold text-[#e4572e]">View →</Link>
+                    </div>
+                    <div className="mt-2">
+                      <span className="text-[11.5px] font-bold text-green-800">{t("listing.reviewed")}</span>
+                      <ReportButton targetType="campaign" targetId={c.id} targetName={c.title} className="mt-1 text-right" />
                     </div>
                   </div>
                 ))}
