@@ -4,6 +4,7 @@ import "./globals.css";
 import Navbar from "@/frontend/components/Navbar";
 import Footer from "@/frontend/components/Footer";
 import { LanguageProvider } from "@/frontend/i18n";
+import { Analytics } from "@vercel/analytics/next";
 
 const description =
   "Connect brands, local businesses, creators, meme pages and communities. Simple marketing in English, Hindi & Punjabi.";
@@ -42,6 +43,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <main className="min-h-[70vh]">{children}</main>
           <Footer />
         </LanguageProvider>
+        <Analytics />
       </body>
     </html>
   );
