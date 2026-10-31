@@ -1,7 +1,8 @@
 import { db } from "@/backend/db";
 import { campaigns } from "@/backend/db/schema";
-import { desc } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { getSessionUser } from "@/backend/auth";
+import { createVerificationCode } from "@/backend/moderation";
 import { getClientKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
 import { normalizeProfileUrl } from "@/backend/social-url";
 import { normalizeCategory, normalizeContentType, normalizeLanguage, normalizePromotionType } from "@/shared/constants";
@@ -25,9 +26,12 @@ export async function GET() {
         format: campaigns.format,
         website: campaigns.website,
         status: campaigns.status,
+        verificationStatus: campaigns.verificationStatus,
         createdAt: campaigns.createdAt,
       })
       .from(campaigns)
+      // Fail closed: pending, rejected, closed, and unverified campaigns stay private.
+      .where(and(eq(campaigns.status, "open"), eq(campaigns.verificationStatus, "verified")))
       .orderBy(desc(campaigns.createdAt))
       .limit(50);
     const canonicalRows = rows.map((row) => ({
@@ -101,9 +105,13 @@ export async function POST(req: Request) {
         targetAudience: b.targetAudience ? String(b.targetAudience).slice(0, 300) : null,
         format,
         website,
-        status: "open",
+        status: "pending",
+        verificationCode: createVerificationCode(),
+        verificationStatus: "pending",
+        moderationNote: null,
+        reviewedAt: null,
       })
-      .returning({ id: campaigns.id, title: campaigns.title });
+      .returning({ id: campaigns.id, title: campaigns.title, status: campaigns.status, verificationCode: campaigns.verificationCode, verificationStatus: campaigns.verificationStatus });
     return Response.json({ campaign: row });
   } catch (e) {
     console.error(e);

@@ -28,9 +28,9 @@ export async function POST(req: Request) {
     const campaignId = String(b.campaignId || "");
     if (!/^[0-9a-f-]{36}$/i.test(campaignId)) return Response.json({ error: "Invalid campaign" }, { status: 400 });
 
-    const camp = await db.select({ id: campaigns.id, status: campaigns.status }).from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
+    const camp = await db.select({ id: campaigns.id, status: campaigns.status, verificationStatus: campaigns.verificationStatus }).from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
     if (!camp.length) return Response.json({ error: "Campaign not found" }, { status: 404 });
-    if (camp[0].status !== "open") return Response.json({ error: "This campaign is no longer accepting applications." }, { status: 400 });
+    if (camp[0].status !== "open" || camp[0].verificationStatus !== "verified") return Response.json({ error: "This campaign is no longer accepting applications." }, { status: 400 });
 
     const user = await getSessionUser().catch(() => null);
     if (!user) return Response.json({ error: "Please log in as a creator before applying." }, { status: 401, headers: { "Cache-Control": "no-store" } });

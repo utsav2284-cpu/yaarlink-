@@ -7,6 +7,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { CATEGORIES, LANGUAGES, CONTENT_TYPES, PROMOTION_TYPES, normalizePromotionType } from "@/shared/constants";
 import ContactLink from "@/frontend/components/ContactLink";
+import ReportButton from "@/frontend/components/ReportButton";
 import { SITE, instagramDmLink, whatsappWithText } from "@/config/site";
 
 
@@ -32,6 +33,7 @@ function BrandInner() {
     description: "",
   });
   const [done, setDone] = useState(false);
+  const [verificationCode, setVerificationCode] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
@@ -73,6 +75,7 @@ function BrandInner() {
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Failed");
+      setVerificationCode(d.campaign?.verificationCode ?? "");
       setDone(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e: any) {
@@ -97,11 +100,19 @@ function BrandInner() {
           <p className="mt-2 text-[15.5px] text-[#57534e]">
             {t("brand.doneBody2")} <b>“{form.title}”</b> {t("brand.doneBody")}
           </p>
+          {verificationCode && (
+            <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left">
+              <p className="text-[12px] font-bold uppercase tracking-widest text-amber-800">{t("verify.businessCode")}</p>
+              <p className="mt-1 font-mono text-[22px] font-black tracking-wider">{verificationCode}</p>
+              <p className="mt-1 text-[13.5px] leading-relaxed text-[#57534e]">{t("verify.businessHelp")}</p>
+              <p className="mt-1 text-[12.5px] font-semibold text-[#78716c]">{t("verify.dashboardNote")}</p>
+            </div>
+          )}
           <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
-            <Link href="/campaigns" className="rounded-2xl bg-[#1c1917] px-6 py-3.5 text-[15px] font-bold text-white">{t("brand.viewAll")}</Link>
-            <Link href="/dashboard" className="rounded-2xl border border-[#e9ddc3] bg-[#fffbf1] px-6 py-3.5 text-[15px] font-bold">{t("brand.dashboard")}</Link>
+            <Link href="/dashboard" className="rounded-2xl bg-[#1c1917] px-6 py-3.5 text-[15px] font-bold text-white">{t("brand.dashboard")}</Link>
+            <Link href="/campaigns" className="rounded-2xl border border-[#e9ddc3] bg-[#fffbf1] px-6 py-3.5 text-[15px] font-bold">{t("brand.viewAll")}</Link>
           </div>
-          <button onClick={() => { setDone(false); setForm((f) => ({ ...f, title: "", description: "" })); }} className="mt-4 text-[13.5px] font-bold text-[#e4572e]">+ {t("brand.another")}</button>
+          <button onClick={() => { setDone(false); setVerificationCode(""); setForm((f) => ({ ...f, title: "", description: "" })); }} className="mt-4 text-[13.5px] font-bold text-[#e4572e]">+ {t("brand.another")}</button>
         </div>
       </div>
     );
@@ -286,11 +297,17 @@ function BrandInner() {
               <div className="mt-3 grid max-h-[420px] gap-2 overflow-y-auto">
                 {filtered.length === 0 && <p className="rounded-xl bg-white/10 p-4 text-[13.5px]">No creators match yet — new profiles join daily. <Link href="/creators" className="font-bold text-[#ffc53d]">Invite creators →</Link></p>}
                 {filtered.slice(0, 8).map((c) => (
-                  <div key={c.id} className="flex items-center gap-3 rounded-2xl bg-white/10 border border-white/10 p-3">
-                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#ffc53d] text-[15px] font-black text-black">{(c.name || "?").charAt(0).toUpperCase()}</span>
-                    <div className="min-w-0">
-                      <p className="truncate text-[14px] font-bold">{c.name}</p>
-                      <p className="truncate text-[12px] text-white/60">{opt(c.category)} • {(c.followers || 0).toLocaleString("en-IN")} • {opt(c.languages)}</p>
+                  <div key={c.id} className="grid gap-2 rounded-2xl bg-white/10 border border-white/10 p-3">
+                    <div className="flex items-center gap-3">
+                      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#ffc53d] text-[15px] font-black text-black">{(c.name || "?").charAt(0).toUpperCase()}</span>
+                      <div className="min-w-0">
+                        <p className="truncate text-[14px] font-bold">{c.name}</p>
+                        <p className="truncate text-[12px] text-white/60">{opt(c.category)} • {(c.followers || 0).toLocaleString("en-IN")} • {opt(c.languages)}</p>
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-[11.5px] font-bold text-[#ffc53d]">{t("listing.reviewed")}</span>
+                      <ReportButton targetType="creator" targetId={c.id} targetName={c.name} className="mt-1 text-right" buttonClassName="text-white/85" />
                     </div>
                   </div>
                 ))}
