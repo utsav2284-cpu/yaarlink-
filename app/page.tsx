@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLang } from "@/frontend/i18n";
+import { ApiResponseError, fetchJsonList } from "@/frontend/api-json";
+import { ListingError, ListingLoading } from "@/frontend/components/ListingState";
 import { PROMOTION_TYPES } from "@/shared/constants";
 import { SITE } from "@/config/site";
 import DomainShare from "@/frontend/components/DomainShare";
@@ -31,14 +33,97 @@ type Creator = {
 };
 
 export default function HomePage() {
-  const { t, opt, promo, promoDetail, formatNumber, formatCompactNumber } = useLang();
+  const { t, opt, promo, promoDetail, apiErrorKey, formatNumber, formatCompactNumber } = useLang();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [campaignsStatus, setCampaignsStatus] = useState<"loading" | "success" | "error">("loading");
+  const [campaignsErrorKey, setCampaignsErrorKey] = useState("listing.loadFailed");
   const [creators, setCreators] = useState<Creator[]>([]);
+  const [creatorsStatus, setCreatorsStatus] = useState<"loading" | "success" | "error">("loading");
+  const [creatorsErrorKey, setCreatorsErrorKey] = useState("listing.loadFailed");
+
+  const requestCampaigns = useCallback(
+    () => fetchJsonList<Campaign>("/api/campaigns", "campaigns", { cache: "no-store" }),
+    [],
+  );
+  const handleCampaignsSuccess = useCallback((rows: Campaign[]) => {
+    setCampaigns(rows.slice(0, 3));
+    setCampaignsStatus("success");
+  }, []);
+  const handleCampaignsError = useCallback((error: unknown) => {
+    setCampaignsErrorKey(
+      error instanceof ApiResponseError ? apiErrorKey(error.status, error.code, "listing.loadFailed") : "api.network",
+    );
+    setCampaignsStatus("error");
+  }, [apiErrorKey]);
+
+  const fetchCampaigns = useCallback(async () => {
+    try {
+      handleCampaignsSuccess(await requestCampaigns());
+    } catch (error) {
+      handleCampaignsError(error);
+    }
+  }, [handleCampaignsError, handleCampaignsSuccess, requestCampaigns]);
+
+  const loadCampaigns = useCallback(async () => {
+    setCampaignsStatus("loading");
+    await fetchCampaigns();
+  }, [fetchCampaigns]);
+
+  const requestCreators = useCallback(
+    () => fetchJsonList<Creator>("/api/creators", "creators", { cache: "no-store" }),
+    [],
+  );
+  const handleCreatorsSuccess = useCallback((rows: Creator[]) => {
+    setCreators(rows.slice(0, 4));
+    setCreatorsStatus("success");
+  }, []);
+  const handleCreatorsError = useCallback((error: unknown) => {
+    setCreatorsErrorKey(
+      error instanceof ApiResponseError ? apiErrorKey(error.status, error.code, "listing.loadFailed") : "api.network",
+    );
+    setCreatorsStatus("error");
+  }, [apiErrorKey]);
+
+  const fetchCreators = useCallback(async () => {
+    try {
+      handleCreatorsSuccess(await requestCreators());
+    } catch (error) {
+      handleCreatorsError(error);
+    }
+  }, [handleCreatorsError, handleCreatorsSuccess, requestCreators]);
+
+  const loadCreators = useCallback(async () => {
+    setCreatorsStatus("loading");
+    await fetchCreators();
+  }, [fetchCreators]);
 
   useEffect(() => {
-    fetch("/api/campaigns").then((r) => r.json()).then((d) => setCampaigns(d.campaigns?.slice(0, 3) ?? [])).catch(() => {});
-    fetch("/api/creators").then((r) => r.json()).then((d) => setCreators(d.creators?.slice(0, 4) ?? [])).catch(() => {});
-  }, []);
+    let alive = true;
+    requestCampaigns()
+      .then((rows) => {
+        if (alive) handleCampaignsSuccess(rows);
+      })
+      .catch((error: unknown) => {
+        if (alive) handleCampaignsError(error);
+      });
+    requestCreators()
+      .then((rows) => {
+        if (alive) handleCreatorsSuccess(rows);
+      })
+      .catch((error: unknown) => {
+        if (alive) handleCreatorsError(error);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [
+    handleCampaignsError,
+    handleCampaignsSuccess,
+    handleCreatorsError,
+    handleCreatorsSuccess,
+    requestCampaigns,
+    requestCreators,
+  ]);
 
   return (
     <div>
@@ -323,12 +408,25 @@ export default function HomePage() {
             <div>
               <p className="mb-3 text-[12.5px] font-bold uppercase tracking-widest text-[#a8a29e]">{t("home.openCampaigns")}</p>
               <div className="grid gap-3">
-                {campaigns.length === 0 && (
-                  <div className="rounded-2xl border border-dashed border-[#e9ddc3] bg-white p-6 text-[14.5px] text-[#78716c]">
-                    {t("home.noCampaigns")} <Link href="/brands" className="font-bold text-[#e4572e]">{t("home.create")}</Link>
-                  </div>
-                )}
-                {campaigns.map((c) => (
+                {campaignsStatus === "loading" && campaigns.length === 0 ? (
+                  <ListingLoading
+                    count={3}
+                    labelKey="listing.loadingCampaigns"
+                    itemClassName="h-[74px] animate-pulse rounded-2xl bg-[#f0e6cc]/70"
+                  />
+                ) : campaignsStatus === "error" && campaigns.length === 0 ? (
+                  <ListingError errorKey={campaignsErrorKey} onRetry={() => void loadCampaigns()} />
+                ) : (
+                  <>
+                    {campaignsStatus === "error" && (
+                      <ListingError errorKey={campaignsErrorKey} onRetry={() => void loadCampaigns()} />
+                    )}
+                    {campaigns.length === 0 && (
+                      <div className="rounded-2xl border border-dashed border-[#e9ddc3] bg-white p-6 text-[14.5px] text-[#78716c]">
+                        {t("home.noCampaigns")} <Link href="/brands" className="font-bold text-[#e4572e]">{t("home.create")}</Link>
+                      </div>
+                    )}
+                    {campaigns.map((c) => (
                   <Link key={c.id} href="/campaigns" className="flex items-center justify-between gap-3 rounded-2xl border border-[#e9ddc3] bg-white p-4 hover:border-[#1c1917]">
                     <div>
                       <p className="text-[15px] font-extrabold">{c.title}</p>
@@ -337,17 +435,37 @@ export default function HomePage() {
                     <span className="shrink-0 rounded-full bg-[#17452e] px-3 py-1.5 text-[13px] font-bold text-white">{promo(c.promotionType)}</span>
                   </Link>
                 ))}
+                  </>
+                )}
               </div>
             </div>
             <div>
               <p className="mb-3 text-[12.5px] font-bold uppercase tracking-widest text-[#a8a29e]">{t("home.newCreators")}</p>
               <div className="grid gap-3 sm:grid-cols-2">
-                {creators.length === 0 && (
-                  <div className="rounded-2xl border border-dashed border-[#e9ddc3] bg-white p-6 text-[14.5px] text-[#78716c] sm:col-span-2">
-                    {t("home.noCreators")} <Link href="/creators" className="font-bold text-[#e4572e]">{t("home.joinCreators")}</Link>
+                {creatorsStatus === "loading" && creators.length === 0 ? (
+                  <ListingLoading
+                    count={4}
+                    labelKey="listing.loadingCreators"
+                    className="contents"
+                    itemClassName="h-[118px] animate-pulse rounded-2xl bg-[#f0e6cc]/70"
+                  />
+                ) : creatorsStatus === "error" && creators.length === 0 ? (
+                  <div className="sm:col-span-2">
+                    <ListingError errorKey={creatorsErrorKey} onRetry={() => void loadCreators()} />
                   </div>
-                )}
-                {creators.map((cr) => (
+                ) : (
+                  <>
+                    {creatorsStatus === "error" && (
+                      <div className="sm:col-span-2">
+                        <ListingError errorKey={creatorsErrorKey} onRetry={() => void loadCreators()} />
+                      </div>
+                    )}
+                    {creators.length === 0 && (
+                      <div className="rounded-2xl border border-dashed border-[#e9ddc3] bg-white p-6 text-[14.5px] text-[#78716c] sm:col-span-2">
+                        {t("home.noCreators")} <Link href="/creators" className="font-bold text-[#e4572e]">{t("home.joinCreators")}</Link>
+                      </div>
+                    )}
+                    {creators.map((cr) => (
                   <div key={cr.id} className="rounded-2xl border border-[#e9ddc3] bg-white p-4">
                     <div className="flex items-center gap-2.5">
                       <span className="grid h-10 w-10 place-items-center rounded-full bg-[#1c1917] text-[15px] font-black text-[#ffc53d]">
@@ -365,6 +483,8 @@ export default function HomePage() {
                     </div>
                   </div>
                 ))}
+                  </>
+                )}
               </div>
             </div>
           </div>

@@ -3,7 +3,9 @@
 import { useLang } from "@/frontend/i18n";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { ApiResponseError, fetchJsonList, fetchJsonObject } from "@/frontend/api-json";
+import { ListingError } from "@/frontend/components/ListingState";
 import { LANGUAGES } from "@/shared/constants";
 import PrivacyNotice from "@/frontend/components/PrivacyNotice";
 import ReportButton from "@/frontend/components/ReportButton";
@@ -11,7 +13,8 @@ import ReportButton from "@/frontend/components/ReportButton";
 export default function CampaignsPage() {
   const { t, opt, promo, apiErrorKey: getApiErrorKey } = useLang();
   const [campaigns, setCampaigns] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [campaignsStatus, setCampaignsStatus] = useState<"loading" | "success" | "error">("loading");
+  const [campaignsErrorKey, setCampaignsErrorKey] = useState("listing.loadFailed");
   const [q, setQ] = useState("");
   const [lang, setLang] = useState("");
   const [applyId, setApplyId] = useState<string | null>(null);
@@ -22,43 +25,119 @@ export default function CampaignsPage() {
   const [applyingId, setApplyingId] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [ownApplications, setOwnApplications] = useState<Record<string, any>>({});
-  const [ownApplicationsLoading, setOwnApplicationsLoading] = useState(true);
+  const [ownApplicationsStatus, setOwnApplicationsStatus] = useState<"loading" | "ready" | "guest" | "error">("loading");
   const [creatorProfile, setCreatorProfile] = useState<any | null>(null);
   const [contactOptions, setContactOptions] = useState<string[]>([]);
   const [pageNotice, setPageNotice] = useState<"" | "duplicate" | "closed">("");
 
-  const loadOwnApplications = async (): Promise<Record<string, any> | null> => {
-    try {
-      const res = await fetch("/api/me/applications", { cache: "no-store" });
-      if (!res.ok) {
-        setOwnApplications({});
-        setCreatorProfile(null);
-        setContactOptions([]);
-        return null;
-      }
-      const data = await res.json().catch(() => ({}));
-      const byCampaign = Object.fromEntries(
-        (Array.isArray(data.applications) ? data.applications : [])
-          .filter((application: any) => application?.campaignId)
-          .map((application: any) => [application.campaignId, application]),
-      ) as Record<string, any>;
-      setOwnApplications(byCampaign);
-      setCreatorProfile(data.creatorProfile ?? null);
-      setContactOptions(Array.isArray(data.contactOptions) ? data.contactOptions.filter((value: unknown): value is string => typeof value === "string") : []);
-      return byCampaign;
-    } catch {
-      return null;
-    } finally {
-      setOwnApplicationsLoading(false);
-    }
-  };
+  const requestOwnApplications = useCallback(
+    () => fetchJsonObject("/api/me/applications", { cache: "no-store" }),
+    [],
+  );
 
-  const load = () => {
-    setLoading(true);
-    fetch("/api/campaigns", { cache: "no-store" }).then((r) => r.json()).then((d) => { setCampaigns(d.campaigns ?? []); setLoading(false); }).catch(() => setLoading(false));
+  const applyOwnApplications = useCallback((data: Record<string, unknown>): Record<string, any> => {
+    const applications = Array.isArray(data.applications) ? data.applications : null;
+    const contactValues = Array.isArray(data.contactOptions) ? data.contactOptions : null;
+    if (!applications || !contactValues) throw new ApiResponseError(502, "load_failed");
+    const byCampaign = Object.fromEntries(
+      applications
+        .filter((application: any) => application?.campaignId)
+        .map((application: any) => [application.campaignId, application]),
+    ) as Record<string, any>;
+    setOwnApplications(byCampaign);
+    setCreatorProfile(data.creatorProfile ?? null);
+    setContactOptions(contactValues.filter((value: unknown): value is string => typeof value === "string"));
+    setOwnApplicationsStatus("ready");
+    return byCampaign;
+  }, []);
+
+  const handleOwnApplicationsError = useCallback((error: unknown): null => {
+    if (error instanceof ApiResponseError && error.status === 401) {
+      // Only a genuine 401 establishes the public/guest state. Network or
+      // 5xx failures stay "unknown" so Apply is not offered blindly.
+      setOwnApplications({});
+      setCreatorProfile(null);
+      setContactOptions([]);
+      setOwnApplicationsStatus("guest");
+      return null;
+    }
+    setOwnApplicationsStatus("error");
+    return null;
+  }, []);
+
+  const fetchOwnApplications = useCallback(async (): Promise<Record<string, any> | null> => {
+    try {
+      return applyOwnApplications(await requestOwnApplications());
+    } catch (error) {
+      return handleOwnApplicationsError(error);
+    }
+  }, [applyOwnApplications, handleOwnApplicationsError, requestOwnApplications]);
+
+  const loadOwnApplications = useCallback(async (): Promise<Record<string, any> | null> => {
+    setOwnApplicationsStatus((current) => current === "guest" ? current : "loading");
+    return fetchOwnApplications();
+  }, [fetchOwnApplications]);
+
+  const requestCampaigns = useCallback(
+    () => fetchJsonList<any>("/api/campaigns", "campaigns", { cache: "no-store" }),
+    [],
+  );
+  const handleCampaignsSuccess = useCallback((rows: any[]) => {
+    setCampaigns(rows);
+    setCampaignsStatus("success");
+  }, []);
+  const handleCampaignsError = useCallback((error: unknown) => {
+    setCampaignsErrorKey(
+      error instanceof ApiResponseError ? getApiErrorKey(error.status, error.code, "listing.loadFailed") : "api.network",
+    );
+    setCampaignsStatus("error");
+  }, [getApiErrorKey]);
+
+  const fetchCampaigns = useCallback(async () => {
+    try {
+      handleCampaignsSuccess(await requestCampaigns());
+    } catch (error) {
+      handleCampaignsError(error);
+    }
+  }, [handleCampaignsError, handleCampaignsSuccess, requestCampaigns]);
+
+  const loadCampaigns = useCallback(async () => {
+    setCampaignsStatus("loading");
+    await fetchCampaigns();
+  }, [fetchCampaigns]);
+
+  const load = useCallback(() => {
+    void loadCampaigns();
     void loadOwnApplications();
-  };
-  useEffect(load, []);
+  }, [loadCampaigns, loadOwnApplications]);
+
+  useEffect(() => {
+    let alive = true;
+    requestCampaigns()
+      .then((rows) => {
+        if (alive) handleCampaignsSuccess(rows);
+      })
+      .catch((error: unknown) => {
+        if (alive) handleCampaignsError(error);
+      });
+    requestOwnApplications()
+      .then((data) => {
+        if (alive) applyOwnApplications(data);
+      })
+      .catch((error: unknown) => {
+        if (alive) handleOwnApplicationsError(error);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [
+    applyOwnApplications,
+    handleCampaignsError,
+    handleCampaignsSuccess,
+    handleOwnApplicationsError,
+    requestCampaigns,
+    requestOwnApplications,
+  ]);
 
   const filtered = campaigns.filter((c) => {
     if (lang && (c.language || "") !== lang) return false;
@@ -67,6 +146,11 @@ export default function CampaignsPage() {
   });
 
   const apply = async (campaignId: string) => {
+    if (ownApplicationsStatus === "loading" || ownApplicationsStatus === "error") {
+      setApplyApiErrorKey(ownApplicationsStatus === "loading" ? "common.loading" : "listing.ownApplicationsFailed");
+      setApplyError("api");
+      return;
+    }
     const creatorContact = applyForm.contact.trim();
     if (creatorContact.length < 3) { setApplyError("contact"); return; }
     if (!applyConsent) { setApplyError("consent"); return; }
@@ -175,16 +259,43 @@ export default function CampaignsPage() {
       {done && <p className="mt-4 rounded-2xl bg-green-50 border border-green-200 px-5 py-3.5 text-[14.5px] font-bold text-green-800">{t("camp.applied")}</p>}
       {pageNotice && <p role="status" className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3.5 text-[14.5px] font-bold text-amber-900">{t(pageNotice === "duplicate" ? "camp.applyDupErr" : "camp.applyClosedErr")}</p>}
 
-      {loading || ownApplicationsLoading ? (
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3].map((i) => <div key={i} className="h-56 animate-pulse rounded-3xl bg-[#f0e6cc]/60" />)}
+      {campaignsStatus === "error" && campaigns.length > 0 && (
+        <div className="mt-4">
+          <ListingError errorKey={campaignsErrorKey} onRetry={() => void loadCampaigns()} />
+        </div>
+      )}
+      {ownApplicationsStatus === "error" && (
+        <div className="mt-4">
+          <ListingError errorKey="listing.ownApplicationsFailed" onRetry={() => void loadOwnApplications()} />
+        </div>
+      )}
+
+      {campaignsStatus === "loading" && campaigns.length === 0 ? (
+        <div role="status" aria-live="polite" className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <span className="sr-only">{t("listing.loadingCampaigns")}</span>
+          {[1, 2, 3].map((i) => <div key={i} aria-hidden="true" className="h-56 animate-pulse rounded-3xl bg-[#f0e6cc]/60" />)}
+        </div>
+      ) : campaignsStatus === "error" && campaigns.length === 0 ? (
+        <div className="mt-8">
+          <ListingError errorKey={campaignsErrorKey} onRetry={() => void loadCampaigns()} />
         </div>
       ) : filtered.length === 0 ? (
         <div className="mt-8 rounded-[28px] border border-dashed border-[#e9ddc3] bg-white p-12 text-center">
           <p className="text-[40px]">📭</p>
-          <h3 className="font-display mt-2 text-[24px] font-black">{t("camp.emptyTitle")}</h3>
+          <h3 className="font-display mt-2 text-[24px] font-black">
+            {campaigns.length === 0 ? t("home.noCampaigns") : t("listing.noCampaignMatches")}
+          </h3>
           <p className="mt-1 text-[15px] text-[#78716c]">{t("camp.emptyBody")}</p>
-          <div className="mt-5 flex justify-center gap-2">
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
+            {campaigns.length > 0 && (
+              <button
+                type="button"
+                onClick={() => { setQ(""); setLang(""); }}
+                className="rounded-2xl border border-[#1c1917] px-6 py-3 text-[14.5px] font-bold"
+              >
+                {t("listing.clearFilters")}
+              </button>
+            )}
             <Link href="/brands" className="rounded-2xl bg-[#e4572e] px-6 py-3 text-[14.5px] font-bold text-white">{t("camp.emptyPost")}</Link>
             <Link href="/creators" className="rounded-2xl border border-[#1c1917] px-6 py-3 text-[14.5px] font-bold">{t("camp.emptyJoin")}</Link>
           </div>
@@ -230,7 +341,13 @@ export default function CampaignsPage() {
                   <div className="mt-4 flex items-center justify-between border-t border-[#f5edd8] pt-4">
                     <p className="text-[13.5px] font-bold text-[#17452e]">{t("camp.paid")}</p>
                     <button
+                      type="button"
+                      disabled={ownApplicationsStatus === "loading"}
                       onClick={() => {
+                        if (ownApplicationsStatus === "error") {
+                          void loadOwnApplications();
+                          return;
+                        }
                         setApplyError("");
                         setApplyApiErrorKey("camp.applyGenericErr");
                         setApplyConsent(false);
@@ -240,9 +357,17 @@ export default function CampaignsPage() {
                         }
                         setApplyId(applyId === c.id ? null : c.id);
                       }}
-                      className="rounded-xl bg-[#1c1917] px-5 py-2.5 text-[13.5px] font-bold text-white hover:bg-black"
+                      className="rounded-xl bg-[#1c1917] px-5 py-2.5 text-[13.5px] font-bold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {applyId === c.id ? t("camp.close") : ownApplication?.status === "withdrawn" ? t("dash.reactivateApplication") : t("camp.apply")}
+                      {ownApplicationsStatus === "loading"
+                        ? t("common.loading")
+                        : ownApplicationsStatus === "error"
+                          ? t("common.retry")
+                          : applyId === c.id
+                            ? t("camp.close")
+                            : ownApplication?.status === "withdrawn"
+                              ? t("dash.reactivateApplication")
+                              : t("camp.apply")}
                     </button>
                   </div>
                   {applyId === c.id && (
@@ -294,7 +419,7 @@ export default function CampaignsPage() {
                           )}
                         </div>
                       )}
-                      <button onClick={() => apply(c.id)} disabled={applyingId === c.id} className="rounded-xl bg-[#e4572e] py-2.5 text-[14px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-60">{applyingId === c.id ? t("camp.applySending") : t("camp.applySend")}</button>
+                      <button onClick={() => apply(c.id)} disabled={applyingId === c.id || ownApplicationsStatus === "loading" || ownApplicationsStatus === "error"} className="rounded-xl bg-[#e4572e] py-2.5 text-[14px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-60">{applyingId === c.id ? t("camp.applySending") : t("camp.applySend")}</button>
                     </div>
                   )}
                 </>

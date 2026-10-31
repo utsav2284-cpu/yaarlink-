@@ -1,4 +1,4 @@
-import { getSessionUser } from "@/backend/auth";
+import { getSessionUser, sessionSecretProblem } from "@/backend/auth";
 import { applicationContactOptions, isCompletedCreatorProfile } from "@/backend/application-contact";
 import { db } from "@/backend/db";
 import { applications, creators } from "@/backend/db/schema";
@@ -14,52 +14,67 @@ const NO_STORE = { "Cache-Control": "private, no-store" };
  * instead of presenting every campaign as unapplied after a refresh.
  */
 export async function GET() {
-  const user = await getSessionUser();
-  if (!user) {
+  if (sessionSecretProblem()) {
     return Response.json(
-      { error: "Please log in to view your applications", code: "login_required" },
-      { status: 401, headers: NO_STORE },
+      { error: "Session service is temporarily unavailable", code: "service_unavailable" },
+      { status: 503, headers: { ...NO_STORE, "Retry-After": "30" } },
     );
   }
 
-  if (user.role !== "creator") {
+  try {
+    const user = await getSessionUser();
+    if (!user) {
+      return Response.json(
+        { error: "Please log in to view your applications", code: "login_required" },
+        { status: 401, headers: NO_STORE },
+      );
+    }
+
+    if (user.role !== "creator") {
+      return Response.json(
+        { applications: [], creatorProfile: null, contactOptions: [] },
+        { headers: NO_STORE },
+      );
+    }
+
+    const [[creatorProfile], ownApplications] = await Promise.all([
+      db.select().from(creators).where(eq(creators.userId, user.id)).limit(1),
+      db
+        .select({
+          id: applications.id,
+          campaignId: applications.campaignId,
+          creatorName: applications.creatorName,
+          creatorContact: applications.creatorContact,
+          message: applications.message,
+          status: applications.status,
+          createdAt: applications.createdAt,
+          updatedAt: applications.updatedAt,
+        })
+        .from(applications)
+        .where(eq(applications.userId, user.id))
+        .orderBy(desc(applications.updatedAt)),
+    ]);
+
     return Response.json(
-      { applications: [], creatorProfile: null, contactOptions: [] },
+      {
+        applications: ownApplications,
+        creatorProfile: creatorProfile
+          ? {
+              id: creatorProfile.id,
+              name: creatorProfile.name,
+              status: creatorProfile.status,
+              completed: isCompletedCreatorProfile(creatorProfile),
+            }
+          : null,
+        contactOptions: applicationContactOptions(user, creatorProfile).map((option) => option.value),
+      },
       { headers: NO_STORE },
     );
+  } catch (e) {
+    console.error(e);
+    return Response.json(
+      { error: "Could not load your applications", code: "load_failed" },
+      { status: 500, headers: NO_STORE },
+    );
   }
-
-  const [[creatorProfile], ownApplications] = await Promise.all([
-    db.select().from(creators).where(eq(creators.userId, user.id)).limit(1),
-    db
-      .select({
-        id: applications.id,
-        campaignId: applications.campaignId,
-        creatorName: applications.creatorName,
-        creatorContact: applications.creatorContact,
-        message: applications.message,
-        status: applications.status,
-        createdAt: applications.createdAt,
-        updatedAt: applications.updatedAt,
-      })
-      .from(applications)
-      .where(eq(applications.userId, user.id))
-      .orderBy(desc(applications.updatedAt)),
-  ]);
-
-  return Response.json(
-    {
-      applications: ownApplications,
-      creatorProfile: creatorProfile
-        ? {
-            id: creatorProfile.id,
-            name: creatorProfile.name,
-            status: creatorProfile.status,
-            completed: isCompletedCreatorProfile(creatorProfile),
-          }
-        : null,
-      contactOptions: applicationContactOptions(user, creatorProfile).map((option) => option.value),
-    },
-    { headers: NO_STORE },
-  );
 }
