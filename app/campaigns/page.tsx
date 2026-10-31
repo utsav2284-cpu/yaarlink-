@@ -14,6 +14,8 @@ export default function CampaignsPage() {
   const [lang, setLang] = useState("");
   const [applyId, setApplyId] = useState<string | null>(null);
   const [applyForm, setApplyForm] = useState({ name: "", contact: "", message: "" });
+  const [applyError, setApplyError] = useState<"" | "name" | "login" | "creator" | "duplicate" | "closed" | "rate" | "generic">("");
+  const [applyingId, setApplyingId] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
   const load = () => {
@@ -29,14 +31,54 @@ export default function CampaignsPage() {
   });
 
   const apply = async (campaignId: string) => {
-    if (!applyForm.name) { alert(t("camp.applyErr")); return; }
-    const res = await fetch("/api/applications", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ campaignId, creatorName: applyForm.name, creatorContact: applyForm.contact, message: applyForm.message }),
-    });
-    if (res.ok) { setDone(true); setApplyId(null); setApplyForm({ name: "", contact: "", message: "" }); setTimeout(() => setDone(false), 4000); }
+    const creatorName = applyForm.name.trim();
+    if (!creatorName) { setApplyError("name"); return; }
+
+    setApplyError("");
+    setApplyingId(campaignId);
+    try {
+      const res = await fetch("/api/applications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaignId, creatorName, creatorContact: applyForm.contact.trim(), message: applyForm.message.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const message = String(data?.error || "");
+        if (res.status === 401) setApplyError("login");
+        else if (res.status === 403) setApplyError("creator");
+        else if (res.status === 429) setApplyError("rate");
+        else if (message.includes("already applied")) setApplyError("duplicate");
+        else if (message.includes("no longer")) setApplyError("closed");
+        else if (message.includes("name / page name")) setApplyError("name");
+        else setApplyError("generic");
+        return;
+      }
+
+      setDone(true);
+      setApplyId(null);
+      setApplyForm({ name: "", contact: "", message: "" });
+      setTimeout(() => setDone(false), 4000);
+    } catch {
+      setApplyError("generic");
+    } finally {
+      setApplyingId(null);
+    }
   };
+
+  const applyErrorKey = applyError === "name"
+    ? "camp.applyErr"
+    : applyError === "login"
+      ? "camp.applyLoginErr"
+      : applyError === "creator"
+        ? "camp.applyCreatorErr"
+        : applyError === "duplicate"
+          ? "camp.applyDupErr"
+          : applyError === "closed"
+            ? "camp.applyClosedErr"
+            : applyError === "rate"
+              ? "camp.applyRateErr"
+              : "camp.applyGenericErr";
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
@@ -96,7 +138,7 @@ export default function CampaignsPage() {
               </div>
               <div className="mt-4 flex items-center justify-between border-t border-[#f5edd8] pt-4">
                 <p className="text-[13.5px] font-bold text-[#17452e]">{t("camp.paid")}</p>
-                <button onClick={() => setApplyId(applyId === c.id ? null : c.id)} className="rounded-xl bg-[#1c1917] px-5 py-2.5 text-[13.5px] font-bold text-white hover:bg-black">
+                <button onClick={() => { setApplyError(""); setApplyId(applyId === c.id ? null : c.id); }} className="rounded-xl bg-[#1c1917] px-5 py-2.5 text-[13.5px] font-bold text-white hover:bg-black">
                   {applyId === c.id ? t("camp.close") : t("camp.apply")}
                 </button>
               </div>
@@ -105,7 +147,18 @@ export default function CampaignsPage() {
                   <input value={applyForm.name} onChange={(e) => setApplyForm({ ...applyForm, name: e.target.value })} placeholder={t("camp.applyName")} className="rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-2.5 text-[14px] outline-none" />
                   <input value={applyForm.contact} onChange={(e) => setApplyForm({ ...applyForm, contact: e.target.value })} placeholder={t("camp.applyContact")} className="rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-2.5 text-[14px] outline-none" />
                   <textarea value={applyForm.message} onChange={(e) => setApplyForm({ ...applyForm, message: e.target.value })} rows={2} placeholder={t("camp.applyPhMsg")} className="rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-2.5 text-[14px] outline-none" />
-                  <button onClick={() => apply(c.id)} className="rounded-xl bg-[#e4572e] py-2.5 text-[14px] font-bold text-white">{t("camp.applySend")}</button>
+                  {applyError && (
+                    <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-[13.5px] font-semibold leading-relaxed text-red-800">
+                      <p>{t(applyErrorKey)}</p>
+                      {(applyError === "login" || applyError === "creator") && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <Link href="/login" className="rounded-lg bg-[#1c1917] px-3 py-1.5 text-[12.5px] font-bold text-white">{t("nav.login")}</Link>
+                          <Link href="/signup" className="rounded-lg border border-[#1c1917] px-3 py-1.5 text-[12.5px] font-bold text-[#1c1917]">{t("camp.emptyJoin")}</Link>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <button onClick={() => apply(c.id)} disabled={applyingId === c.id} className="rounded-xl bg-[#e4572e] py-2.5 text-[14px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-60">{applyingId === c.id ? t("camp.applySending") : t("camp.applySend")}</button>
                 </div>
               )}
             </div>
