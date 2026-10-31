@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   createSessionToken,
+  createUserSessionRecord,
   sessionSecretProblem,
   SESSION_COOKIE,
   SESSION_COOKIE_OPTIONS,
@@ -67,7 +68,8 @@ export async function POST(req: Request) {
     // a race or the transaction otherwise does not create the account.
     const userId = crypto.randomUUID();
     const verifiedAt = new Date();
-    const sessionToken = await createSessionToken(userId, 0);
+    const session = createUserSessionRecord(req);
+    const sessionToken = await createSessionToken(userId, 0, session.id, session.createdAt.getTime());
     const response = NextResponse.json(
       { user: { id: userId, name: pending.name, email: pending.email, role: pending.role } },
       { headers: NO_STORE },
@@ -81,6 +83,7 @@ export async function POST(req: Request) {
       passwordHash: pending.passwordHash,
       userId,
       verifiedAt,
+      session,
     });
 
     if (completion.kind !== "created") return invalidResponse();

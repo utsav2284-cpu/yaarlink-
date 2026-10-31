@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { CATEGORIES, CONTENT_TYPES, LANGUAGES, PLATFORMS, PROMOTION_TYPES, formatINR } from "@/shared/constants";
 
-type User = { id: string; name: string; email: string; role: string };
+type User = { id: string; name: string; email: string; phone?: string | null; role: string; emailVerifiedAt?: string | null; createdAt?: string };
 type Campaign = {
   id: string;
   title: string;
@@ -623,16 +623,27 @@ export default function DashboardPage() {
           <h1 className="font-display text-[30px] font-black sm:text-[40px]">{t("dash.title")}</h1>
           <p className="text-[14.5px] text-[#78716c]">{user.email} · <span className="font-bold">{accountLabel}</span></p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Link href={isBrand ? "/brands" : "/campaigns"} className="rounded-2xl bg-[#e4572e] px-5 py-3 text-[14.5px] font-bold text-white hover:bg-[#c7431f]">
             {isBrand ? t("dash.newCampaign") : t("dash.findCampaigns")}
           </Link>
+          <Link href="/account" className="rounded-2xl border border-[#1c1917] bg-white px-5 py-3 text-[14.5px] font-bold">{t("dash.accountSettings")}</Link>
           <button onClick={logout} className="rounded-2xl border border-[#e9ddc3] bg-white px-5 py-3 text-[14.5px] font-bold">{t("dash.logout")}</button>
         </div>
       </div>
 
       {notice && <p role="status" className="mt-5 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-[14px] font-bold text-green-800">{notice}</p>}
       {actionError && <p role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[14px] font-bold text-red-700">{actionError}</p>}
+
+      {!user.emailVerifiedAt && (
+        <div className="mt-5 flex flex-col justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center">
+          <div>
+            <p className="text-[14.5px] font-extrabold text-amber-950">{t("dash.emailNotVerified")}</p>
+            <p className="mt-0.5 text-[13.5px] text-[#57534e]">{t("dash.emailNotVerifiedHelp")}</p>
+          </div>
+          <Link href="/account" className="shrink-0 rounded-xl bg-[#1c1917] px-4 py-2.5 text-center text-[13.5px] font-bold text-white">{t("dash.verifyNow")}</Link>
+        </div>
+      )}
 
       {renderNotifications()}
 

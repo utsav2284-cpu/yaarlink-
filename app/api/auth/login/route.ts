@@ -29,7 +29,7 @@ export async function POST(req: Request) {
       await db.update(users).set({ passwordHash: await hashPassword(password) }).where(eq(users.id, u.id));
     }
 
-    await setSessionCookie(u.id, u.tokenVersion);
+    await setSessionCookie(u.id, u.tokenVersion, req);
     return Response.json({ user: { id: u.id, name: u.name, email: u.email, role: u.role } }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     console.error(e);

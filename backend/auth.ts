@@ -1,13 +1,15 @@
 import bcrypt from "bcryptjs";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { db } from "@/backend/db";
-import { users } from "@/backend/db/schema";
+import { userSessions, users } from "@/backend/db/schema";
 
 /*
  * Auth helpers built on Web Crypto, so they run fast on Node and on Cloudflare Workers.
  * - Passwords: PBKDF2-SHA256 (100k iterations, the Workers maximum). Old bcrypt hashes still verify.
- * - Sessions: signed, httpOnly cookie (HMAC-SHA256). Revoked server-side via users.token_version.
+ * - Sessions: signed, httpOnly cookie (HMAC-SHA256) carrying a server-side
+ *   session ID. Individual devices can be revoked in user_sessions, while
+ *   users.token_version remains the "revoke everything" backstop.
  */
 
 export const SESSION_COOKIE = "__Host-yl_session";
@@ -16,6 +18,9 @@ const SESSION_SIGN_PREFIX = "yl_session:";
 const PBKDF2_ITERATIONS = 100_000;
 // Tokens claiming an `iat` further ahead than this are rejected (small allowance for clock skew).
 const MAX_CLOCK_SKEW_MS = 60_000;
+const SESSION_TOUCH_INTERVAL_MS = 15 * 60_000;
+const SESSION_RETENTION_MS = 30 * 864e5;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const enc = new TextEncoder();
 
@@ -98,11 +103,39 @@ async function hmac(data: string) {
 
 /* ---------- sessions ---------- */
 
-type Payload = { uid: string; ver: number; iat: number; exp: number };
+type Payload = { uid: string; sid: string; ver: number; iat: number; exp: number };
 
-export async function createSessionToken(uid: string, tokenVersion: number) {
-  const now = Date.now();
-  const payload: Payload = { uid, ver: tokenVersion, iat: now, exp: now + SESSION_DAYS * 864e5 };
+export type UserSessionRecord = {
+  id: string;
+  userAgent: string | null;
+  createdAt: Date;
+  lastSeenAt: Date;
+  expiresAt: Date;
+};
+
+export function isSessionId(value: unknown): value is string {
+  return typeof value === "string" && UUID_PATTERN.test(value);
+}
+
+function requestUserAgent(req?: Request) {
+  const value = req?.headers.get("user-agent")?.trim();
+  return value ? value.slice(0, 500) : null;
+}
+
+/** Build the DB row before signing so signup completion can insert the user and its first session atomically. */
+export function createUserSessionRecord(req?: Request): UserSessionRecord {
+  const createdAt = new Date();
+  return {
+    id: crypto.randomUUID(),
+    userAgent: requestUserAgent(req),
+    createdAt,
+    lastSeenAt: createdAt,
+    expiresAt: new Date(createdAt.getTime() + SESSION_DAYS * 864e5),
+  };
+}
+
+export async function createSessionToken(uid: string, tokenVersion: number, sessionId: string, issuedAt = Date.now()) {
+  const payload: Payload = { uid, sid: sessionId, ver: tokenVersion, iat: issuedAt, exp: issuedAt + SESSION_DAYS * 864e5 };
   const body = toB64url(enc.encode(JSON.stringify(payload)));
   return `${body}.${toB64url(await hmac(SESSION_SIGN_PREFIX + body))}`;
 }
@@ -114,13 +147,35 @@ async function readToken(token: string | undefined): Promise<Payload | null> {
     if (!safeEqual(await hmac(SESSION_SIGN_PREFIX + body), fromB64url(sig))) return null;
     const payload = JSON.parse(new TextDecoder().decode(fromB64url(body))) as Payload;
     const now = Date.now();
-    if (!payload.uid || typeof payload.ver !== "number") return null;
+    if (!payload.uid || !isSessionId(payload.sid) || typeof payload.ver !== "number") return null;
     if (typeof payload.exp !== "number" || payload.exp < now) return null;
     if (typeof payload.iat !== "number" || payload.iat > now + MAX_CLOCK_SKEW_MS) return null;
     return payload;
   } catch {
     return null;
   }
+}
+
+export async function createUserSession(uid: string, tokenVersion: number, req?: Request) {
+  const record = createUserSessionRecord(req);
+  // Sign first so a missing SESSION_SECRET fails before inserting an orphan
+  // server-side session that no browser could ever use.
+  const token = await createSessionToken(uid, tokenVersion, record.id, record.createdAt.getTime());
+  const retentionCutoff = new Date(Date.now() - SESSION_RETENTION_MS);
+
+  // Keep recently expired/revoked rows available for the owner's export, but
+  // do not retain device history forever.
+  await db
+    .delete(userSessions)
+    .where(
+      and(
+        eq(userSessions.userId, uid),
+        or(lt(userSessions.expiresAt, retentionCutoff), lt(userSessions.revokedAt, retentionCutoff)),
+      ),
+    );
+  await db.insert(userSessions).values({ ...record, userId: uid, tokenVersion });
+
+  return { ...record, token };
 }
 
 export const SESSION_COOKIE_OPTIONS = {
@@ -131,9 +186,17 @@ export const SESSION_COOKIE_OPTIONS = {
   maxAge: SESSION_DAYS * 86400,
 } as const;
 
-export async function setSessionCookie(uid: string, tokenVersion: number) {
+export async function setSessionCookie(uid: string, tokenVersion: number, req?: Request) {
+  const session = await createUserSession(uid, tokenVersion, req);
   const jar = await cookies();
-  jar.set(SESSION_COOKIE, await createSessionToken(uid, tokenVersion), SESSION_COOKIE_OPTIONS);
+  jar.set(SESSION_COOKIE, session.token, SESSION_COOKIE_OPTIONS);
+  return session;
+}
+
+/** Reissue the cookie for an existing DB session after a token-version rotation (for example, a password change). */
+export async function setExistingSessionCookie(uid: string, tokenVersion: number, sessionId: string) {
+  const jar = await cookies();
+  jar.set(SESSION_COOKIE, await createSessionToken(uid, tokenVersion, sessionId), SESSION_COOKIE_OPTIONS);
 }
 
 export async function clearSessionCookie() {
@@ -141,24 +204,145 @@ export async function clearSessionCookie() {
   jar.set(SESSION_COOKIE, "", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 0 });
 }
 
-export type SessionUser = { id: string; name: string; email: string; phone: string | null; role: string };
+export type SessionUser = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  role: string;
+  emailVerifiedAt: Date | null;
+  createdAt: Date;
+};
 
-/** The logged-in user, or null. Old cookies stop working once token_version is bumped. */
-export async function getSessionUser(): Promise<SessionUser | null> {
+export type SessionContext = {
+  user: SessionUser;
+  sessionId: string;
+  tokenVersion: number;
+  sessionCreatedAt: Date;
+  sessionExpiresAt: Date;
+};
+
+/**
+ * The logged-in user plus the individual device session. Cookies issued
+ * before server-side sessions existed have no `sid`; they are intentionally
+ * rejected so every active login can be listed and revoked by its owner.
+ */
+export async function getSessionContext(): Promise<SessionContext | null> {
   const jar = await cookies();
   const payload = await readToken(jar.get(SESSION_COOKIE)?.value);
   if (!payload) return null;
+
+  const now = new Date();
   const rows = await db
-    .select({ id: users.id, name: users.name, email: users.email, phone: users.phone, role: users.role, tokenVersion: users.tokenVersion })
+    .select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      phone: users.phone,
+      role: users.role,
+      emailVerifiedAt: users.emailVerifiedAt,
+      createdAt: users.createdAt,
+      tokenVersion: users.tokenVersion,
+      sessionId: userSessions.id,
+      sessionTokenVersion: userSessions.tokenVersion,
+      sessionCreatedAt: userSessions.createdAt,
+      sessionLastSeenAt: userSessions.lastSeenAt,
+      sessionExpiresAt: userSessions.expiresAt,
+      sessionRevokedAt: userSessions.revokedAt,
+    })
     .from(users)
+    .innerJoin(userSessions, and(eq(userSessions.userId, users.id), eq(userSessions.id, payload.sid)))
     .where(eq(users.id, payload.uid))
     .limit(1);
-  const user = rows[0];
-  if (!user || user.tokenVersion !== payload.ver) return null;
-  return { id: user.id, name: user.name, email: user.email, phone: user.phone, role: user.role };
+
+  const row = rows[0];
+  if (
+    !row ||
+    row.tokenVersion !== payload.ver ||
+    row.sessionTokenVersion !== payload.ver ||
+    row.sessionRevokedAt ||
+    row.sessionExpiresAt.getTime() <= now.getTime()
+  ) {
+    return null;
+  }
+
+  if (now.getTime() - row.sessionLastSeenAt.getTime() >= SESSION_TOUCH_INTERVAL_MS) {
+    const touched = await db
+      .update(userSessions)
+      .set({ lastSeenAt: now })
+      .where(
+        and(
+          eq(userSessions.id, row.sessionId),
+          eq(userSessions.userId, row.id),
+          isNull(userSessions.revokedAt),
+          gt(userSessions.expiresAt, now),
+        ),
+      )
+      .returning({ id: userSessions.id });
+    if (!touched.length) return null;
+  }
+
+  return {
+    user: {
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      phone: row.phone,
+      role: row.role,
+      emailVerifiedAt: row.emailVerifiedAt,
+      createdAt: row.createdAt,
+    },
+    sessionId: row.sessionId,
+    tokenVersion: row.tokenVersion,
+    sessionCreatedAt: row.sessionCreatedAt,
+    sessionExpiresAt: row.sessionExpiresAt,
+  };
 }
 
-/** Invalidate every session cookie issued for this user so far (called on logout). */
+/** The logged-in user, or null. */
+export async function getSessionUser(): Promise<SessionUser | null> {
+  return (await getSessionContext())?.user ?? null;
+}
+
+export async function revokeUserSession(uid: string, sessionId: string) {
+  const revoked = await db
+    .update(userSessions)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(userSessions.userId, uid), eq(userSessions.id, sessionId), isNull(userSessions.revokedAt)))
+    .returning({ id: userSessions.id });
+  return revoked.length > 0;
+}
+
+export async function revokeOtherUserSessions(uid: string, currentSessionId: string) {
+  const revoked = await db
+    .update(userSessions)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(userSessions.userId, uid), ne(userSessions.id, currentSessionId), isNull(userSessions.revokedAt)))
+    .returning({ id: userSessions.id });
+  return revoked.length;
+}
+
+export async function revokeAllUserSessions(uid: string) {
+  const revoked = await db
+    .update(userSessions)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(userSessions.userId, uid), isNull(userSessions.revokedAt)))
+    .returning({ id: userSessions.id });
+  return revoked.length;
+}
+
+/** Invalidate every session cookie issued for this user so far and mark the device rows revoked too. */
 export async function bumpTokenVersion(uid: string) {
-  await db.update(users).set({ tokenVersion: sql`${users.tokenVersion} + 1` }).where(eq(users.id, uid));
+  return db.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(users)
+      .set({ tokenVersion: sql`${users.tokenVersion} + 1` })
+      .where(eq(users.id, uid))
+      .returning({ tokenVersion: users.tokenVersion });
+    await tx
+      .update(userSessions)
+      .set({ revokedAt: new Date() })
+      .where(and(eq(userSessions.userId, uid), isNull(userSessions.revokedAt)));
+    return updated?.tokenVersion ?? null;
+  });
 }

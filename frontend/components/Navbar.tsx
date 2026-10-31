@@ -117,6 +117,12 @@ export default function Navbar() {
                 >
                   {t("nav.dashboard")}
                 </Link>
+                <Link
+                  href="/account"
+                  className="rounded-full border border-[#e9ddc3] bg-white px-3 py-2 text-[13px] font-bold text-[#44403c]"
+                >
+                  {t("nav.account")}
+                </Link>
                 <button
                   onClick={logout}
                   className="rounded-full border border-[#e9ddc3] bg-white px-3 py-2 text-[13px] font-bold text-[#78716c]"
@@ -176,6 +182,13 @@ export default function Navbar() {
                   <button onClick={() => { logout(); setOpen(false); }} className="rounded-xl border border-[#e9ddc3] bg-white px-4 py-3 text-[15px] font-bold">
                     Log out
                   </button>
+                  <Link
+                    href="/account"
+                    onClick={() => setOpen(false)}
+                    className="col-span-2 rounded-xl border border-[#e9ddc3] bg-white px-4 py-3 text-center text-[15px] font-bold"
+                  >
+                    {t("nav.account")}
+                  </Link>
                 </>
               ) : (
                 <>

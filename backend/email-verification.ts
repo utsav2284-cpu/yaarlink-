@@ -1,6 +1,7 @@
 import { and, eq, lt, sql } from "drizzle-orm";
+import type { UserSessionRecord } from "@/backend/auth";
 import { db } from "@/backend/db";
-import { brands, creators, pendingSignups, users } from "@/backend/db/schema";
+import { brands, creators, pendingSignups, userSessions, users } from "@/backend/db/schema";
 
 export const PENDING_SIGNUP_TTL_MS = 30 * 60_000;
 export const PENDING_SIGNUP_RESEND_COOLDOWN_MS = 60_000;
@@ -210,6 +211,7 @@ export async function completePendingSignup({
   passwordHash,
   userId,
   verifiedAt,
+  session,
 }: {
   pendingId: string;
   email: string;
@@ -217,6 +219,7 @@ export async function completePendingSignup({
   passwordHash: string;
   userId: string;
   verifiedAt: Date;
+  session: UserSessionRecord;
 }): Promise<PendingSignupCompletion> {
   return db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${"signup:" + email}, 0))`);
@@ -279,6 +282,8 @@ export async function completePendingSignup({
         status: "incomplete",
       });
     }
+
+    await tx.insert(userSessions).values({ ...session, userId: user.id, tokenVersion: 0 });
 
     await tx.delete(pendingSignups).where(eq(pendingSignups.id, pending.id));
     return { kind: "created", user } as const;
