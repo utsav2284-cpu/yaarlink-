@@ -3,6 +3,7 @@
 import { useLang } from "@/frontend/i18n";
 import Link from "next/link";
 import ContactLink from "@/frontend/components/ContactLink";
+import PrivacyNotice from "@/frontend/components/PrivacyNotice";
 import { useEffect, useState } from "react";
 import {
   SITE,
@@ -302,6 +303,7 @@ export default function ContactPage() {
                   <span className="text-[13.5px] font-bold">{t("cont.message")} <span className="font-medium text-[#a8a29e]">{t("cont.messageHint")}</span></span>
                   <textarea value={form.message} onChange={(e) => set("message", e.target.value)} required rows={5} placeholder={info.placeholder} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                 </label>
+                <PrivacyNotice textKey="privacy.contactNotice" />
                 {err && <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[14px] font-bold text-red-700">{err}</p>}
                 <button disabled={saving} className="rounded-2xl bg-[#e4572e] py-4 text-[16px] font-extrabold text-white hover:bg-[#c7431f] disabled:opacity-60">
                   {saving ? t("cont.sending") : t("cont.send")}

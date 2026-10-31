@@ -20,6 +20,7 @@ export default function SignupPage() {
   const [sent, setSent] = useState(false);
   const [submittedEmail, setSubmittedEmail] = useState("");
   const [resendSeconds, setResendSeconds] = useState(0);
+  const [acceptedLegal, setAcceptedLegal] = useState(false);
   const set = (k: keyof SignupForm, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   useEffect(() => {
@@ -36,13 +37,17 @@ export default function SignupPage() {
   };
 
   const requestVerification = async () => {
+    if (!acceptedLegal) {
+      setErr(t("auth.legalConsentRequired"));
+      return;
+    }
     setErr("");
     setSaving(true);
     try {
       const res = await fetch("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, legalConsent: acceptedLegal }),
       });
       const data = (await res.json().catch(() => null)) as { status?: string } | null;
       if (!res.ok || data?.status !== "verification_required") {
@@ -132,6 +137,27 @@ export default function SignupPage() {
               <input value={form.email} onChange={(e) => set("email", e.target.value)} required type="email" autoComplete="email" placeholder={t("auth.email")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
               <input value={form.phone} onChange={(e) => set("phone", e.target.value)} autoComplete="tel" placeholder={t("auth.phone")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
               <input value={form.password} onChange={(e) => set("password", e.target.value)} required type="password" minLength={10} autoComplete="new-password" placeholder={t("auth.pwHint")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+              <label htmlFor="signup-legal-consent" className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 text-[13.5px] font-semibold leading-relaxed text-[#57534e]">
+                <input
+                  id="signup-legal-consent"
+                  type="checkbox"
+                  checked={acceptedLegal}
+                  onChange={(e) => setAcceptedLegal(e.target.checked)}
+                  required
+                  className="mt-1 h-4 w-4 shrink-0 accent-[#e4572e]"
+                />
+                <span>
+                  {t("auth.legalConsentStart")}{" "}
+                  <Link href="/terms" target="_blank" rel="noreferrer" className="font-extrabold text-[#e4572e] underline-offset-2 hover:underline">
+                    {t("legal.terms")}
+                  </Link>{" "}
+                  {t("auth.legalConsentAnd")}{" "}
+                  <Link href="/privacy" target="_blank" rel="noreferrer" className="font-extrabold text-[#e4572e] underline-offset-2 hover:underline">
+                    {t("legal.privacy")}
+                  </Link>{" "}
+                  {t("auth.legalConsentEnd")}
+                </span>
+              </label>
               {err && <p className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-[13.5px] font-bold text-red-700">{err}</p>}
               <button disabled={saving} className="rounded-2xl bg-[#e4572e] py-3.5 text-[16px] font-extrabold text-white hover:bg-[#c7431f] disabled:opacity-60">{saving ? t("auth.creating") : t("auth.signupBtn")}</button>
             </form>

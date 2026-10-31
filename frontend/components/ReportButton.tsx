@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import { useLang } from "@/frontend/i18n";
+import PrivacyNotice from "@/frontend/components/PrivacyNotice";
 import { REPORT_REASONS, type ReportReason, type ReportTargetType } from "@/shared/constants";
 
 type Props = {
@@ -125,6 +126,8 @@ export default function ReportButton({ targetType, targetId, targetName, classNa
             maxLength={160}
             className="mt-1 w-full rounded-lg border border-[#e9ddc3] px-2 py-2 text-[12.5px]"
           />
+
+          <PrivacyNotice textKey="privacy.reportNotice" compact className="mt-3" />
 
           {error && (
             <p role="alert" className="mt-2 rounded-lg bg-red-50 px-2 py-1.5 text-[12px] font-semibold text-red-700">

@@ -7,6 +7,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { CATEGORIES, LANGUAGES, CONTENT_TYPES, PROMOTION_TYPES, normalizePromotionType } from "@/shared/constants";
 import ContactLink from "@/frontend/components/ContactLink";
+import PrivacyNotice from "@/frontend/components/PrivacyNotice";
 import ReportButton from "@/frontend/components/ReportButton";
 import { SITE, instagramDmLink, whatsappWithText } from "@/config/site";
 
@@ -261,6 +262,8 @@ function BrandInner() {
                 <span className="text-[13.5px] font-bold">{t("brand.descLabel")} <span className="font-medium text-[#a8a29e]">{t("brand.descHint")}</span></span>
                 <textarea value={form.description} onChange={(e) => set("description", e.target.value)} rows={4} placeholder={t("brand.phDesc")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
               </label>
+
+              <PrivacyNotice textKey="privacy.campaignNotice" />
 
               {err && <p className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-[14px] font-bold text-red-700">{err}</p>}
 

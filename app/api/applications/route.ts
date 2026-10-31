@@ -80,9 +80,25 @@ export async function POST(req: Request) {
       .limit(1);
     if (!initialCreatorProfile) return Response.json({ error: "Please complete your creator profile before applying." }, { status: 400, headers: NO_STORE });
 
-    const creatorName = String(body.creatorName || initialCreatorProfile.name || user.name || "").trim().slice(0, 100);
+    const creatorName = typeof body.creatorName === "string" ? body.creatorName.trim().slice(0, 100) : "";
     if (!creatorName) return Response.json({ error: "Please add your name / page name" }, { status: 400, headers: NO_STORE });
-    const contact = String(body.creatorContact || user.phone || user.email || "").trim().slice(0, 120);
+
+    // Never reuse the account phone/email as the brand-facing contact. The
+    // creator must enter the exact contact for this application and confirm
+    // that YaarLink may share it with this campaign's brand.
+    const contact = typeof body.creatorContact === "string" ? body.creatorContact.trim().slice(0, 120) : "";
+    if (contact.length < 3) {
+      return Response.json(
+        { error: "Please enter the contact you want this brand to use.", code: "contact_required" },
+        { status: 400, headers: NO_STORE },
+      );
+    }
+    if (body.contactSharingConsent !== true) {
+      return Response.json(
+        { error: "Please confirm that this brand may receive your application contact.", code: "contact_sharing_consent_required" },
+        { status: 400, headers: NO_STORE },
+      );
+    }
     const message = cleanText(body.message, 1000) ?? null;
 
     type PostOutcome =
@@ -266,6 +282,7 @@ export async function PATCH(req: Request) {
     if (nextContact !== undefined && nextContact.length < 3) {
       return Response.json({ error: "Please enter a valid contact for the brand." }, { status: 400, headers: NO_STORE });
     }
+    const contactSharingConsent = body.contactSharingConsent === true;
     const decisionNote = hasField(body, "decisionNote") ? cleanText(body.decisionNote, 1000) ?? null : null;
 
     const user = await getSessionUser().catch(() => null);
@@ -276,7 +293,18 @@ export async function PATCH(req: Request) {
 
     type PatchOutcome =
       | { kind: "updated"; application: typeof applications.$inferSelect; email?: EmailNotice }
-      | { kind: "forbidden" | "not_found" | "invalid_input" | "invalid_transition" | "closed" | "duplicate_contact"; currentStatus?: string };
+      | {
+          kind:
+            | "forbidden"
+            | "not_found"
+            | "invalid_input"
+            | "invalid_transition"
+            | "closed"
+            | "duplicate_contact"
+            | "contact_required"
+            | "consent_required";
+          currentStatus?: string;
+        };
 
     const outcome: PatchOutcome = await db.transaction(async (tx) => {
       const [campaign] = await tx.select().from(campaigns).where(eq(campaigns.id, peek.campaignId)).limit(1).for("update");
@@ -371,6 +399,12 @@ export async function PATCH(req: Request) {
       if (action === "reactivate") {
         if (application.status !== "withdrawn") return { kind: "invalid_transition", currentStatus: application.status } as const;
         if (campaign.status !== "open" || campaign.verificationStatus !== "verified") return { kind: "closed" } as const;
+        // Reactivation shares the saved application contact with the brand
+        // again, including contacts created before explicit-consent UI was
+        // added. Require a fresh confirmation and a usable contact.
+        const effectiveContact = (nextContact ?? application.creatorContact ?? "").trim();
+        if (effectiveContact.length < 3) return { kind: "contact_required" } as const;
+        if (!contactSharingConsent) return { kind: "consent_required" } as const;
         if (!(await ensureContactIsFree())) return { kind: "duplicate_contact" } as const;
         const [brandUser] = await tx
           .select({ id: users.id, name: users.name, email: users.email })
@@ -471,6 +505,18 @@ export async function PATCH(req: Request) {
     if (outcome.kind === "invalid_input") return Response.json({ error: "No application changes were provided." }, { status: 400, headers: NO_STORE });
     if (outcome.kind === "duplicate_contact") {
       return Response.json({ error: "That contact is already used by another application for this campaign." }, { status: 409, headers: NO_STORE });
+    }
+    if (outcome.kind === "contact_required") {
+      return Response.json(
+        { error: "Please enter the contact you want this brand to use.", code: "contact_required" },
+        { status: 400, headers: NO_STORE },
+      );
+    }
+    if (outcome.kind === "consent_required") {
+      return Response.json(
+        { error: "Please confirm that this brand may receive your application contact.", code: "contact_sharing_consent_required" },
+        { status: 400, headers: NO_STORE },
+      );
     }
     if (outcome.kind === "closed") return Response.json({ error: "This campaign is no longer accepting applications." }, { status: 409, headers: NO_STORE });
     return Response.json(
