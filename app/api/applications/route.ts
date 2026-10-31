@@ -61,7 +61,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const rl = rateLimit(getClientKey(req, "application-create"), 20, 60 * 60_000);
+  const rl = await rateLimit(getClientKey(req, "application-create"), 20, 60 * 60_000);
   if (!rl.ok) return limitedResponse(rl.retryAfter);
   try {
     const body = bodyRecord(await req.json().catch(() => null));
@@ -278,7 +278,7 @@ const BRAND_ACTIONS: Record<string, ApplicationStatus> = {
 };
 
 export async function PATCH(req: Request) {
-  const rl = rateLimit(getClientKey(req, "application-manage"), 60, 60 * 60_000);
+  const rl = await rateLimit(getClientKey(req, "application-manage"), 60, 60 * 60_000);
   if (!rl.ok) return limitedResponse(rl.retryAfter);
   try {
     const body = bodyRecord(await req.json().catch(() => null));

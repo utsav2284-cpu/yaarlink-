@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
 export async function POST(req: Request) {
-  const rl = rateLimit(getClientKey(req, "verify-account-email"), 10, 15 * 60_000);
+  const rl = await rateLimit(getClientKey(req, "verify-account-email"), 10, 15 * 60_000);
   if (!rl.ok) return limitedResponse(rl.retryAfter);
 
   try {
@@ -17,7 +17,7 @@ export async function POST(req: Request) {
     }
 
     const tokenHash = await hashAccountToken("email_verification", token);
-    const tokenRl = rateLimit(`verify-account-email-token:${hashKey(tokenHash)}`, 10, 15 * 60_000);
+    const tokenRl = await rateLimit(`verify-account-email-token:${await hashKey(tokenHash)}`, 10, 15 * 60_000);
     if (!tokenRl.ok) return limitedResponse(tokenRl.retryAfter);
 
     const completion = await consumeEmailVerificationToken(token);

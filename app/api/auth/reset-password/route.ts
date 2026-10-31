@@ -16,7 +16,7 @@ function invalidResponse() {
 }
 
 export async function POST(req: Request) {
-  const rl = rateLimit(getClientKey(req, "reset-password"), 10, 15 * 60_000);
+  const rl = await rateLimit(getClientKey(req, "reset-password"), 10, 15 * 60_000);
   if (!rl.ok) return limitedResponse(rl.retryAfter);
 
   try {
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
     }
 
     const tokenHash = await hashAccountToken("password_reset", token);
-    const tokenRl = rateLimit(`reset-password-token:${hashKey(tokenHash)}`, 10, 15 * 60_000);
+    const tokenRl = await rateLimit(`reset-password-token:${await hashKey(tokenHash)}`, 10, 15 * 60_000);
     if (!tokenRl.ok) return limitedResponse(tokenRl.retryAfter);
 
     // Hash before consuming so an invalid token does not get an obviously

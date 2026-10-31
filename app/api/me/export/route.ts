@@ -15,7 +15,7 @@ export async function POST(req: Request) {
     const context = await getSessionContext();
     if (!context) return jsonError(401, "Please log in", "unauthorized");
 
-    const rl = rateLimit(`account-export:${hashKey(context.user.id)}`, 5, 15 * 60_000);
+    const rl = await rateLimit(`account-export:${await hashKey(context.user.id)}`, 5, 15 * 60_000);
     if (!rl.ok) return limitedResponse(rl.retryAfter);
 
     const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;

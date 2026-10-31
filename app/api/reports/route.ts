@@ -1,3 +1,4 @@
+import { consumeBotChallenge } from "@/backend/bot-challenge";
 import { db } from "@/backend/db";
 import { campaigns, creators, reports } from "@/backend/db/schema";
 import { getSessionUser } from "@/backend/auth";
@@ -15,12 +16,21 @@ function cleanText(value: unknown, maxLength: number): string | null {
 }
 
 export async function POST(req: Request) {
-  const rl = rateLimit(getClientKey(req, "report-create"), 10, 60 * 60_000);
+  const rl = await rateLimit(getClientKey(req, "report-create"), 10, 60 * 60_000);
   if (!rl.ok) return limitedResponse(rl.retryAfter);
 
   try {
     const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
     if (!body) return Response.json({ error: "Invalid report", code: "invalid_request" }, { status: 400 });
+    if (typeof body.website_url === "string" && body.website_url.trim()) {
+      return Response.json({ report: { id: crypto.randomUUID() } }, { status: 201, headers: { "Cache-Control": "private, no-store" } });
+    }
+    if (!(await consumeBotChallenge(body.botChallenge, "report"))) {
+      return Response.json(
+        { error: "Security check failed. Please try again.", code: "bot_challenge_failed" },
+        { status: 400, headers: { "Cache-Control": "private, no-store" } },
+      );
+    }
 
     const targetType = body.targetType as ReportTargetType;
     const targetId = body.targetId;

@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import { useLang } from "@/frontend/i18n";
+import { solveBotChallenge } from "@/frontend/bot-challenge";
 import PrivacyNotice from "@/frontend/components/PrivacyNotice";
 import { REPORT_REASONS, type ReportReason, type ReportTargetType } from "@/shared/constants";
 
@@ -21,6 +22,7 @@ export default function ReportButton({ targetType, targetId, targetName, classNa
   const [reason, setReason] = useState<ReportReason>("impersonation");
   const [details, setDetails] = useState("");
   const [contact, setContact] = useState("");
+  const [websiteUrl, setWebsiteUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [errorKey, setErrorKey] = useState("");
 
@@ -33,6 +35,13 @@ export default function ReportButton({ targetType, targetId, targetName, classNa
     setBusy(true);
     setErrorKey("");
     try {
+      let botChallenge;
+      try {
+        botChallenge = await solveBotChallenge("report");
+      } catch {
+        setErrorKey("api.botChallengeFailed");
+        return;
+      }
       const res = await fetch("/api/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -42,6 +51,8 @@ export default function ReportButton({ targetType, targetId, targetName, classNa
           reason,
           details: details.trim() || undefined,
           reporterContact: contact.trim() || undefined,
+          website_url: websiteUrl,
+          botChallenge,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -89,6 +100,10 @@ export default function ReportButton({ targetType, targetId, targetName, classNa
           className="mt-3 w-full rounded-2xl border border-[#e9ddc3] bg-white p-3 text-left text-[#1c1917] shadow-sm"
         >
           <p className="text-[13px] font-extrabold">{title}</p>
+
+          <div className="hidden" aria-hidden="true">
+            <input name="website_url" value={websiteUrl} onChange={(event) => setWebsiteUrl(event.target.value)} tabIndex={-1} autoComplete="off" />
+          </div>
 
           <label htmlFor={`${formId}-reason`} className="mt-2 block text-[11.5px] font-bold text-[#57534e]">
             {t("report.reason")}

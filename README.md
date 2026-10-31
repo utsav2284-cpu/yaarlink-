@@ -75,7 +75,7 @@ Cloudflare dashboard → **Workers & Pages → Create → Import a repository** 
 - Build command: `npx opennextjs-cloudflare build`
 - Deploy command: `npx opennextjs-cloudflare deploy`
 
-Then in the Worker → **Settings → Variables and Secrets**, add `DATABASE_URL`, `ADMIN_PASSWORD`, `SESSION_SECRET`, `ADMIN_SESSION_SECRET`, `RESEND_API_KEY`, and `EMAIL_FROM` (type **Secret**). `ADMIN_SESSION_SECRET` must be different from `SESSION_SECRET`, or admin login is disabled. Signup fails closed with HTTP 503 until the two email settings are present, and the `EMAIL_FROM` domain must be verified in Resend. Optionally add `ADMIN_TOTP_SECRET` with a Base32 secret enrolled in your authenticator app to require a six-digit code at `/admin`; leave it unset for password-only login.
+Then in the Worker → **Settings → Variables and Secrets**, add `DATABASE_URL`, `ADMIN_PASSWORD`, `SESSION_SECRET`, `ADMIN_SESSION_SECRET`, `RESEND_API_KEY`, and `EMAIL_FROM` (type **Secret**). `ADMIN_SESSION_SECRET` must be different from `SESSION_SECRET`, or admin login is disabled. Signup fails closed with HTTP 503 until the two email settings are present, and the `EMAIL_FROM` domain must be verified in Resend. Optionally add `ADMIN_TOTP_SECRET` with a Base32 secret enrolled in your authenticator app to require a six-digit code at `/admin`; leave it unset for password-only login. Optionally add a distinct `BOT_CHALLENGE_SECRET` for public-form security challenges; otherwise `SESSION_SECRET` is used. Do not enable the proxy-trust variables in `.env.example` unless the deployment's only ingress is that trusted proxy.
 
 ## 4 · Connect theyaar.com
 

@@ -1,3 +1,4 @@
+import { consumeBotChallenge } from "@/backend/bot-challenge";
 import { db } from "@/backend/db";
 import { contacts } from "@/backend/db/schema";
 import { getClientKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
@@ -6,11 +7,17 @@ export const dynamic = "force-dynamic";
 // Messages are owner-only — read them via /api/admin/data.
 
 export async function POST(req: Request) {
-  const rl = rateLimit(getClientKey(req, "contact"), 5, 60 * 60_000);
+  const rl = await rateLimit(getClientKey(req, "contact"), 5, 60 * 60_000);
   if (!rl.ok) return limitedResponse(rl.retryAfter);
   try {
     const b = await req.json();
     if (String(b.website_url || "").trim()) return Response.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
+    if (!(await consumeBotChallenge(b.botChallenge, "contact"))) {
+      return Response.json(
+        { error: "Security check failed. Please try again.", code: "bot_challenge_failed" },
+        { status: 400, headers: { "Cache-Control": "no-store" } },
+      );
+    }
     const name = String(b.name || "").trim();
     const message = String(b.message || "").trim();
     if (!name || !message) return Response.json({ error: "Name and message required", code: !name ? "name_required" : "message_required" }, { status: 400 });

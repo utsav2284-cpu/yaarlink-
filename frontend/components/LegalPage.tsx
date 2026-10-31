@@ -98,7 +98,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
             "Pending-signup information: the details submitted before email verification and a hashed one-time verification token. A usable account is created only after verification.",
             "Profile and campaign information: business or creator names, contact details, social profile links, category, languages, location, audience or follower information, campaign descriptions, budget, verification codes, and moderation status.",
             "Application and communication information: the creator-profile name, the saved account/profile contact you select, the message you enter, application status and decision notes, notifications, contact-form messages, and listing reports.",
-            "Technical and security information: session identifiers, browser/device user-agent information, sign-in and activity times, IP addresses used for rate limits, security and admin audit logs, and limited hosting or email-delivery logs.",
+            "Technical and security information: session identifiers, browser/device user-agent information, sign-in and activity times, hashed rate-limit and failed-sign-in identifiers, brief browser security-check results on public forms, IP addresses in security or admin audit logs where the hosting platform provides a trusted address, and limited hosting or email-delivery logs.",
             "Preferences: your selected site language is stored in your browser's local storage.",
           ],
           paragraphs: [
@@ -151,7 +151,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
         {
           heading: "7. Retention and security",
           paragraphs: [
-            "We keep information while an account, listing, application, support request or security purpose remains active, and for a reasonable period afterwards where needed for dispute handling, fraud prevention, accounting, legal compliance or service security. One-time signup and account-action tokens expire, and sessions expire or can be revoked.",
+            "We keep information while an account, listing, application, support request or security purpose remains active, and for a reasonable period afterwards where needed for dispute handling, fraud prevention, accounting, legal compliance or service security. One-time signup and account-action tokens expire, sessions expire or can be revoked, and expired rate-limit and failed-sign-in records are deleted automatically.",
             "We use measures such as hashed passwords, hashed one-time tokens, access-controlled admin tools, private API responses for account data, and database access restrictions. No online service can guarantee absolute security, so please use a unique password and contact us if you suspect unauthorised access.",
           ],
         },
@@ -462,7 +462,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
             "लंबित साइन-अप जानकारी: ईमेल सत्यापन से पहले दी गई जानकारी और हैश किया गया एक-बार का सत्यापन टोकन। उपयोग योग्य अकाउंट सत्यापन के बाद ही बनता है।",
             "प्रोफाइल और कैंपेन जानकारी: बिज़नेस या क्रिएटर नाम, संपर्क विवरण, सोशल प्रोफाइल लिंक, कैटेगरी, भाषाएँ, स्थान, ऑडियंस या फॉलोअर जानकारी, कैंपेन विवरण, बजट, सत्यापन कोड और मॉडरेशन स्थिति।",
             "आवेदन और संचार जानकारी: क्रिएटर प्रोफ़ाइल का नाम, आपके द्वारा चुना गया सेव अकाउंट/प्रोफ़ाइल संपर्क, लिखा गया संदेश, आवेदन स्थिति और निर्णय नोट, सूचनाएँ, संपर्क-फॉर्म संदेश और लिस्टिंग रिपोर्ट।",
-            "तकनीकी और सुरक्षा जानकारी: सेशन पहचान, ब्राउज़र/डिवाइस यूज़र-एजेंट, साइन-इन और गतिविधि समय, रेट-लिमिट, सुरक्षा और एडमिन ऑडिट लॉग के लिए IP पते तथा सीमित होस्टिंग या ईमेल-डिलीवरी लॉग।",
+            "तकनीकी और सुरक्षा जानकारी: सेशन पहचान, ब्राउज़र/डिवाइस यूज़र-एजेंट, साइन-इन और गतिविधि समय, हैश किए रेट-लिमिट और असफल साइन-इन पहचानकर्ता, सार्वजनिक फ़ॉर्म पर संक्षिप्त ब्राउज़र सुरक्षा-जाँच परिणाम, जहाँ होस्टिंग प्लेटफ़ॉर्म विश्वसनीय पता देता है वहाँ सुरक्षा या एडमिन ऑडिट लॉग में IP पते तथा सीमित होस्टिंग या ईमेल-डिलीवरी लॉग।",
             "पसंद: आपकी चुनी गई साइट भाषा ब्राउज़र के लोकल स्टोरेज में सेव होती है।",
           ],
           paragraphs: [
@@ -515,7 +515,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
         {
           heading: "7. रखने की अवधि और सुरक्षा",
           paragraphs: [
-            "हम जानकारी तब तक रखते हैं जब तक अकाउंट, लिस्टिंग, आवेदन, सपोर्ट अनुरोध या सुरक्षा उद्देश्य सक्रिय है, और उसके बाद विवाद, धोखाधड़ी रोकथाम, लेखांकन, कानूनी पालन या सेवा सुरक्षा के लिए आवश्यक उचित अवधि तक। एक-बार के साइन-अप और अकाउंट-एक्शन टोकन समाप्त होते हैं, और सेशन समाप्त या हटाए जा सकते हैं।",
+            "हम जानकारी तब तक रखते हैं जब तक अकाउंट, लिस्टिंग, आवेदन, सपोर्ट अनुरोध या सुरक्षा उद्देश्य सक्रिय है, और उसके बाद विवाद, धोखाधड़ी रोकथाम, लेखांकन, कानूनी पालन या सेवा सुरक्षा के लिए आवश्यक उचित अवधि तक। एक-बार के साइन-अप और अकाउंट-एक्शन टोकन समाप्त होते हैं, सेशन समाप्त या हटाए जा सकते हैं, और समाप्त रेट-लिमिट व असफल साइन-इन रिकॉर्ड स्वचालित रूप से मिटाए जाते हैं।",
             "हम हैश किए पासवर्ड, हैश किए एक-बार टोकन, एक्सेस-नियंत्रित एडमिन टूल, अकाउंट डेटा के लिए निजी API जवाब और डेटाबेस एक्सेस प्रतिबंध जैसे उपाय उपयोग करते हैं। कोई ऑनलाइन सेवा पूर्ण सुरक्षा की गारंटी नहीं दे सकती, इसलिए अनोखा पासवर्ड उपयोग करें और अनधिकृत पहुँच का संदेह हो तो हमें बताएँ।",
           ],
         },
@@ -826,7 +826,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
             "ਲੰਬਿਤ ਸਾਈਨ-ਅੱਪ ਜਾਣਕਾਰੀ: ਈਮੇਲ ਤਸਦੀਕ ਤੋਂ ਪਹਿਲਾਂ ਦਿੱਤੀ ਜਾਣਕਾਰੀ ਅਤੇ ਹੈਸ਼ ਕੀਤਾ ਇੱਕ-ਵਾਰੀ ਤਸਦੀਕ ਟੋਕਨ। ਵਰਤੋਂਯੋਗ ਅਕਾਊਂਟ ਤਸਦੀਕ ਤੋਂ ਬਾਅਦ ਹੀ ਬਣਦਾ ਹੈ।",
             "ਪ੍ਰੋਫਾਈਲ ਅਤੇ ਕੈਂਪੇਨ ਜਾਣਕਾਰੀ: ਕਾਰੋਬਾਰ ਜਾਂ ਕ੍ਰਿਏਟਰ ਨਾਮ, ਸੰਪਰਕ ਵੇਰਵੇ, ਸੋਸ਼ਲ ਪ੍ਰੋਫਾਈਲ ਲਿੰਕ, ਕੈਟੇਗਰੀ, ਭਾਸ਼ਾਵਾਂ, ਥਾਂ, ਆਡੀਅੰਸ ਜਾਂ ਫਾਲੋਅਰ ਜਾਣਕਾਰੀ, ਕੈਂਪੇਨ ਵੇਰਵੇ, ਬਜਟ, ਤਸਦੀਕ ਕੋਡ ਅਤੇ ਮਾਡਰੇਸ਼ਨ ਸਥਿਤੀ।",
             "ਅਰਜ਼ੀ ਅਤੇ ਸੰਚਾਰ ਜਾਣਕਾਰੀ: ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਦਾ ਨਾਮ, ਤੁਹਾਡਾ ਚੁਣਿਆ ਸੇਵ ਅਕਾਊਂਟ/ਪ੍ਰੋਫਾਈਲ ਸੰਪਰਕ, ਲਿਖਿਆ ਸੁਨੇਹਾ, ਅਰਜ਼ੀ ਸਥਿਤੀ ਅਤੇ ਫੈਸਲਾ ਨੋਟ, ਸੂਚਨਾਵਾਂ, ਸੰਪਰਕ-ਫਾਰਮ ਸੁਨੇਹੇ ਅਤੇ ਲਿਸਟਿੰਗ ਰਿਪੋਰਟਾਂ।",
-            "ਤਕਨੀਕੀ ਅਤੇ ਸੁਰੱਖਿਆ ਜਾਣਕਾਰੀ: ਸੈਸ਼ਨ ਪਛਾਣ, ਬ੍ਰਾਊਜ਼ਰ/ਡਿਵਾਈਸ ਯੂਜ਼ਰ-ਏਜੰਟ, ਸਾਈਨ-ਇਨ ਅਤੇ ਗਤੀਵਿਧੀ ਸਮੇਂ, ਰੇਟ-ਲਿਮਿਟ, ਸੁਰੱਖਿਆ ਅਤੇ ਐਡਮਿਨ ਆਡਿਟ ਲੌਗ ਲਈ IP ਪਤੇ ਅਤੇ ਸੀਮਤ ਹੋਸਟਿੰਗ ਜਾਂ ਈਮੇਲ-ਡਿਲੀਵਰੀ ਲੌਗ।",
+            "ਤਕਨੀਕੀ ਅਤੇ ਸੁਰੱਖਿਆ ਜਾਣਕਾਰੀ: ਸੈਸ਼ਨ ਪਛਾਣ, ਬ੍ਰਾਊਜ਼ਰ/ਡਿਵਾਈਸ ਯੂਜ਼ਰ-ਏਜੰਟ, ਸਾਈਨ-ਇਨ ਅਤੇ ਗਤੀਵਿਧੀ ਸਮੇਂ, ਹੈਸ਼ ਕੀਤੇ ਰੇਟ-ਲਿਮਿਟ ਅਤੇ ਅਸਫਲ ਸਾਈਨ-ਇਨ ਪਛਾਣਕਰਤਾ, ਜਨਤਕ ਫਾਰਮਾਂ 'ਤੇ ਸੰਖੇਪ ਬ੍ਰਾਊਜ਼ਰ ਸੁਰੱਖਿਆ-ਜਾਂਚ ਨਤੀਜੇ, ਜਿੱਥੇ ਹੋਸਟਿੰਗ ਪਲੇਟਫਾਰਮ ਭਰੋਸੇਯੋਗ ਪਤਾ ਦਿੰਦਾ ਹੈ ਉੱਥੇ ਸੁਰੱਖਿਆ ਜਾਂ ਐਡਮਿਨ ਆਡਿਟ ਲੌਗ ਵਿੱਚ IP ਪਤੇ ਅਤੇ ਸੀਮਤ ਹੋਸਟਿੰਗ ਜਾਂ ਈਮੇਲ-ਡਿਲੀਵਰੀ ਲੌਗ।",
             "ਪਸੰਦ: ਤੁਹਾਡੀ ਚੁਣੀ ਸਾਈਟ ਭਾਸ਼ਾ ਬ੍ਰਾਊਜ਼ਰ ਦੇ ਲੋਕਲ ਸਟੋਰੇਜ ਵਿੱਚ ਸੇਵ ਹੁੰਦੀ ਹੈ।",
           ],
           paragraphs: [
@@ -879,7 +879,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
         {
           heading: "7. ਰੱਖਣ ਦੀ ਮਿਆਦ ਅਤੇ ਸੁਰੱਖਿਆ",
           paragraphs: [
-            "ਅਸੀਂ ਜਾਣਕਾਰੀ ਉਦੋਂ ਤੱਕ ਰੱਖਦੇ ਹਾਂ ਜਦੋਂ ਤੱਕ ਅਕਾਊਂਟ, ਲਿਸਟਿੰਗ, ਅਰਜ਼ੀ, ਸਪੋਰਟ ਬੇਨਤੀ ਜਾਂ ਸੁਰੱਖਿਆ ਮਕਸਦ ਸਰਗਰਮ ਹੈ, ਅਤੇ ਉਸ ਤੋਂ ਬਾਅਦ ਵਿਵਾਦ, ਧੋਖਾਧੜੀ ਰੋਕਥਾਮ, ਲੇਖਾਕਾਰੀ, ਕਾਨੂੰਨੀ ਪਾਲਣਾ ਜਾਂ ਸੇਵਾ ਸੁਰੱਖਿਆ ਲਈ ਲੋੜੀਂਦੀ ਉਚਿਤ ਮਿਆਦ ਤੱਕ। ਇੱਕ-ਵਾਰੀ ਸਾਈਨ-ਅੱਪ ਅਤੇ ਅਕਾਊਂਟ-ਐਕਸ਼ਨ ਟੋਕਨ ਖਤਮ ਹੁੰਦੇ ਹਨ, ਅਤੇ ਸੈਸ਼ਨ ਖਤਮ ਜਾਂ ਹਟਾਏ ਜਾ ਸਕਦੇ ਹਨ।",
+            "ਅਸੀਂ ਜਾਣਕਾਰੀ ਉਦੋਂ ਤੱਕ ਰੱਖਦੇ ਹਾਂ ਜਦੋਂ ਤੱਕ ਅਕਾਊਂਟ, ਲਿਸਟਿੰਗ, ਅਰਜ਼ੀ, ਸਪੋਰਟ ਬੇਨਤੀ ਜਾਂ ਸੁਰੱਖਿਆ ਮਕਸਦ ਸਰਗਰਮ ਹੈ, ਅਤੇ ਉਸ ਤੋਂ ਬਾਅਦ ਵਿਵਾਦ, ਧੋਖਾਧੜੀ ਰੋਕਥਾਮ, ਲੇਖਾਕਾਰੀ, ਕਾਨੂੰਨੀ ਪਾਲਣਾ ਜਾਂ ਸੇਵਾ ਸੁਰੱਖਿਆ ਲਈ ਲੋੜੀਂਦੀ ਉਚਿਤ ਮਿਆਦ ਤੱਕ। ਇੱਕ-ਵਾਰੀ ਸਾਈਨ-ਅੱਪ ਅਤੇ ਅਕਾਊਂਟ-ਐਕਸ਼ਨ ਟੋਕਨ ਖਤਮ ਹੁੰਦੇ ਹਨ, ਸੈਸ਼ਨ ਖਤਮ ਜਾਂ ਹਟਾਏ ਜਾ ਸਕਦੇ ਹਨ, ਅਤੇ ਮਿਆਦ ਪੂਰੀ ਹੋਏ ਰੇਟ-ਲਿਮਿਟ ਤੇ ਅਸਫਲ ਸਾਈਨ-ਇਨ ਰਿਕਾਰਡ ਆਪਣੇ ਆਪ ਮਿਟਾਏ ਜਾਂਦੇ ਹਨ।",
             "ਅਸੀਂ ਹੈਸ਼ ਕੀਤੇ ਪਾਸਵਰਡ, ਹੈਸ਼ ਕੀਤੇ ਇੱਕ-ਵਾਰੀ ਟੋਕਨ, ਪਹੁੰਚ-ਨਿਯੰਤਰਿਤ ਐਡਮਿਨ ਟੂਲ, ਅਕਾਊਂਟ ਡੇਟਾ ਲਈ ਨਿੱਜੀ API ਜਵਾਬ ਅਤੇ ਡੇਟਾਬੇਸ ਪਹੁੰਚ ਪਾਬੰਦੀਆਂ ਵਰਗੇ ਉਪਾਅ ਵਰਤਦੇ ਹਾਂ। ਕੋਈ ਔਨਲਾਈਨ ਸੇਵਾ ਪੂਰੀ ਸੁਰੱਖਿਆ ਦੀ ਗਾਰੰਟੀ ਨਹੀਂ ਦੇ ਸਕਦੀ, ਇਸ ਲਈ ਵਿਲੱਖਣ ਪਾਸਵਰਡ ਵਰਤੋ ਅਤੇ ਅਣਅਧਿਕਾਰਤ ਪਹੁੰਚ ਦਾ ਸ਼ੱਕ ਹੋਵੇ ਤਾਂ ਸਾਨੂੰ ਦੱਸੋ।",
           ],
         },
