@@ -81,6 +81,10 @@ function getSecret() {
   return secret;
 }
 
+export function sessionSecretProblem(): "missing" | null {
+  return process.env.SESSION_SECRET ? null : "missing";
+}
+
 async function hmac(data: string) {
   const key = await crypto.subtle.importKey(
     "raw",
@@ -119,15 +123,17 @@ async function readToken(token: string | undefined): Promise<Payload | null> {
   }
 }
 
+export const SESSION_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: true,
+  sameSite: "lax",
+  path: "/",
+  maxAge: SESSION_DAYS * 86400,
+} as const;
+
 export async function setSessionCookie(uid: string, tokenVersion: number) {
   const jar = await cookies();
-  jar.set(SESSION_COOKIE, await createSessionToken(uid, tokenVersion), {
-    httpOnly: true,
-    secure: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: SESSION_DAYS * 86400,
-  });
+  jar.set(SESSION_COOKIE, await createSessionToken(uid, tokenVersion), SESSION_COOKIE_OPTIONS);
 }
 
 export async function clearSessionCookie() {
