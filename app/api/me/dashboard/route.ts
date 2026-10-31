@@ -2,6 +2,7 @@ import { db } from "@/backend/db";
 import { applications, campaigns, creators } from "@/backend/db/schema";
 import { getSessionUser } from "@/backend/auth";
 import { desc, eq, inArray } from "drizzle-orm";
+import { normalizeCategory, normalizeContentType, normalizeContentTypeList, normalizeLanguage, normalizeLanguageList, normalizePlatform, normalizePromotionType } from "@/shared/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,14 @@ export async function GET() {
       const apps = ids.length
         ? await db.select().from(applications).where(inArray(applications.campaignId, ids)).orderBy(desc(applications.createdAt))
         : [];
-      return Response.json({ user, campaigns: myCampaigns, applications: apps }, { headers: { "Cache-Control": "private, no-store" } });
+      const canonicalCampaigns = myCampaigns.map((row) => ({
+        ...row,
+        promotionType: normalizePromotionType(row.promotionType) ?? row.promotionType,
+        category: normalizeCategory(row.category) ?? row.category,
+        language: normalizeLanguage(row.language) ?? row.language,
+        format: normalizeContentType(row.format) ?? row.format,
+      }));
+      return Response.json({ user, campaigns: canonicalCampaigns, applications: apps }, { headers: { "Cache-Control": "private, no-store" } });
     }
 
     // Creator
@@ -61,7 +69,24 @@ export async function GET() {
       .where(eq(campaigns.status, "open"))
       .orderBy(desc(campaigns.createdAt))
       .limit(6);
-    return Response.json({ user, profiles, applications: myApps, openCampaigns: open }, { headers: { "Cache-Control": "private, no-store" } });
+    const canonicalProfiles = profiles.map((row) => ({
+      ...row,
+      platform: normalizePlatform(row.platform) ?? "Instagram",
+      category: normalizeCategory(row.category) ?? row.category,
+      languages: row.languages ? (normalizeLanguageList(row.languages, true) ?? []).join(", ") : row.languages,
+      contentTypes: row.contentTypes ? (normalizeContentTypeList(row.contentTypes, true) ?? []).join(", ") : row.contentTypes,
+    }));
+    const canonicalApps = myApps.map((row) => ({
+      ...row,
+      format: normalizeContentType(row.format) ?? row.format,
+    }));
+    const canonicalOpen = open.map((row) => ({
+      ...row,
+      promotionType: normalizePromotionType(row.promotionType) ?? row.promotionType,
+      language: normalizeLanguage(row.language) ?? row.language,
+      format: normalizeContentType(row.format) ?? row.format,
+    }));
+    return Response.json({ user, profiles: canonicalProfiles, applications: canonicalApps, openCampaigns: canonicalOpen }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (e) {
     console.error(e);
     return Response.json({ error: "Could not load dashboard" }, { status: 500 });

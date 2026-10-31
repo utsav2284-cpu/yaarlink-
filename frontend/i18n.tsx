@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { normalizeCategory, normalizeContentType, normalizeLanguage, normalizePlatform, normalizePromotionType } from "@/shared/constants";
 
 export type Lang = "en" | "hi" | "pa";
 
@@ -198,6 +199,8 @@ const en: Dict = {
   "cr.email": "Email",
   "cr.city": "City",
   "cr.platform": "Main platform",
+  "cr.both": "Both Instagram & YouTube",
+  "cr.otherPlat": "Other platform",
   "cr.continue": "Continue →",
   "cr.needContact": "Add your name + phone or email to continue.",
   "cr.profileLink": "Profile link *",
@@ -600,6 +603,8 @@ const hi: Dict = {
   "cr.email": "ईमेल",
   "cr.city": "शहर",
   "cr.platform": "मुख्य प्लेटफॉर्म",
+  "cr.both": "Instagram और YouTube दोनों",
+  "cr.otherPlat": "कोई और प्लेटफॉर्म",
   "cr.continue": "आगे →",
   "cr.needContact": "आगे बढ़ने के लिए नाम और फोन या ईमेल डालें।",
   "cr.profileLink": "प्रोफाइल लिंक *",
@@ -995,6 +1000,8 @@ const pa: Dict = {
   "cr.email": "ਈਮੇਲ",
   "cr.city": "ਸ਼ਹਿਰ",
   "cr.platform": "ਮੁੱਖ ਪਲੇਟਫਾਰਮ",
+  "cr.both": "Instagram ਅਤੇ YouTube ਦੋਵੇਂ",
+  "cr.otherPlat": "ਹੋਰ ਪਲੇਟਫਾਰਮ",
   "cr.continue": "ਅੱਗੇ →",
   "cr.needContact": "ਅੱਗੇ ਵਧਣ ਲਈ ਨਾਮ ਅਤੇ ਫੋਨ ਜਾਂ ਈਮੇਲ ਪਾਓ।",
   "cr.profileLink": "ਪ੍ਰੋਫਾਈਲ ਲਿੰਕ *",
@@ -1221,52 +1228,76 @@ const pa: Dict = {
 
 type Map3 = Record<Lang, Record<string, string>>;
 
-/** Categories (must match shared/constants.ts CATEGORIES). */
+/** Categories (must match shared/constants.ts CATEGORIES). Extra keys cover legacy stored labels. */
 const CAT: Map3 = {
   en: {
     "Food & Cafe": "Food & Cafe",
+    "Fashion & Lifestyle": "Fashion & Lifestyle",
+    "Memes & Comedy": "Memes & Comedy",
+    "Education & Motivation": "Education & Motivation",
+    "Tech & Apps": "Tech & Apps",
+    "Travel & Local": "Travel & Local",
+    "Fitness & Health": "Fitness & Health",
+    "Beauty & Skincare": "Beauty & Skincare",
+    "Finance & Business": "Finance & Business",
+    "Music & Entertainment": "Music & Entertainment",
+    "Punjabi Culture": "Punjabi Culture",
+    "Other": "Other",
     "Fashion": "Fashion",
     "Beauty": "Beauty",
-    "Tech & Apps": "Tech & Apps",
     "Education": "Education",
     "Local Services": "Local Services",
-    "Memes & Comedy": "Memes & Comedy",
     "Health": "Health",
     "Travel": "Travel",
     "Money": "Money",
     "Home": "Home",
     "Events": "Events",
-    "Other": "Other",
   },
   hi: {
     "Food & Cafe": "खाना और कैफे",
+    "Fashion & Lifestyle": "फ़ैशन और लाइफस्टाइल",
+    "Memes & Comedy": "मीम और कॉमेडी",
+    "Education & Motivation": "एजुकेशन और प्रेरणा",
+    "Tech & Apps": "टेक और ऐप",
+    "Travel & Local": "ट्रैवल और लोकल",
+    "Fitness & Health": "फिटनेस और सेहत",
+    "Beauty & Skincare": "ब्यूटी और स्किनकेयर",
+    "Finance & Business": "फाइनेंस और बिज़नेस",
+    "Music & Entertainment": "म्यूज़िक और मनोरंजन",
+    "Punjabi Culture": "पंजाबी संस्कृति",
+    "Other": "अन्य",
     "Fashion": "फ़ैशन",
     "Beauty": "ब्यूटी",
-    "Tech & Apps": "टेक और ऐप",
     "Education": "एजुकेशन",
     "Local Services": "लोकल सर्विस",
-    "Memes & Comedy": "मीम और कॉमेडी",
     "Health": "सेहत",
     "Travel": "ट्रैवल",
     "Money": "पैसे",
     "Home": "घर",
     "Events": "इवेंट",
-    "Other": "अन्य",
   },
   pa: {
     "Food & Cafe": "ਖਾਣਾ ਅਤੇ ਕੈਫੇ",
+    "Fashion & Lifestyle": "ਫੈਸ਼ਨ ਅਤੇ ਲਾਈਫਸਟਾਈਲ",
+    "Memes & Comedy": "ਮੀਮ ਅਤੇ ਕਾਮੇਡੀ",
+    "Education & Motivation": "ਐਜੂਕੇਸ਼ਨ ਅਤੇ ਪ੍ਰੇਰਣਾ",
+    "Tech & Apps": "ਟੈਕ ਅਤੇ ਐਪ",
+    "Travel & Local": "ਟ੍ਰੈਵਲ ਅਤੇ ਲੋਕਲ",
+    "Fitness & Health": "ਫਿਟਨੈਸ ਅਤੇ ਸਿਹਤ",
+    "Beauty & Skincare": "ਬਿਊਟੀ ਅਤੇ ਸਕਿਨਕੇਅਰ",
+    "Finance & Business": "ਫਾਈਨੈਂਸ ਅਤੇ ਕਾਰੋਬਾਰ",
+    "Music & Entertainment": "ਮਿਊਜ਼ਿਕ ਅਤੇ ਮਨੋਰੰਜਨ",
+    "Punjabi Culture": "ਪੰਜਾਬੀ ਸੱਭਿਆਚਾਰ",
+    "Other": "ਹੋਰ",
     "Fashion": "ਫੈਸ਼ਨ",
     "Beauty": "ਬਿਊਟੀ",
-    "Tech & Apps": "ਟੈਕ ਅਤੇ ਐਪ",
     "Education": "ਐਜੂਕੇਸ਼ਨ",
     "Local Services": "ਲੋਕਲ ਸਰਵਿਸ",
-    "Memes & Comedy": "ਮੀਮ ਅਤੇ ਕਾਮੇਡੀ",
     "Health": "ਸਿਹਤ",
     "Travel": "ਟ੍ਰੈਵਲ",
     "Money": "ਪੈਸੇ",
     "Home": "ਘਰ",
     "Events": "ਇਵੈਂਟ",
-    "Other": "ਹੋਰ",
   },
 };
 
@@ -1318,9 +1349,9 @@ const LANG: Map3 = {
 
 /** Content types (must match CONTENT_TYPES). */
 const CTYPE: Map3 = {
-  en: { Story: "Story", Reel: "Reel", Post: "Post", "UGC Video": "UGC Video", "YouTube Video": "YouTube Video", "YouTube Short": "YouTube Short", "Meme Post": "Meme Post" },
-  hi: { Story: "स्टोरी", Reel: "रील", Post: "पोस्ट", "UGC Video": "UGC वीडियो", "YouTube Video": "YouTube वीडियो", "YouTube Short": "YouTube शॉर्ट", "Meme Post": "मीम पोस्ट" },
-  pa: { Story: "ਸਟੋਰੀ", Reel: "ਰੀਲ", Post: "ਪੋਸਟ", "UGC Video": "UGC ਵੀਡੀਓ", "YouTube Video": "YouTube ਵੀਡੀਓ", "YouTube Short": "YouTube ਸ਼ਾਰਟ", "Meme Post": "ਮੀਮ ਪੋਸਟ" },
+  en: { Story: "Story", Reel: "Reel", Post: "Post", "UGC Video": "UGC Video", "YouTube Shorts": "YouTube Shorts", "YouTube Short": "YouTube Shorts", "YouTube Video": "YouTube Video", "Meme Post": "Meme Post" },
+  hi: { Story: "स्टोरी", Reel: "रील", Post: "पोस्ट", "UGC Video": "UGC वीडियो", "YouTube Shorts": "YouTube शॉर्ट्स", "YouTube Short": "YouTube शॉर्ट्स", "YouTube Video": "YouTube वीडियो", "Meme Post": "मीम पोस्ट" },
+  pa: { Story: "ਸਟੋਰੀ", Reel: "ਰੀਲ", Post: "ਪੋਸਟ", "UGC Video": "UGC ਵੀਡੀਓ", "YouTube Shorts": "YouTube ਸ਼ਾਰਟਸ", "YouTube Short": "YouTube ਸ਼ਾਰਟਸ", "YouTube Video": "YouTube ਵੀਡੀਓ", "Meme Post": "ਮੀਮ ਪੋਸਟ" },
 };
 
 /** Promotion types (must match PROMOTION_TYPES titles). */
@@ -1358,9 +1389,11 @@ type Ctx = {
   setLang: (l: Lang) => void;
   t: (key: string) => string;
   /** Localise a category / language / content-type label coming from constants. */
-  opt: (value: string) => string;
+  opt: (value: string | null | undefined) => string;
   /** Localise a promotion-type title coming from constants. */
-  promo: (value: string) => string;
+  promo: (value: string | null | undefined) => string;
+  /** Localise a canonical creator-platform value. */
+  platform: (value: string | null | undefined) => string;
 };
 
 const LangCtx = createContext<Ctx | null>(null);
@@ -1396,10 +1429,24 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
     setLang,
     t: (key) => translate(lang, key),
     opt: (v) => {
-      const table = CAT[lang]?.[v] ?? LANG[lang]?.[v] ?? CTYPE[lang]?.[v];
-      return table ?? v;
+      if (!v) return "";
+      const localizePart = (part: string) => {
+        const canonical = normalizeCategory(part) ?? normalizeLanguage(part) ?? normalizeContentType(part) ?? part;
+        return CAT[lang]?.[canonical] ?? LANG[lang]?.[canonical] ?? CTYPE[lang]?.[canonical] ?? canonical;
+      };
+      return v.split(",").map((part) => localizePart(part.trim())).filter(Boolean).join(", ");
     },
-    promo: (v) => PROMO[lang]?.[v] ?? v,
+    promo: (v) => {
+      if (!v) return "";
+      const canonical = normalizePromotionType(v) ?? v;
+      return PROMO[lang]?.[canonical] ?? canonical;
+    },
+    platform: (v) => {
+      const canonical = normalizePlatform(v);
+      if (canonical === "Both") return translate(lang, "cr.both");
+      if (canonical === "Other") return translate(lang, "cr.otherPlat");
+      return canonical ?? v ?? "";
+    },
   };
 
   return <LangCtx.Provider value={value}>{children}</LangCtx.Provider>;

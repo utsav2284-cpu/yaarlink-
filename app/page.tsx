@@ -37,7 +37,7 @@ function formatFollowers(n: number) {
 }
 
 export default function HomePage() {
-  const { t } = useLang();
+  const { t, opt, promo } = useLang();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [creators, setCreators] = useState<Creator[]>([]);
 
@@ -317,9 +317,9 @@ export default function HomePage() {
                   <Link key={c.id} href="/campaigns" className="flex items-center justify-between gap-3 rounded-2xl border border-[#e9ddc3] bg-white p-4 hover:border-[#1c1917]">
                     <div>
                       <p className="text-[15px] font-extrabold">{c.title}</p>
-                      <p className="text-[13px] text-[#78716c]">{c.businessName} • {c.location} • {c.language} • {c.format}</p>
+                      <p className="text-[13px] text-[#78716c]">{c.businessName} • {c.location} • {opt(c.language)} • {opt(c.format)}</p>
                     </div>
-                    <span className="shrink-0 rounded-full bg-[#17452e] px-3 py-1.5 text-[13px] font-bold text-white">{c.promotionType}</span>
+                    <span className="shrink-0 rounded-full bg-[#17452e] px-3 py-1.5 text-[13px] font-bold text-white">{promo(c.promotionType)}</span>
                   </Link>
                 ))}
               </div>
@@ -340,10 +340,10 @@ export default function HomePage() {
                       </span>
                       <div>
                         <p className="text-[14.5px] font-extrabold leading-tight">{cr.name}</p>
-                        <p className="text-[12px] text-[#78716c]">{cr.category} • {formatFollowers(cr.followers)}</p>
+                        <p className="text-[12px] text-[#78716c]">{opt(cr.category)} • {formatFollowers(cr.followers)}</p>
                       </div>
                     </div>
-                    <p className="mt-2 text-[12.5px] font-semibold text-[#57534e]">{cr.location} • {cr.languages}</p>
+                    <p className="mt-2 text-[12.5px] font-semibold text-[#57534e]">{cr.location} • {opt(cr.languages)}</p>
                   </div>
                 ))}
               </div>
