@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { normalizeCategory, normalizeContentType, normalizeLanguage, normalizePlatform, normalizePromotionType } from "@/shared/constants";
+import type { Category, ContentType, Language, PromotionType } from "@/shared/constants";
 
 export type Lang = "en" | "hi" | "pa";
 
@@ -11,11 +12,9 @@ export const LANGS: { code: Lang; label: string; short: string }[] = [
   { code: "pa", label: "ਪੰਜਾਬੀ", short: "ਪੰ" },
 ];
 
-type Dict = Record<string, string>;
-
 /* ------------------------------------------------------------------ ENGLISH */
 
-const en: Dict = {
+const en = {
   /* nav */
   "nav.how": "How it works",
   "nav.brands": "Brands",
@@ -679,6 +678,10 @@ const en: Dict = {
   "cr.phBio": "e.g. Punjabi meme page, 18-24 audience, high story views in Ludhiana & Chandigarh.",
   "camp.applyPhMsg": "Why are you a good fit? (1-2 lines)",
 };
+
+/** English is the source of truth: Hindi and Punjabi must provide every key. */
+export type TranslationKey = keyof typeof en;
+type Dict = Record<TranslationKey, string>;
 
 /* ------------------------------------------------------------------ HINDI */
 
@@ -1972,12 +1975,18 @@ const pa: Dict = {
   "camp.applyPhMsg": "ਤੁਸੀਂ ਕਿਉਂ ਸਹੀ ਹੋ? (1-2 ਲਾਈਨਾਂ)",
 };
 
+const DICTIONARIES: Record<Lang, Dict> = { en, hi, pa };
+
 /* --------------------------------------------------- CONSTANT LABEL LOOKUPS */
 
-type Map3 = Record<Lang, Record<string, string>>;
+/**
+ * Every canonical value from shared/constants.ts must have a label in every
+ * UI language. The string index additionally permits legacy stored labels.
+ */
+type LocalizedLabels<Canonical extends string> = Record<Lang, Record<Canonical, string> & Record<string, string>>;
 
-/** Categories (must match shared/constants.ts CATEGORIES). Extra keys cover legacy stored labels. */
-const CAT: Map3 = {
+/** Categories. Extra keys cover legacy stored labels. */
+const CAT: LocalizedLabels<Category> = {
   en: {
     "Food & Cafe": "Food & Cafe",
     "Fashion & Lifestyle": "Fashion & Lifestyle",
@@ -2049,8 +2058,8 @@ const CAT: Map3 = {
   },
 };
 
-/** Languages (must match LANGUAGES). */
-const LANG: Map3 = {
+/** Languages. Extra keys cover labels outside the canonical language list. */
+const LANG: LocalizedLabels<Language> = {
   en: {
     English: "English",
     Hindi: "Hindi",
@@ -2095,15 +2104,15 @@ const LANG: Map3 = {
   },
 };
 
-/** Content types (must match CONTENT_TYPES). */
-const CTYPE: Map3 = {
+/** Content types. The singular YouTube Short entries are legacy aliases. */
+const CTYPE: LocalizedLabels<ContentType> = {
   en: { Story: "Story", Reel: "Reel", Post: "Post", "UGC Video": "UGC Video", "YouTube Shorts": "YouTube Shorts", "YouTube Short": "YouTube Shorts", "YouTube Video": "YouTube Video", "Meme Post": "Meme Post" },
   hi: { Story: "स्टोरी", Reel: "रील", Post: "पोस्ट", "UGC Video": "UGC वीडियो", "YouTube Shorts": "YouTube शॉर्ट्स", "YouTube Short": "YouTube शॉर्ट्स", "YouTube Video": "YouTube वीडियो", "Meme Post": "मीम पोस्ट" },
   pa: { Story: "ਸਟੋਰੀ", Reel: "ਰੀਲ", Post: "ਪੋਸਟ", "UGC Video": "UGC ਵੀਡੀਓ", "YouTube Shorts": "YouTube ਸ਼ਾਰਟਸ", "YouTube Short": "YouTube ਸ਼ਾਰਟਸ", "YouTube Video": "YouTube ਵੀਡੀਓ", "Meme Post": "ਮੀਮ ਪੋਸਟ" },
 };
 
-/** Promotion types (must match PROMOTION_TYPES titles). */
-const PROMO: Map3 = {
+/** Promotion types. */
+const PROMO: LocalizedLabels<PromotionType> = {
   en: {
     "Local Business": "Local Business",
     "Product": "Product",
@@ -2148,8 +2157,8 @@ const LangCtx = createContext<Ctx | null>(null);
 const STORAGE_KEY = "yaarlink-lang";
 
 function translate(lang: Lang, key: string) {
-  const dict = lang === "hi" ? hi : lang === "pa" ? pa : en;
-  return dict[key] ?? en[key] ?? key;
+  const translationKey = key as TranslationKey;
+  return DICTIONARIES[lang][translationKey] ?? DICTIONARIES.en[translationKey] ?? key;
 }
 
 export function LangProvider({ children }: { children: React.ReactNode }) {
