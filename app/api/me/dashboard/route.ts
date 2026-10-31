@@ -1,3 +1,4 @@
+import { applicationContactOptions, isCompletedCreatorProfile } from "@/backend/application-contact";
 import { db } from "@/backend/db";
 import { applications, campaigns, creators, notifications } from "@/backend/db/schema";
 import { getSessionUser } from "@/backend/auth";
@@ -43,9 +44,20 @@ export async function GET() {
       // Only campaigns explicitly owned by this authenticated user.
       const myCampaigns = await db.select().from(campaigns).where(eq(campaigns.ownerId, user.id)).orderBy(desc(campaigns.createdAt));
       const ids = myCampaigns.map((c) => c.id);
-      const apps = ids.length
-        ? await db.select().from(applications).where(inArray(applications.campaignId, ids)).orderBy(desc(applications.createdAt))
+      const appRows = ids.length
+        ? await db
+            .select({ application: applications, profileName: creators.name })
+            .from(applications)
+            .leftJoin(creators, eq(applications.creatorId, creators.id))
+            .where(inArray(applications.campaignId, ids))
+            .orderBy(desc(applications.createdAt))
         : [];
+      // Show the linked creator profile's current name, not a legacy
+      // free-text snapshot stored on older applications.
+      const apps = appRows.map(({ application, profileName }) => ({
+        ...application,
+        creatorName: profileName || application.creatorName,
+      }));
       const canonicalCampaigns = myCampaigns.map((row) => ({
         ...row,
         promotionType: normalizePromotionType(row.promotionType) ?? row.promotionType,
@@ -112,8 +124,16 @@ export async function GET() {
       language: normalizeLanguage(row.language) ?? row.language,
       format: normalizeContentType(row.format) ?? row.format,
     }));
+    const applicationProfile = profiles.find((profile) => isCompletedCreatorProfile(profile)) ?? profiles[0];
     return Response.json(
-      { user, profiles: canonicalProfiles, applications: canonicalApps, openCampaigns: canonicalOpen, ...notificationData },
+      {
+        user,
+        profiles: canonicalProfiles,
+        applications: canonicalApps,
+        openCampaigns: canonicalOpen,
+        applicationContactOptions: applicationContactOptions(user, applicationProfile).map((option) => option.value),
+        ...notificationData,
+      },
       { headers: NO_STORE },
     );
   } catch (e) {

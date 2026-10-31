@@ -80,6 +80,7 @@ type Data = {
   applications: Application[];
   profiles?: Profile[];
   openCampaigns?: Campaign[];
+  applicationContactOptions?: string[];
   notifications?: Notification[];
   unreadNotificationCount?: number;
 };
@@ -611,9 +612,14 @@ export default function DashboardPage() {
                 onChange={(e) => setApplicationForm((f) => ({ ...f, creatorContact: e.target.value }))}
                 required
                 minLength={3}
+                list={`dashboard-application-contacts-${a.id}`}
                 placeholder={t("camp.applyContact")}
                 className={inputClass}
               />
+              <datalist id={`dashboard-application-contacts-${a.id}`}>
+                {(data.applicationContactOptions ?? []).map((option) => <option key={option} value={option} />)}
+              </datalist>
+              <span className="text-[12.5px] font-semibold leading-relaxed text-[#78716c]">{t("camp.contactMustBeYours")}</span>
             </label>
             <label className={labelClass}>{t("dash.yourMessage")}<textarea value={applicationForm.message} onChange={(e) => setApplicationForm((f) => ({ ...f, message: e.target.value }))} rows={3} placeholder={t("camp.applyPhMsg")} className={inputClass} /></label>
             {reactivating && (

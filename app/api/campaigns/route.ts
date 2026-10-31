@@ -174,10 +174,12 @@ export async function GET() {
       language: normalizeLanguage(row.language) ?? row.language,
       format: normalizeContentType(row.format) ?? row.format,
     }));
-    return Response.json({ campaigns: canonicalRows });
+    // Campaign openness is application-critical state; never let a browser
+    // or intermediary reuse a stale public listing after pause/close.
+    return Response.json({ campaigns: canonicalRows }, { headers: NO_STORE });
   } catch (e) {
     console.error(e);
-    return Response.json({ campaigns: [] }, { status: 500 });
+    return Response.json({ campaigns: [] }, { status: 500, headers: NO_STORE });
   }
 }
 
