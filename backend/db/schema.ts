@@ -119,6 +119,17 @@ export const settings = pgTable("settings", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const adminAuditLogs = pgTable("admin_audit_logs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  action: text("action").notNull(),
+  outcome: text("outcome").notNull().default("success"),
+  entity: text("entity"),
+  entityId: uuid("entity_id"),
+  details: text("details"),
+  ipAddress: text("ip_address"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export type Brand = typeof brands.$inferSelect;
 export type Creator = typeof creators.$inferSelect;
 export type Campaign = typeof campaigns.$inferSelect;

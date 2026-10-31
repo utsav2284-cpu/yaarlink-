@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react";
 import { formatINR } from "@/shared/constants";
 
-type Tab = "campaigns" | "creators" | "reports" | "applications" | "contacts";
+type Tab = "campaigns" | "creators" | "reports" | "applications" | "contacts" | "audit";
 type ModerationEntity = "campaign" | "creator" | "report";
+
+const emptyAdminData = () => ({ campaigns: [], creators: [], applications: [], contacts: [], reports: [], auditLogs: [] });
 
 const REPORT_REASON_LABELS: Record<string, string> = {
   impersonation: "Impersonation / not the owner",
@@ -27,12 +29,14 @@ function statusClass(status?: string | null, isReport = false) {
     case "open":
     case "verified":
     case "resolved":
+    case "success":
       return "bg-green-100 text-green-800";
     case "pending":
       return "bg-amber-100 text-amber-900";
     case "rejected":
     case "suspended":
     case "failed":
+    case "failure":
       return "bg-red-100 text-red-800";
     default:
       return "bg-stone-100 text-stone-700";
@@ -94,15 +98,27 @@ function ProfileLinks({ links }: { links: Array<string | null | undefined> }) {
 }
 
 export default function AdminPage() {
-  const [data, setData] = useState({ campaigns: [], creators: [], applications: [], contacts: [], reports: [] } as any);
+  const [data, setData] = useState<any>(emptyAdminData);
   const [tab, setTab] = useState<Tab>("campaigns");
   const [key, setKey] = useState("");
+  const [totp, setTotp] = useState("");
   const [authed, setAuthed] = useState(false);
   const [err, setErr] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
   const [busyKey, setBusyKey] = useState("");
   const [verifiedFollowers, setVerifiedFollowers] = useState<Record<string, string>>({});
+
+  const clearAdminState = () => {
+    setData(emptyAdminData());
+    setVerifiedFollowers({});
+    setTab("campaigns");
+    setKey("");
+    setTotp("");
+    setNotice("");
+    setBusyKey("");
+    setAuthed(false);
+  };
 
   const load = async () => {
     setLoading(true);
@@ -111,11 +127,12 @@ export default function AdminPage() {
       const res = await fetch("/api/admin/data", { credentials: "include", cache: "no-store" });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Wrong password");
-      setData({ reports: [], ...d });
+      setData({ ...emptyAdminData(), ...d });
       setAuthed(true);
     } catch (e: any) {
-      setErr(e.message);
-      setAuthed(false);
+      const message = e.message || "Could not load admin data";
+      clearAdminState();
+      setErr(message);
     } finally {
       setLoading(false);
     }
@@ -163,11 +180,55 @@ export default function AdminPage() {
     }
   };
 
+  const login = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setErr("");
+    setNotice("");
+    try {
+      const res = await fetch("/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ password: key, totp: totp.trim() || undefined }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "Wrong password");
+      setKey("");
+      setTotp("");
+      await load();
+    } catch (error: any) {
+      setData(emptyAdminData());
+      setVerifiedFollowers({});
+      setTotp("");
+      setAuthed(false);
+      setErr(error.message || "Could not log in");
+      setLoading(false);
+    }
+  };
+
+  const lockAdmin = async () => {
+    // Remove sensitive rows from memory/DOM immediately; the browser cookie is
+    // independent of React state and is still sent with the logout request.
+    clearAdminState();
+    setErr("");
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/logout", { method: "POST", credentials: "include", cache: "no-store" });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "Server-side sign-out failed. Please try again.");
+    } catch (error: any) {
+      setErr(error.message || "Admin data was cleared locally, but server-side sign-out failed. Log in again and choose Lock admin to revoke all sessions.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (!authed) {
     return (
       <div className="mx-auto max-w-md px-4 py-16">
         <form
-          onSubmit={async (e) => { e.preventDefault(); setLoading(true); setErr(""); try { const res = await fetch("/api/admin/login", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ password: key }) }); const d = await res.json(); if (!res.ok) throw new Error(d.error || "Wrong password"); setKey(""); await load(); } catch (e: any) { setErr(e.message); setAuthed(false); setLoading(false); } }}
+          onSubmit={login}
           className="rounded-[28px] border border-[#e9ddc3] bg-white p-8 card-shadow"
         >
           <p className="text-[12.5px] font-bold uppercase tracking-widest text-[#e4572e]">Owner only 🔒</p>
@@ -178,7 +239,17 @@ export default function AdminPage() {
             value={key}
             onChange={(e) => setKey(e.target.value)}
             placeholder="Admin password"
-            className="mt-5 rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]"
+            autoComplete="current-password"
+            className="mt-5 w-full rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]"
+          />
+          <input
+            type="text"
+            value={totp}
+            onChange={(e) => setTotp(e.target.value.replace(/[^0-9 ]/g, "").slice(0, 7))}
+            placeholder="Authenticator code (if enabled)"
+            autoComplete="one-time-code"
+            inputMode="numeric"
+            className="mt-3 w-full rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]"
           />
           {err && <p className="mt-3 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-[13.5px] font-bold text-red-700">{err}</p>}
           <button disabled={loading || !key} className="mt-4 w-full rounded-2xl bg-[#1c1917] py-3.5 text-[15.5px] font-extrabold text-white disabled:opacity-50">
@@ -194,19 +265,21 @@ export default function AdminPage() {
   const applications = data.applications ?? [];
   const contacts = data.contacts ?? [];
   const reports = data.reports ?? [];
+  const auditLogs = data.auditLogs ?? [];
   const pendingReviews =
     campaigns.filter((c: any) => c.status === "pending").length +
     creators.filter((c: any) => c.status === "pending").length;
   const openReports = reports.filter((r: any) => r.status === "open").length;
   const activeRows =
-    tab === "campaigns" ? campaigns : tab === "creators" ? creators : tab === "reports" ? reports : tab === "applications" ? applications : contacts;
+    tab === "campaigns" ? campaigns : tab === "creators" ? creators : tab === "reports" ? reports : tab === "applications" ? applications : tab === "audit" ? auditLogs : contacts;
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
       <div className="mb-2 flex justify-end">
         <button
-          onClick={async () => { await fetch("/api/admin/logout", { method: "POST", credentials: "include" }); setAuthed(false); setKey(""); }}
-          className="rounded-full border border-[#e9ddc3] bg-white px-4 py-2 text-[13px] font-bold"
+          onClick={lockAdmin}
+          disabled={loading}
+          className="rounded-full border border-[#e9ddc3] bg-white px-4 py-2 text-[13px] font-bold disabled:cursor-not-allowed disabled:opacity-50"
         >
           Lock admin 🔒
         </button>
@@ -244,6 +317,7 @@ export default function AdminPage() {
           { id: "reports", label: `reports${openReports ? ` (${openReports})` : ""}` },
           { id: "applications", label: "applications" },
           { id: "contacts", label: "contacts" },
+          { id: "audit", label: "audit log" },
         ] as Array<{ id: Tab; label: string }>).map((item) => (
           <button
             key={item.id}
@@ -483,6 +557,37 @@ export default function AdminPage() {
           <table className="w-full min-w-[640px] text-left text-[13.5px]">
             <thead><tr className="border-b border-[#f0e6cc] text-[#a8a29e]"><th className="p-4">Name</th><th className="p-4">Type</th><th className="p-4">Message</th><th className="p-4">Contact</th></tr></thead>
             <tbody>{contacts.map((c: any) => <tr key={c.id} className="border-b border-[#faf3e0]"><td className="p-4 font-bold">{c.name}</td><td className="p-4">{c.kind}</td><td className="p-4">{c.message}</td><td className="p-4">{c.phone || c.email}</td></tr>)}</tbody>
+          </table>
+        )}
+        {tab === "audit" && (
+          <table className="w-full min-w-[920px] text-left text-[13.5px]">
+            <thead>
+              <tr className="border-b border-[#f0e6cc] text-[#a8a29e]">
+                <th className="p-4">Time</th>
+                <th className="p-4">Action</th>
+                <th className="p-4">Outcome</th>
+                <th className="p-4">Target</th>
+                <th className="p-4">Details</th>
+              </tr>
+            </thead>
+            <tbody>
+              {auditLogs.map((log: any) => (
+                <tr key={log.id} className="border-b border-[#faf3e0] align-top">
+                  <td className="whitespace-nowrap p-4 text-[12.5px] text-[#78716c]">{formatDate(log.createdAt)}</td>
+                  <td className="p-4 font-mono text-[12.5px] font-bold">{log.action}</td>
+                  <td className="p-4"><StatusPill status={log.outcome} /></td>
+                  <td className="max-w-[220px] p-4">
+                    {log.entity ? <p className="font-semibold capitalize">{log.entity}</p> : <span className="text-stone-400">Admin</span>}
+                    {log.entityId && <p className="mt-1 break-all text-[11.5px] text-[#a8a29e]">{log.entityId}</p>}
+                  </td>
+                  <td className="max-w-[360px] p-4">
+                    {log.details && <p className="break-all font-mono text-[11.5px] leading-relaxed text-[#57534e]">{log.details}</p>}
+                    {log.ipAddress && <p className="mt-1 text-[11.5px] text-[#a8a29e]">IP: {log.ipAddress}</p>}
+                    {!log.details && !log.ipAddress && <span className="text-stone-400">—</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
           </table>
         )}
         {activeRows.length === 0 && <p className="p-8 text-center text-[14px] text-[#a8a29e]">Nothing here yet — data will appear as people sign up.</p>}

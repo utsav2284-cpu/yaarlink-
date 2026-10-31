@@ -56,6 +56,7 @@ npx wrangler secret put DATABASE_URL     # paste the Neon URL
 npx wrangler secret put ADMIN_PASSWORD   # a long password only you know (for /admin)
 npx wrangler secret put SESSION_SECRET   # any long random text (signs login cookies)
 npx wrangler secret put ADMIN_SESSION_SECRET   # a *different* long random text (signs the admin cookie)
+# Optional: npx wrangler secret put ADMIN_TOTP_SECRET   # Base32 authenticator secret for admin MFA
 npx opennextjs-cloudflare build
 npx opennextjs-cloudflare deploy
 ```
@@ -72,7 +73,7 @@ Cloudflare dashboard → **Workers & Pages → Create → Import a repository** 
 - Build command: `npx opennextjs-cloudflare build`
 - Deploy command: `npx opennextjs-cloudflare deploy`
 
-Then in the Worker → **Settings → Variables and Secrets**, add `DATABASE_URL`, `ADMIN_PASSWORD`, `SESSION_SECRET`, `ADMIN_SESSION_SECRET` (type **Secret**). `ADMIN_SESSION_SECRET` must be different from `SESSION_SECRET`, or admin login is disabled.
+Then in the Worker → **Settings → Variables and Secrets**, add `DATABASE_URL`, `ADMIN_PASSWORD`, `SESSION_SECRET`, `ADMIN_SESSION_SECRET` (type **Secret**). `ADMIN_SESSION_SECRET` must be different from `SESSION_SECRET`, or admin login is disabled. Optionally add `ADMIN_TOTP_SECRET` with a Base32 secret enrolled in your authenticator app to require a six-digit code at `/admin`; leave it unset for password-only login.
 
 ## 4 · Connect theyaar.com
 

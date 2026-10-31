@@ -29,6 +29,11 @@ Use different values for `SESSION_SECRET` and `ADMIN_SESSION_SECRET`. `ADMIN_SES
 mandatory: if it is missing or equal to `SESSION_SECRET`, `/api/admin/login` and `/api/admin/logout`
 return HTTP 503 instead of sharing a signing key.
 
+Optional admin MFA: set `ADMIN_TOTP_SECRET` to a valid Base32 TOTP secret (at least 16 Base32
+characters) after enrolling that secret in the owner's authenticator app. When set, `/admin`
+requires the current six-digit code in addition to `ADMIN_PASSWORD`. If the value is invalid or
+too short, admin login returns HTTP 503; it does not fall back to password-only access.
+
 ## 3. Security behavior in this release
 
 - Campaign creation requires an authenticated **brand** account.
@@ -39,6 +44,10 @@ return HTTP 503 instead of sharing a signing key.
 - Login/signup/admin/public-write endpoints have request throttling. `admin-login` also has a hard
   client lockout with exponential backoff after repeated failures (per Worker isolate).
 - Session cookies are `__Host-`-prefixed and always `Secure`; logout revokes the session server-side.
+- Admin tokens carry a DB-backed session version; admin logout increments it, revoking copied or
+  previously issued admin cookies, and the admin page clears loaded data from browser state.
+- Admin logins, logouts, and moderation decisions are recorded in the append-only
+  `admin_audit_logs` table and shown on the admin **audit log** tab.
 - Public inputs have length/type/URL/email validation.
 - Sensitive admin/dashboard responses are `no-store`.
 - Public campaign/creator APIs do not expose private contact/budget fields.
@@ -54,7 +63,13 @@ Before production, verify the deployment build completes successfully in the dep
 
 ## 5. Admin
 
-Open `/admin` and use the value of `ADMIN_PASSWORD`. The password is exchanged only over HTTPS and replaced by a short-lived HttpOnly admin session cookie. Repeated wrong passwords from one client trigger a temporary lockout. Rotate `ADMIN_PASSWORD`, `SESSION_SECRET` and `ADMIN_SESSION_SECRET` if any admin session was ever issued while the old shared-secret fallback was in place.
+Open `/admin` and use the value of `ADMIN_PASSWORD` (plus the authenticator code if
+`ADMIN_TOTP_SECRET` is set). The password is exchanged only over HTTPS and replaced by a
+short-lived HttpOnly admin session cookie. Repeated wrong passwords/codes from one client trigger
+a temporary lockout. **Lock admin** revokes all current admin sessions server-side, so a copied
+cookie cannot be replayed after logout. Rotate `ADMIN_PASSWORD`, `SESSION_SECRET` and
+`ADMIN_SESSION_SECRET` if any admin session was ever issued while the old shared-secret fallback
+was in place.
 
 ## 6. Important operational recommendation
 

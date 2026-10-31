@@ -1,6 +1,7 @@
 import { db } from "@/backend/db";
 import { campaigns, creators, reports } from "@/backend/db/schema";
 import { isAdmin } from "@/backend/admin";
+import { logAdminAudit } from "@/backend/admin-audit";
 import { createVerificationCode, isUuid, normalizeReviewStatus } from "@/backend/moderation";
 import { and, eq } from "drizzle-orm";
 
@@ -39,6 +40,14 @@ export async function POST(req: Request) {
     }
     if (!isUuid(id)) return Response.json({ error: "Invalid moderation target" }, { status: 400, headers: NO_STORE });
 
+    const auditModeration = (details: Record<string, string | number | boolean | null | undefined> = {}) =>
+      logAdminAudit(req, {
+        action: `moderation.${entity}.${action || "unknown"}`,
+        entity,
+        entityId: id,
+        details,
+      });
+
     if (entity === "creator") {
       const [existing] = await db.select().from(creators).where(eq(creators.id, id)).limit(1);
       if (!existing) return Response.json({ error: "Creator not found" }, { status: 404, headers: NO_STORE });
@@ -46,6 +55,7 @@ export async function POST(req: Request) {
       if (action === "delete") {
         await db.delete(creators).where(eq(creators.id, id));
         await resolveOpenReports("creator", id, now);
+        await auditModeration({ fromStatus: existing.status, toStatus: "deleted" });
         return Response.json({ ok: true, deleted: true }, { headers: NO_STORE });
       }
 
@@ -81,6 +91,7 @@ export async function POST(req: Request) {
           })
           .where(eq(creators.id, id))
           .returning({ id: creators.id, status: creators.status, verificationStatus: creators.verificationStatus, verifiedFollowers: creators.verifiedFollowers, reviewedAt: creators.reviewedAt });
+        await auditModeration({ fromStatus: existing.status, toStatus: creator?.status ?? "approved", verifiedFollowers, notePresent: Boolean(note) });
         return Response.json({ ok: true, creator }, { headers: NO_STORE });
       }
 
@@ -97,6 +108,7 @@ export async function POST(req: Request) {
           .where(eq(creators.id, id))
           .returning({ id: creators.id, status: creators.status, verificationStatus: creators.verificationStatus, reviewedAt: creators.reviewedAt });
         await resolveOpenReports("creator", id, now);
+        await auditModeration({ fromStatus: existing.status, toStatus: creator?.status ?? null, notePresent: Boolean(note) });
         return Response.json({ ok: true, creator }, { headers: NO_STORE });
       }
 
@@ -113,6 +125,7 @@ export async function POST(req: Request) {
           })
           .where(eq(creators.id, id))
           .returning({ id: creators.id, status: creators.status, verificationStatus: creators.verificationStatus, verificationCode: creators.verificationCode });
+        await auditModeration({ fromStatus: existing.status, toStatus: creator?.status ?? "pending", codeIssued: !existing.verificationCode, notePresent: Boolean(note) });
         return Response.json({ ok: true, creator }, { headers: NO_STORE });
       }
 
@@ -126,6 +139,7 @@ export async function POST(req: Request) {
       if (action === "delete") {
         await db.delete(campaigns).where(eq(campaigns.id, id));
         await resolveOpenReports("campaign", id, now);
+        await auditModeration({ fromStatus: existing.status, toStatus: "deleted" });
         return Response.json({ ok: true, deleted: true }, { headers: NO_STORE });
       }
 
@@ -143,6 +157,7 @@ export async function POST(req: Request) {
           })
           .where(eq(campaigns.id, id))
           .returning({ id: campaigns.id, status: campaigns.status, verificationStatus: campaigns.verificationStatus, reviewedAt: campaigns.reviewedAt });
+        await auditModeration({ fromStatus: existing.status, toStatus: campaign?.status ?? "open", notePresent: Boolean(note) });
         return Response.json({ ok: true, campaign }, { headers: NO_STORE });
       }
 
@@ -158,6 +173,7 @@ export async function POST(req: Request) {
           .where(eq(campaigns.id, id))
           .returning({ id: campaigns.id, status: campaigns.status, verificationStatus: campaigns.verificationStatus, reviewedAt: campaigns.reviewedAt });
         await resolveOpenReports("campaign", id, now);
+        await auditModeration({ fromStatus: existing.status, toStatus: campaign?.status ?? null, notePresent: Boolean(note) });
         return Response.json({ ok: true, campaign }, { headers: NO_STORE });
       }
 
@@ -173,6 +189,7 @@ export async function POST(req: Request) {
           })
           .where(eq(campaigns.id, id))
           .returning({ id: campaigns.id, status: campaigns.status, verificationStatus: campaigns.verificationStatus, verificationCode: campaigns.verificationCode });
+        await auditModeration({ fromStatus: existing.status, toStatus: campaign?.status ?? "pending", codeIssued: !existing.verificationCode, notePresent: Boolean(note) });
         return Response.json({ ok: true, campaign }, { headers: NO_STORE });
       }
 
@@ -195,6 +212,13 @@ export async function POST(req: Request) {
       })
       .where(eq(reports.id, id))
       .returning({ id: reports.id, status: reports.status, resolvedAt: reports.resolvedAt });
+    await auditModeration({
+      fromStatus: existingReport.status,
+      toStatus: report?.status ?? null,
+      targetType: existingReport.targetType,
+      targetId: existingReport.targetId,
+      notePresent: Boolean(note),
+    });
     return Response.json({ ok: true, report }, { headers: NO_STORE });
   } catch (e) {
     console.error(e);

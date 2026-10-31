@@ -7,16 +7,18 @@ import { getClientKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
 
 export const dynamic = "force-dynamic";
 
+const NO_STORE = { "Cache-Control": "private, no-store" };
+
 // Applications contain creators' contact details — owner (admin) only.
 // Brands see applications for their own campaigns via /api/me/dashboard.
 export async function GET() {
-  if (!(await isAdmin())) return Response.json({ error: "Not allowed" }, { status: 401 });
+  if (!(await isAdmin())) return Response.json({ error: "Not allowed" }, { status: 401, headers: NO_STORE });
   try {
     const rows = await db.select().from(applications).orderBy(desc(applications.createdAt)).limit(200);
-    return Response.json({ applications: rows });
+    return Response.json({ applications: rows }, { headers: NO_STORE });
   } catch (e) {
     console.error(e);
-    return Response.json({ applications: [] }, { status: 500 });
+    return Response.json({ applications: [] }, { status: 500, headers: NO_STORE });
   }
 }
 

@@ -1,28 +1,81 @@
-import { adminSecretProblem, createAdminSession, verifyAdminPassword } from "@/backend/admin";
+import { adminSecretProblem, adminTotpProblem, createAdminSession, isAdminTotpEnabled, verifyAdminPassword, verifyAdminTotp } from "@/backend/admin";
+import { logAdminAudit } from "@/backend/admin-audit";
 import { authLockoutSeconds, clearAuthFailures, getClientKey, limitedResponse, rateLimit, registerAuthFailure } from "@/backend/rate-limit";
+
 export const dynamic = "force-dynamic";
+
+const NO_STORE = { "Cache-Control": "private, no-store" };
+
+function failedAttemptResponse(clientKey: string, error: string) {
+  const lockFor = registerAuthFailure(clientKey);
+  if (lockFor > 0) {
+    return Response.json(
+      { error: "Too many failed attempts. Please try again later." },
+      { status: 429, headers: { "Retry-After": String(lockFor), ...NO_STORE } },
+    );
+  }
+  return Response.json({ error }, { status: 401, headers: NO_STORE });
+}
+
 export async function POST(req: Request) {
-  // C1: refuse to operate unless a distinct admin signing secret is configured.
-  if (adminSecretProblem()) {
-    return Response.json({ error: "Admin login is not configured." }, { status: 503, headers: { "Cache-Control": "no-store" } });
+  // Refuse to operate unless a distinct admin signing secret is configured.
+  // An invalid TOTP secret also fails closed instead of silently using password-only auth.
+  if (adminSecretProblem() || adminTotpProblem()) {
+    return Response.json({ error: "Admin login is not configured." }, { status: 503, headers: NO_STORE });
   }
   const clientKey = getClientKey(req, "admin-login");
   const rl = rateLimit(clientKey, 5, 5 * 60_000);
   if (!rl.ok) return limitedResponse(rl.retryAfter);
-  // H1: hard lockout + exponential backoff on repeated failures from this client.
+  // Hard lockout + exponential backoff on repeated failures from this client.
   const locked = authLockoutSeconds(clientKey);
   if (locked > 0) return limitedResponse(locked);
+
   try {
-    const b = await req.json(); const password = String(b.password || "");
-    if (!password) return Response.json({ error: "Password required" }, { status: 400 });
-    if (!(await verifyAdminPassword(password))) {
-      const lockFor = registerAuthFailure(clientKey);
-      if (lockFor > 0) return Response.json({ error: "Too many failed attempts. Please try again later." }, { status: 429, headers: { "Retry-After": String(lockFor), "Cache-Control": "no-store" } });
-      return Response.json({ error: "Wrong password" }, { status: 401, headers: { "Cache-Control": "no-store" } });
+    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+    const password = typeof body?.password === "string" ? body.password : "";
+    const mfaUsed = isAdminTotpEnabled();
+    if (!password) {
+      await logAdminAudit(req, {
+        action: "admin.login",
+        outcome: "failure",
+        details: { reason: "missing_password", mfaConfigured: mfaUsed },
+      });
+      return Response.json({ error: "Password required" }, { status: 400, headers: NO_STORE });
     }
+
+    if (!(await verifyAdminPassword(password))) {
+      await logAdminAudit(req, {
+        action: "admin.login",
+        outcome: "failure",
+        details: { reason: "wrong_password", mfaConfigured: mfaUsed },
+      });
+      return failedAttemptResponse(clientKey, mfaUsed ? "Wrong password or authenticator code" : "Wrong password");
+    }
+
+    if (mfaUsed && !(await verifyAdminTotp(body?.totp))) {
+      await logAdminAudit(req, {
+        action: "admin.login",
+        outcome: "failure",
+        details: { reason: "invalid_totp", mfaConfigured: true },
+      });
+      return failedAttemptResponse(clientKey, "Wrong password or authenticator code");
+    }
+
     const priorFailures = clearAuthFailures(clientKey);
     if (priorFailures > 0) console.warn(`[admin-login] success after ${priorFailures} failed attempt(s) from ${clientKey}`);
     await createAdminSession();
-    return Response.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
-  } catch (e) { console.error(e); return Response.json({ error: "Could not log in" }, { status: 500 }); }
+    await logAdminAudit(req, {
+      action: "admin.login",
+      details: { mfaUsed, priorFailures },
+    });
+    return Response.json({ ok: true, mfaUsed }, { headers: NO_STORE });
+  } catch (error) {
+    console.error(error);
+    await logAdminAudit(req, {
+      action: "admin.login",
+      outcome: "failure",
+      details: { reason: "server_error" },
+    });
+    return Response.json({ error: "Could not log in" }, { status: 500, headers: NO_STORE });
+  }
 }
