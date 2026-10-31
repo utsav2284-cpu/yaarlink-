@@ -118,6 +118,7 @@ export const creators = pgTable(
     moderationNote: text("moderation_note"),
     reviewedAt: timestamp("reviewed_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
     // Applications use this as the target of a composite FK, proving that the
@@ -182,6 +183,7 @@ export const campaigns = pgTable(
     moderationNote: text("moderation_note"),
     reviewedAt: timestamp("reviewed_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
     index("campaigns_public_review_idx").on(table.status, table.verificationStatus, table.createdAt.desc()),
@@ -203,7 +205,7 @@ export const campaigns = pgTable(
       "campaigns_format_check",
       sql`${table.format} in ('Story', 'Reel', 'Post', 'UGC Video', 'YouTube Shorts', 'YouTube Video')`,
     ),
-    check("campaigns_status_check", sql`${table.status} in ('pending', 'open', 'rejected', 'closed')`),
+    check("campaigns_status_check", sql`${table.status} in ('pending', 'open', 'paused', 'rejected', 'suspended', 'closed')`),
     check(
       "campaigns_verification_status_check",
       sql`${table.verificationStatus} in ('unverified', 'pending', 'verified', 'failed')`,
@@ -233,7 +235,10 @@ export const applications = pgTable(
     creatorContact: text("creator_contact"),
     message: text("message"),
     status: text("status").notNull().default("applied"),
+    decisionNote: text("decision_note"),
+    decisionAt: timestamp("decision_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
     // One application per creator account per campaign, enforced atomically by Postgres.
@@ -248,8 +253,48 @@ export const applications = pgTable(
     index("applications_user_created_idx").on(table.userId, table.createdAt.desc()),
     index("applications_creator_created_idx").on(table.creatorId, table.createdAt.desc()),
     index("applications_campaign_contact_idx").on(table.campaignId, table.creatorContact),
+    index("applications_campaign_status_created_idx").on(table.campaignId, table.status, table.createdAt.desc()),
+    index("applications_user_status_created_idx").on(table.userId, table.status, table.createdAt.desc()),
     index("applications_created_at_idx").on(table.createdAt.desc()),
-    check("applications_status_check", sql`${table.status} = 'applied'`),
+    check(
+      "applications_status_check",
+      sql`${table.status} in ('applied', 'shortlisted', 'rejected', 'hired', 'completed', 'withdrawn')`,
+    ),
+  ],
+);
+
+// Snapshot fields let a notification remain understandable after the linked
+// campaign/application is deleted, while `kind` lets the dashboard localize
+// the surrounding sentence instead of storing display-language copy in the DB.
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    campaignId: uuid("campaign_id").references(() => campaigns.id, { onDelete: "set null" }),
+    applicationId: uuid("application_id").references(() => applications.id, { onDelete: "set null" }),
+    campaignTitle: text("campaign_title").notNull(),
+    actorName: text("actor_name"),
+    applicationStatus: text("application_status"),
+    readAt: timestamp("read_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("notifications_user_created_idx").on(table.userId, table.createdAt.desc()),
+    index("notifications_user_read_created_idx").on(table.userId, table.readAt, table.createdAt.desc()),
+    check(
+      "notifications_kind_check",
+      sql`${table.kind} in ('application_received', 'application_withdrawn', 'application_status')`,
+    ),
+    check(
+      "notifications_application_status_check",
+      sql`${table.applicationStatus} is null or ${table.applicationStatus} in ('applied', 'shortlisted', 'rejected', 'hired', 'completed', 'withdrawn')`,
+    ),
+    check("notifications_campaign_title_check", sql`char_length(${table.campaignTitle}) between 1 and 160`),
+    check("notifications_actor_name_check", sql`${table.actorName} is null or char_length(${table.actorName}) <= 120`),
   ],
 );
 
@@ -340,3 +385,5 @@ export type Campaign = typeof campaigns.$inferSelect;
 export type Report = typeof reports.$inferSelect;
 export type AppUser = typeof users.$inferSelect;
 export type PendingSignup = typeof pendingSignups.$inferSelect;
+export type Application = typeof applications.$inferSelect;
+export type Notification = typeof notifications.$inferSelect;

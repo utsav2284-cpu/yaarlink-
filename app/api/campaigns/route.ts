@@ -1,13 +1,145 @@
 import { db } from "@/backend/db";
-import { campaigns } from "@/backend/db/schema";
+import { campaigns, type Campaign } from "@/backend/db/schema";
 import { and, desc, eq } from "drizzle-orm";
-import { getSessionUser } from "@/backend/auth";
-import { createVerificationCode } from "@/backend/moderation";
+import { getSessionUser, type SessionUser } from "@/backend/auth";
+import { createVerificationCode, isUuid } from "@/backend/moderation";
 import { getClientKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
 import { normalizeProfileUrl } from "@/backend/social-url";
 import { normalizeCategory, normalizeContentType, normalizeLanguage, normalizePromotionType } from "@/shared/constants";
 
 export const dynamic = "force-dynamic";
+
+const NO_STORE = { "Cache-Control": "private, no-store" };
+const CAMPAIGN_FIELDS = [
+  "businessName",
+  "contactName",
+  "email",
+  "phone",
+  "title",
+  "promotionType",
+  "category",
+  "description",
+  "budget",
+  "location",
+  "language",
+  "targetAudience",
+  "format",
+  "website",
+] as const;
+
+type CampaignValues = {
+  businessName: string;
+  contactName: string | null;
+  email: string | null;
+  phone: string | null;
+  title: string;
+  promotionType: string;
+  category: string | null;
+  description: string | null;
+  budget: number;
+  location: string | null;
+  language: string;
+  targetAudience: string | null;
+  format: string;
+  website: string | null;
+};
+
+type ParseResult = { ok: true; values: CampaignValues } | { ok: false; error: string };
+
+function bodyRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function hasField(body: Record<string, unknown>, field: string) {
+  return Object.prototype.hasOwnProperty.call(body, field);
+}
+
+function optionalText(value: unknown, maxLength: number): string | null {
+  if (value == null) return null;
+  const cleaned = String(value).trim();
+  return cleaned ? cleaned.slice(0, maxLength) : null;
+}
+
+function parseCampaign(body: Record<string, unknown>, user: SessionUser, current?: Campaign): ParseResult {
+  const businessName = optionalText(hasField(body, "businessName") ? body.businessName : current?.businessName, 120);
+  const title = optionalText(hasField(body, "title") ? body.title : current?.title, 160);
+  if (!businessName || !title) return { ok: false, error: "Business name and title required" };
+
+  const rawEmail = hasField(body, "email") ? body.email : current?.email;
+  const emailInput = rawEmail == null ? "" : String(rawEmail).toLowerCase().trim();
+  const email = emailInput || (current && hasField(body, "email") ? null : user.email);
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: "Please enter a valid email." };
+
+  const rawWebsite = hasField(body, "website") ? body.website : current?.website;
+  let website: string | null = null;
+  if (rawWebsite) {
+    website = normalizeProfileUrl(rawWebsite, "Instagram");
+    if (!website) return { ok: false, error: "Please enter a valid website or Instagram URL." };
+    website = website.slice(0, 200);
+  }
+
+  const rawBudget = hasField(body, "budget") ? body.budget : current?.budget;
+  const budget = Math.round(Number(rawBudget));
+  if (!Number.isFinite(budget) || budget < 500 || budget > 10_000_000) {
+    return { ok: false, error: "Please enter a budget between ₹500 and ₹1,00,00,000." };
+  }
+
+  const rawPromotionType = hasField(body, "promotionType") ? body.promotionType : current?.promotionType;
+  const hasPromotionType = !(rawPromotionType == null || (typeof rawPromotionType === "string" && !rawPromotionType.trim()));
+  const promotionType = hasPromotionType ? normalizePromotionType(rawPromotionType) : "Product";
+  if (!promotionType) return { ok: false, error: "Please choose a valid promotion type." };
+
+  const rawCategory = hasField(body, "category") ? body.category : current?.category;
+  const hasCategory = !(rawCategory == null || (typeof rawCategory === "string" && !rawCategory.trim()));
+  const category = hasCategory ? normalizeCategory(rawCategory) : null;
+  if (hasCategory && !category) return { ok: false, error: "Please choose a valid category." };
+
+  const rawLanguage = hasField(body, "language") ? body.language : current?.language;
+  const hasLanguage = !(rawLanguage == null || (typeof rawLanguage === "string" && !rawLanguage.trim()));
+  const language = hasLanguage ? normalizeLanguage(rawLanguage) : "English";
+  if (!language) return { ok: false, error: "Please choose a valid language." };
+
+  const rawFormat = hasField(body, "format") ? body.format : current?.format;
+  const hasFormat = !(rawFormat == null || (typeof rawFormat === "string" && !rawFormat.trim()));
+  const format = hasFormat ? normalizeContentType(rawFormat) : "Story";
+  if (!format) return { ok: false, error: "Please choose a valid format." };
+
+  return {
+    ok: true,
+    values: {
+      businessName,
+      contactName: optionalText(hasField(body, "contactName") ? body.contactName : current?.contactName, 100),
+      email: email ? email.slice(0, 120) : null,
+      phone: optionalText(hasField(body, "phone") ? body.phone : current?.phone, 20),
+      title,
+      promotionType,
+      category,
+      description: optionalText(hasField(body, "description") ? body.description : current?.description, 2000),
+      budget,
+      location: optionalText(hasField(body, "location") ? body.location : current?.location, 100),
+      language,
+      targetAudience: optionalText(hasField(body, "targetAudience") ? body.targetAudience : current?.targetAudience, 300),
+      format,
+      website,
+    },
+  };
+}
+
+const returningCampaign = {
+  id: campaigns.id,
+  title: campaigns.title,
+  status: campaigns.status,
+  verificationCode: campaigns.verificationCode,
+  verificationStatus: campaigns.verificationStatus,
+  updatedAt: campaigns.updatedAt,
+};
+
+async function requireBrand() {
+  const user = await getSessionUser().catch(() => null);
+  if (!user) return { error: Response.json({ error: "Please log in as a brand to manage campaigns." }, { status: 401, headers: NO_STORE }) };
+  if (user.role !== "brand") return { error: Response.json({ error: "Only brand accounts can manage campaigns." }, { status: 403, headers: NO_STORE }) };
+  return { user };
+}
 
 // Public listing: budget and brand contact details are owner-only and never sent to users.
 export async function GET() {
@@ -30,7 +162,8 @@ export async function GET() {
         createdAt: campaigns.createdAt,
       })
       .from(campaigns)
-      // Fail closed: pending, rejected, closed, and unverified campaigns stay private.
+      // Fail closed: pending, paused, rejected, suspended, closed, and
+      // unverified campaigns stay private.
       .where(and(eq(campaigns.status, "open"), eq(campaigns.verificationStatus, "verified")))
       .orderBy(desc(campaigns.createdAt))
       .limit(50);
@@ -52,69 +185,198 @@ export async function POST(req: Request) {
   const rl = rateLimit(getClientKey(req, "campaign-create"), 5, 60 * 60_000);
   if (!rl.ok) return limitedResponse(rl.retryAfter);
   try {
-    const b = await req.json();
-    const user = await getSessionUser().catch(() => null);
-    if (!user) return Response.json({ error: "Please log in as a brand before creating a campaign." }, { status: 401, headers: { "Cache-Control": "no-store" } });
-    if (user.role !== "brand") return Response.json({ error: "Only brand accounts can create campaigns." }, { status: 403 });
-    if (!b.email) b.email = user.email;
-    if (!b.businessName || !b.title) return Response.json({ error: "Business name and title required" }, { status: 400 });
-    const email = b.email ? String(b.email).toLowerCase().trim() : "";
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return Response.json({ error: "Please enter a valid email." }, { status: 400 });
-    let website: string | null = null;
-    if (b.website) {
-      website = normalizeProfileUrl(b.website, "Instagram");
-      if (!website) return Response.json({ error: "Please enter a valid website or Instagram URL." }, { status: 400 });
-      website = website.slice(0, 200);
-    }
-    const budget = Math.round(Number(b.budget));
-    if (!Number.isFinite(budget) || budget < 500 || budget > 10_000_000) {
-      return Response.json({ error: "Please enter a budget between ₹500 and ₹1,00,00,000." }, { status: 400 });
-    }
+    const body = bodyRecord(await req.json().catch(() => null));
+    if (!body) return Response.json({ error: "Invalid campaign" }, { status: 400, headers: NO_STORE });
+    const auth = await requireBrand();
+    if (auth.error) return auth.error;
 
-    const hasPromotionType = !(b.promotionType == null || (typeof b.promotionType === "string" && !b.promotionType.trim()));
-    const promotionType = hasPromotionType ? normalizePromotionType(b.promotionType) : "Product";
-    if (!promotionType) return Response.json({ error: "Please choose a valid promotion type." }, { status: 400 });
-
-    const hasCategory = !(b.category == null || (typeof b.category === "string" && !b.category.trim()));
-    const category = hasCategory ? normalizeCategory(b.category) : null;
-    if (hasCategory && !category) return Response.json({ error: "Please choose a valid category." }, { status: 400 });
-
-    const hasLanguage = !(b.language == null || (typeof b.language === "string" && !b.language.trim()));
-    const language = hasLanguage ? normalizeLanguage(b.language) : "English";
-    if (!language) return Response.json({ error: "Please choose a valid language." }, { status: 400 });
-
-    const hasFormat = !(b.format == null || (typeof b.format === "string" && !b.format.trim()));
-    const format = hasFormat ? normalizeContentType(b.format) : "Story";
-    if (!format) return Response.json({ error: "Please choose a valid format." }, { status: 400 });
+    const parsed = parseCampaign(body, auth.user);
+    if (!parsed.ok) return Response.json({ error: parsed.error }, { status: 400, headers: NO_STORE });
 
     const [row] = await db
       .insert(campaigns)
       .values({
-        ownerId: user.id,
-        businessName: String(b.businessName).slice(0, 120),
-        contactName: b.contactName ? String(b.contactName).slice(0, 100) : null,
-        email: email ? email.slice(0, 120) : null,
-        phone: b.phone ? String(b.phone).slice(0, 20) : null,
-        title: String(b.title).slice(0, 160),
-        promotionType,
-        category,
-        description: b.description ? String(b.description).slice(0, 2000) : null,
-        budget,
-        location: b.location ? String(b.location).slice(0, 100) : null,
-        language,
-        targetAudience: b.targetAudience ? String(b.targetAudience).slice(0, 300) : null,
-        format,
-        website,
+        ownerId: auth.user.id,
+        ...parsed.values,
         status: "pending",
         verificationCode: createVerificationCode(),
         verificationStatus: "pending",
         moderationNote: null,
         reviewedAt: null,
+        updatedAt: new Date(),
       })
-      .returning({ id: campaigns.id, title: campaigns.title, status: campaigns.status, verificationCode: campaigns.verificationCode, verificationStatus: campaigns.verificationStatus });
-    return Response.json({ campaign: row });
+      .returning(returningCampaign);
+    return Response.json({ campaign: row }, { headers: NO_STORE });
   } catch (e) {
     console.error(e);
-    return Response.json({ error: "Could not create campaign" }, { status: 500 });
+    return Response.json({ error: "Could not create campaign" }, { status: 500, headers: NO_STORE });
+  }
+}
+
+/**
+ * Owner campaign edit and lifecycle transitions. Material public-content
+ * edits return the campaign to review; pausing is the reversible owner-only
+ * state that preserves an already completed verification.
+ */
+export async function PATCH(req: Request) {
+  const rl = rateLimit(getClientKey(req, "campaign-manage"), 30, 60 * 60_000);
+  if (!rl.ok) return limitedResponse(rl.retryAfter);
+  try {
+    const body = bodyRecord(await req.json().catch(() => null));
+    if (!body || !isUuid(body.id)) return Response.json({ error: "Invalid campaign" }, { status: 400, headers: NO_STORE });
+    const id = body.id;
+
+    const auth = await requireBrand();
+    if (auth.error) return auth.error;
+
+    const [existing] = await db
+      .select()
+      .from(campaigns)
+      .where(and(eq(campaigns.id, id), eq(campaigns.ownerId, auth.user.id)))
+      .limit(1);
+    if (!existing) return Response.json({ error: "Campaign not found." }, { status: 404, headers: NO_STORE });
+    const now = new Date();
+
+    if (hasField(body, "action")) {
+      const action = typeof body.action === "string" ? body.action.trim().toLowerCase() : "";
+      let update: Partial<Campaign> | null = null;
+
+      if (action === "pause") {
+        if (existing.status !== "open") return Response.json({ error: "Only an open campaign can be paused." }, { status: 409, headers: NO_STORE });
+        update = { status: "paused", updatedAt: now };
+      } else if (action === "close") {
+        if (existing.status === "closed") return Response.json({ error: "This campaign is already closed." }, { status: 409, headers: NO_STORE });
+        update = { status: "closed", updatedAt: now };
+      } else if (action === "republish") {
+        if (existing.status === "paused") {
+          if (existing.verificationStatus !== "verified") {
+            return Response.json({ error: "This campaign must finish verification before it can be republished." }, { status: 409, headers: NO_STORE });
+          }
+          update = { status: "open", updatedAt: now };
+        } else if (existing.status === "closed" || existing.status === "rejected") {
+          update = {
+            status: "pending",
+            moderationNote: null,
+            reviewedAt: null,
+            updatedAt: now,
+            ...(existing.verificationStatus === "verified"
+              ? {}
+              : {
+                  verificationCode: existing.verificationCode ?? createVerificationCode(),
+                  verificationStatus: "pending",
+                }),
+          };
+        } else {
+          return Response.json({ error: "This campaign cannot be republished from its current status." }, { status: 409, headers: NO_STORE });
+        }
+      } else {
+        return Response.json({ error: "Invalid campaign action" }, { status: 400, headers: NO_STORE });
+      }
+
+      const [row] = await db
+        .update(campaigns)
+        .set(update)
+        .where(and(eq(campaigns.id, id), eq(campaigns.ownerId, auth.user.id), eq(campaigns.status, existing.status)))
+        .returning(returningCampaign);
+      if (!row) return Response.json({ error: "This campaign changed while you were editing it. Please refresh and try again." }, { status: 409, headers: NO_STORE });
+      return Response.json({ campaign: row }, { headers: NO_STORE });
+    }
+
+    if (!CAMPAIGN_FIELDS.some((field) => hasField(body, field))) {
+      return Response.json({ error: "No campaign changes were provided." }, { status: 400, headers: NO_STORE });
+    }
+
+    const parsed = parseCampaign(body, auth.user, existing);
+    if (!parsed.ok) return Response.json({ error: parsed.error }, { status: 400, headers: NO_STORE });
+
+    const materialFields: Array<keyof CampaignValues> = [
+      "businessName",
+      "title",
+      "promotionType",
+      "category",
+      "description",
+      "budget",
+      "location",
+      "language",
+      "targetAudience",
+      "format",
+      "website",
+    ];
+    // Only submitted public fields can force another review; canonicalizing
+    // an untouched legacy value during parsing is not an owner edit.
+    const materialChanged = materialFields.some((field) => hasField(body, field) && parsed.values[field] !== existing[field]);
+    const contactChanged =
+      parsed.values.contactName !== existing.contactName || parsed.values.email !== existing.email || parsed.values.phone !== existing.phone;
+
+    if (!materialChanged && !contactChanged) {
+      return Response.json(
+        {
+          campaign: {
+            id: existing.id,
+            title: existing.title,
+            status: existing.status,
+            verificationCode: existing.verificationCode,
+            verificationStatus: existing.verificationStatus,
+            updatedAt: existing.updatedAt,
+          },
+          unchanged: true,
+        },
+        { headers: NO_STORE },
+      );
+    }
+
+    const [row] = await db
+      .update(campaigns)
+      .set(
+        materialChanged
+          ? {
+              ...parsed.values,
+              updatedAt: now,
+              status: "pending",
+              verificationCode: createVerificationCode(),
+              verificationStatus: "pending",
+              moderationNote: null,
+              reviewedAt: null,
+            }
+          : {
+              // A private contact update should not rewrite the verified
+              // public campaign representation.
+              contactName: parsed.values.contactName,
+              email: parsed.values.email,
+              phone: parsed.values.phone,
+              updatedAt: now,
+            },
+      )
+      .where(and(eq(campaigns.id, id), eq(campaigns.ownerId, auth.user.id)))
+      .returning(returningCampaign);
+    if (!row) return Response.json({ error: "Campaign not found." }, { status: 404, headers: NO_STORE });
+    return Response.json({ campaign: row, reviewRequired: materialChanged }, { headers: NO_STORE });
+  } catch (e) {
+    console.error(e);
+    return Response.json({ error: "Could not update campaign" }, { status: 500, headers: NO_STORE });
+  }
+}
+
+export async function DELETE(req: Request) {
+  const rl = rateLimit(getClientKey(req, "campaign-manage"), 30, 60 * 60_000);
+  if (!rl.ok) return limitedResponse(rl.retryAfter);
+  try {
+    const body = bodyRecord(await req.json().catch(() => null));
+    const queryId = new URL(req.url).searchParams.get("id");
+    const id = body?.id ?? queryId;
+    if (!isUuid(id)) return Response.json({ error: "Invalid campaign" }, { status: 400, headers: NO_STORE });
+
+    const auth = await requireBrand();
+    if (auth.error) return auth.error;
+
+    const [row] = await db
+      .delete(campaigns)
+      .where(and(eq(campaigns.id, id), eq(campaigns.ownerId, auth.user.id)))
+      .returning({ id: campaigns.id });
+    if (!row) return Response.json({ error: "Campaign not found." }, { status: 404, headers: NO_STORE });
+    return Response.json({ ok: true, deleted: true }, { headers: NO_STORE });
+  } catch (e) {
+    console.error(e);
+    return Response.json({ error: "Could not delete campaign" }, { status: 500, headers: NO_STORE });
   }
 }

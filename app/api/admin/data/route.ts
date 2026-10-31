@@ -38,6 +38,11 @@ export async function GET() {
       [...rows].sort((x, y) => (x.status === "pending" ? 0 : 1) - (y.status === "pending" ? 0 : 1));
     const campaignLabels = new Map(canonicalCampaigns.map((row) => [row.id, `${row.title} (${row.businessName})`]));
     const creatorLabels = new Map(canonicalCreators.map((row) => [row.id, row.name]));
+    const enrichedApplications = a.map((row) => ({
+      ...row,
+      campaignLabel: campaignLabels.get(row.campaignId) ?? "Deleted campaign",
+      creatorLabel: creatorLabels.get(row.creatorId) ?? row.creatorName,
+    }));
     const enrichedReports = [...r]
       .sort((x, y) => (x.status === "open" ? 0 : 1) - (y.status === "open" ? 0 : 1))
       .map((row) => ({
@@ -51,7 +56,7 @@ export async function GET() {
       {
         campaigns: pendingFirst(canonicalCampaigns),
         creators: pendingFirst(canonicalCreators),
-        applications: a,
+        applications: enrichedApplications,
         contacts: co,
         reports: enrichedReports,
         auditLogs,
