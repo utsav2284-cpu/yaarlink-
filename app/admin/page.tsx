@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { formatINR } from "@/shared/constants";
 
 type Tab = "campaigns" | "creators" | "reports" | "applications" | "contacts" | "audit";
-type ModerationEntity = "campaign" | "creator" | "report";
+type ModerationEntity = "campaign" | "creator" | "report" | "application" | "contact";
 
 const emptyAdminData = () => ({ campaigns: [], creators: [], applications: [], contacts: [], reports: [], auditLogs: [] });
 
@@ -30,8 +30,14 @@ function statusClass(status?: string | null, isReport = false) {
     case "verified":
     case "resolved":
     case "success":
+    case "hired":
+    case "completed":
       return "bg-green-100 text-green-800";
+    case "shortlisted":
+      return "bg-sky-100 text-sky-900";
     case "pending":
+    case "paused":
+    case "applied":
       return "bg-amber-100 text-amber-900";
     case "rejected":
     case "suspended":
@@ -141,7 +147,11 @@ export default function AdminPage() {
   useEffect(() => { load(); }, []);
 
   const moderate = async (entity: ModerationEntity, id: string, action: string, extra: Record<string, unknown> = {}) => {
-    if (action === "delete" && !window.confirm("Delete this listing permanently?")) return;
+    if (action === "delete") {
+      const label =
+        entity === "application" ? "application" : entity === "contact" ? "contact message" : entity === "report" ? "report" : "listing";
+      if (!window.confirm(`Delete this ${label} permanently?`)) return;
+    }
     if (action === "approve") {
       const confirmed = window.confirm(
         entity === "creator"
@@ -389,6 +399,9 @@ export default function AdminPage() {
                         {c.status === "pending" && (
                           <ActionButton tone="danger" disabled={busy} onClick={() => moderate("campaign", c.id, "reject")}>Reject</ActionButton>
                         )}
+                        {(c.status === "open" || c.status === "paused") && (
+                          <ActionButton tone="danger" disabled={busy} onClick={() => moderate("campaign", c.id, "suspend")}>Suspend</ActionButton>
+                        )}
                         {c.status === "open" && (
                           <ActionButton tone="warning" disabled={busy} onClick={() => moderate("campaign", c.id, "close")}>Close</ActionButton>
                         )}
@@ -527,7 +540,10 @@ export default function AdminPage() {
                         {r.status === "open" ? (
                           <>
                             {!targetDeleted && r.targetType === "campaign" && (
-                              <ActionButton tone="warning" disabled={targetBusy} onClick={() => moderate("campaign", r.targetId, "close")}>Close campaign</ActionButton>
+                              <>
+                                <ActionButton tone="danger" disabled={targetBusy} onClick={() => moderate("campaign", r.targetId, "suspend")}>Suspend campaign</ActionButton>
+                                <ActionButton tone="warning" disabled={targetBusy} onClick={() => moderate("campaign", r.targetId, "close")}>Close campaign</ActionButton>
+                              </>
                             )}
                             {!targetDeleted && r.targetType === "creator" && (
                               <ActionButton tone="danger" disabled={targetBusy} onClick={() => moderate("creator", r.targetId, "suspend")}>Suspend creator</ActionButton>
@@ -548,15 +564,78 @@ export default function AdminPage() {
         )}
 
         {tab === "applications" && (
-          <table className="w-full min-w-[640px] text-left text-[13.5px]">
-            <thead><tr className="border-b border-[#f0e6cc] text-[#a8a29e]"><th className="p-4">Creator</th><th className="p-4">Contact</th><th className="p-4">Message</th><th className="p-4">Status</th></tr></thead>
-            <tbody>{applications.map((a: any) => <tr key={a.id} className="border-b border-[#faf3e0]"><td className="p-4 font-bold">{a.creatorName}</td><td className="p-4">{a.creatorContact}</td><td className="p-4">{a.message}</td><td className="p-4">{a.status}</td></tr>)}</tbody>
+          <table className="w-full min-w-[920px] text-left text-[13.5px]">
+            <thead>
+              <tr className="border-b border-[#f0e6cc] text-[#a8a29e]">
+                <th className="p-4">Creator</th>
+                <th className="p-4">Campaign</th>
+                <th className="p-4">Contact & message</th>
+                <th className="p-4">Status</th>
+                <th className="p-4">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {applications.map((a: any) => {
+                const busy = busyKey.startsWith(`application:${a.id}:`);
+                return (
+                  <tr key={a.id} className="border-b border-[#faf3e0] align-top">
+                    <td className="max-w-[190px] p-4">
+                      <p className="font-bold">{a.creatorLabel || a.creatorName}</p>
+                      <p className="mt-1 text-[11.5px] text-[#a8a29e]">{formatDate(a.createdAt)}</p>
+                    </td>
+                    <td className="max-w-[240px] p-4">{a.campaignLabel || a.campaignId}</td>
+                    <td className="max-w-[300px] p-4">
+                      {a.creatorContact && <p className="break-all font-semibold">{a.creatorContact}</p>}
+                      {a.message && <p className="mt-1 text-[12.5px] leading-relaxed text-[#78716c]">{a.message}</p>}
+                      {a.decisionNote && <p className="mt-1 text-[12px] text-[#78716c]">Brand note: {a.decisionNote}</p>}
+                    </td>
+                    <td className="p-4">
+                      <StatusPill status={a.status} />
+                      {a.decisionAt && <p className="mt-1 text-[11.5px] text-[#a8a29e]">Updated {formatDate(a.decisionAt)}</p>}
+                    </td>
+                    <td className="p-4">
+                      <ActionButton tone="danger" disabled={busy} onClick={() => moderate("application", a.id, "delete")}>
+                        Delete spam/test
+                      </ActionButton>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
           </table>
         )}
         {tab === "contacts" && (
-          <table className="w-full min-w-[640px] text-left text-[13.5px]">
-            <thead><tr className="border-b border-[#f0e6cc] text-[#a8a29e]"><th className="p-4">Name</th><th className="p-4">Type</th><th className="p-4">Message</th><th className="p-4">Contact</th></tr></thead>
-            <tbody>{contacts.map((c: any) => <tr key={c.id} className="border-b border-[#faf3e0]"><td className="p-4 font-bold">{c.name}</td><td className="p-4">{c.kind}</td><td className="p-4">{c.message}</td><td className="p-4">{c.phone || c.email}</td></tr>)}</tbody>
+          <table className="w-full min-w-[860px] text-left text-[13.5px]">
+            <thead>
+              <tr className="border-b border-[#f0e6cc] text-[#a8a29e]">
+                <th className="p-4">Name</th>
+                <th className="p-4">Type</th>
+                <th className="p-4">Message</th>
+                <th className="p-4">Contact</th>
+                <th className="p-4">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {contacts.map((c: any) => {
+                const busy = busyKey.startsWith(`contact:${c.id}:`);
+                return (
+                  <tr key={c.id} className="border-b border-[#faf3e0] align-top">
+                    <td className="max-w-[190px] p-4">
+                      <p className="font-bold">{c.name}</p>
+                      <p className="mt-1 text-[11.5px] text-[#a8a29e]">{formatDate(c.createdAt)}</p>
+                    </td>
+                    <td className="p-4 capitalize">{c.kind}</td>
+                    <td className="max-w-[320px] p-4">{c.message}</td>
+                    <td className="max-w-[220px] break-all p-4">{c.phone || c.email}</td>
+                    <td className="p-4">
+                      <ActionButton tone="danger" disabled={busy} onClick={() => moderate("contact", c.id, "delete")}>
+                        Delete spam/test
+                      </ActionButton>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
           </table>
         )}
         {tab === "audit" && (

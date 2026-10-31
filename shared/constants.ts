@@ -276,8 +276,16 @@ export function formatINR(n: number) {
 
 /** Public-listing review states. Only approved/open + verified rows are public. */
 export const CREATOR_REVIEW_STATUSES = ["incomplete", "pending", "approved", "rejected", "suspended"] as const;
-export const CAMPAIGN_REVIEW_STATUSES = ["pending", "open", "rejected", "closed"] as const;
+export const CAMPAIGN_REVIEW_STATUSES = ["pending", "open", "paused", "rejected", "suspended", "closed"] as const;
 export const VERIFICATION_STATUSES = ["unverified", "pending", "verified", "failed"] as const;
+
+/** Marketplace application lifecycle, from first application through completion. */
+export const APPLICATION_STATUSES = ["applied", "shortlisted", "rejected", "hired", "completed", "withdrawn"] as const;
+export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number];
+
+/** Structured in-app notification events; display copy is localized in the UI. */
+export const NOTIFICATION_KINDS = ["application_received", "application_withdrawn", "application_status"] as const;
+export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
 /** Canonical report reasons stored in the DB; UI labels come from i18n. */
 export const REPORT_REASONS = ["impersonation", "scam", "spam", "incorrect-info", "other"] as const;

@@ -44,19 +44,23 @@ function escapeHtml(value: string) {
     .replace(/'/g, "&#39;");
 }
 
-export async function sendSignupVerificationEmail({
+function cleanSubject(value: string) {
+  return value.replace(/\s+/g, " ").trim().slice(0, 140);
+}
+
+async function sendEmail({
   to,
-  name,
-  verificationUrl,
+  subject,
+  text,
+  html,
 }: {
   to: string;
-  name: string;
-  verificationUrl: string;
+  subject: string;
+  text: string;
+  html: string;
 }) {
   if (emailDeliveryProblem()) throw new EmailDeliveryNotConfiguredError();
   const { apiKey, from, baseUrl } = emailConfig();
-  const safeName = escapeHtml(name);
-  const safeUrl = escapeHtml(verificationUrl);
 
   const response = await fetch(`${baseUrl}/emails`, {
     method: "POST",
@@ -67,18 +71,44 @@ export async function sendSignupVerificationEmail({
     body: JSON.stringify({
       from,
       to: [to],
-      subject: "Verify your email for YaarLink",
-      text: [
-        `Hi ${name},`,
-        "",
-        "Finish creating your YaarLink account by verifying this email address:",
-        verificationUrl,
-        "",
-        "The link expires in 30 minutes. You will be asked for the password you chose during signup.",
-        "",
-        "If you did not request this, you can ignore this email. No account will be created.",
-      ].join("\n"),
-      html: `
+      subject: cleanSubject(subject),
+      text,
+      html,
+    }),
+    signal: AbortSignal.timeout(EMAIL_REQUEST_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Email provider returned HTTP ${response.status}`);
+  }
+}
+
+export async function sendSignupVerificationEmail({
+  to,
+  name,
+  verificationUrl,
+}: {
+  to: string;
+  name: string;
+  verificationUrl: string;
+}) {
+  const safeName = escapeHtml(name);
+  const safeUrl = escapeHtml(verificationUrl);
+
+  await sendEmail({
+    to,
+    subject: "Verify your email for YaarLink",
+    text: [
+      `Hi ${name},`,
+      "",
+      "Finish creating your YaarLink account by verifying this email address:",
+      verificationUrl,
+      "",
+      "The link expires in 30 minutes. You will be asked for the password you chose during signup.",
+      "",
+      "If you did not request this, you can ignore this email. No account will be created.",
+    ].join("\n"),
+    html: `
         <div style="font-family:Arial,sans-serif;color:#1c1917;line-height:1.5;max-width:560px;margin:0 auto;padding:24px">
           <h1 style="font-size:24px;margin:0 0 16px">Verify your email for YaarLink</h1>
           <p>Hi ${safeName},</p>
@@ -92,11 +122,59 @@ export async function sendSignupVerificationEmail({
           <p style="color:#57534e">If you did not request this, you can ignore this email. No account will be created.</p>
         </div>
       `,
-    }),
-    signal: AbortSignal.timeout(EMAIL_REQUEST_TIMEOUT_MS),
   });
+}
 
-  if (!response.ok) {
-    throw new Error(`Email provider returned HTTP ${response.status}`);
-  }
+/**
+ * Best-effort marketplace emails use the same provider path, but callers keep
+ * the already-saved application/decision even if this notification fails.
+ */
+export async function sendMarketplaceNotificationEmail({
+  to,
+  recipientName,
+  subject,
+  heading,
+  message,
+  detail,
+  dashboardUrl,
+}: {
+  to: string;
+  recipientName: string;
+  subject: string;
+  heading: string;
+  message: string;
+  detail?: string | null;
+  dashboardUrl: string;
+}) {
+  const safeName = escapeHtml(recipientName);
+  const safeHeading = escapeHtml(heading);
+  const safeMessage = escapeHtml(message);
+  const safeDetail = detail ? escapeHtml(detail) : "";
+  const safeUrl = escapeHtml(dashboardUrl);
+
+  await sendEmail({
+    to,
+    subject,
+    text: [
+      `Hi ${recipientName},`,
+      "",
+      message,
+      ...(detail ? ["", detail] : []),
+      "",
+      "Open your YaarLink dashboard:",
+      dashboardUrl,
+    ].join("\n"),
+    html: `
+        <div style="font-family:Arial,sans-serif;color:#1c1917;line-height:1.5;max-width:560px;margin:0 auto;padding:24px">
+          <h1 style="font-size:24px;margin:0 0 16px">${safeHeading}</h1>
+          <p>Hi ${safeName},</p>
+          <p>${safeMessage}</p>
+          ${safeDetail ? `<p style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:12px">${safeDetail}</p>` : ""}
+          <p style="margin:24px 0">
+            <a href="${safeUrl}" style="background:#e4572e;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:10px;display:inline-block">Open dashboard</a>
+          </p>
+          <p style="color:#57534e">You received this because of activity on your YaarLink account.</p>
+        </div>
+      `,
+  });
 }

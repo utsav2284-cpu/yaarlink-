@@ -1,5 +1,5 @@
 import { db } from "@/backend/db";
-import { campaigns, creators, reports } from "@/backend/db/schema";
+import { applications, campaigns, contacts, creators, reports } from "@/backend/db/schema";
 import { isAdmin } from "@/backend/admin";
 import { logAdminAudit } from "@/backend/admin-audit";
 import { createVerificationCode, isUuid, normalizeReviewStatus } from "@/backend/moderation";
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     const note = cleanNote(body.note);
     const now = new Date();
 
-    if (entity !== "creator" && entity !== "campaign" && entity !== "report") {
+    if (entity !== "creator" && entity !== "campaign" && entity !== "report" && entity !== "application" && entity !== "contact") {
       return Response.json({ error: "Invalid moderation target" }, { status: 400, headers: NO_STORE });
     }
     if (!isUuid(id)) return Response.json({ error: "Invalid moderation target" }, { status: 400, headers: NO_STORE });
@@ -161,11 +161,11 @@ export async function POST(req: Request) {
         return Response.json({ ok: true, campaign }, { headers: NO_STORE });
       }
 
-      if (action === "reject" || action === "close") {
+      if (action === "reject" || action === "close" || action === "suspend") {
         const [campaign] = await db
           .update(campaigns)
           .set({
-            status: action === "reject" ? "rejected" : "closed",
+            status: action === "reject" ? "rejected" : action === "suspend" ? "suspended" : "closed",
             verificationStatus: action === "reject" ? "failed" : (existing.verificationStatus ?? "failed"),
             moderationNote: note,
             reviewedAt: now,
@@ -194,6 +194,24 @@ export async function POST(req: Request) {
       }
 
       return Response.json({ error: "Invalid campaign action" }, { status: 400, headers: NO_STORE });
+    }
+
+    if (entity === "application") {
+      const [existing] = await db.select().from(applications).where(eq(applications.id, id)).limit(1);
+      if (!existing) return Response.json({ error: "Application not found" }, { status: 404, headers: NO_STORE });
+      if (action !== "delete") return Response.json({ error: "Invalid application action" }, { status: 400, headers: NO_STORE });
+      await db.delete(applications).where(eq(applications.id, id));
+      await auditModeration({ fromStatus: existing.status, toStatus: "deleted", campaignId: existing.campaignId });
+      return Response.json({ ok: true, deleted: true }, { headers: NO_STORE });
+    }
+
+    if (entity === "contact") {
+      const [existing] = await db.select().from(contacts).where(eq(contacts.id, id)).limit(1);
+      if (!existing) return Response.json({ error: "Contact message not found" }, { status: 404, headers: NO_STORE });
+      if (action !== "delete") return Response.json({ error: "Invalid contact action" }, { status: 400, headers: NO_STORE });
+      await db.delete(contacts).where(eq(contacts.id, id));
+      await auditModeration({ fromStatus: existing.kind, toStatus: "deleted" });
+      return Response.json({ ok: true, deleted: true }, { headers: NO_STORE });
     }
 
     const [existingReport] = await db.select().from(reports).where(eq(reports.id, id)).limit(1);
