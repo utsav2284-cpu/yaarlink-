@@ -97,7 +97,7 @@ export default function CampaignsPage() {
           <span className="sr-only">{t("browse.filterLang")}</span>
           <select value={lang} onChange={(e) => setLang(e.target.value)} className="w-full min-w-0 appearance-none truncate rounded-xl border border-[#f0e6cc] bg-[#fffbf1] py-3 pl-4 pr-9 text-[15px] font-semibold text-[#1c1917] outline-none focus:border-[#1c1917]">
             <option value="">{t("browse.allLang")}</option>
-            {LANGUAGES.map((l) => <option key={l}>{opt(l)}</option>)}
+            {LANGUAGES.map((l) => <option key={l} value={l}>{opt(l)}</option>)}
           </select>
           <span aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[11px] text-[#78716c]">▼</span>
         </label>

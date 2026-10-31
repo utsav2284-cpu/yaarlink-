@@ -4,10 +4,10 @@ import { useLang } from "@/frontend/i18n";
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { CATEGORIES, LANGUAGES, CONTENT_TYPES } from "@/shared/constants";
+import { CATEGORIES, LANGUAGES, CONTENT_TYPES, PLATFORMS } from "@/shared/constants";
 
 export default function CreatorsPage() {
-  const { t, opt, promo } = useLang();
+  const { t, opt, platform: platformLabel } = useLang();
   const [step, setStep] = useState(1);
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [form, setForm] = useState({
@@ -140,10 +140,7 @@ export default function CreatorsPage() {
                   <label className="grid gap-1.5">
                     <span className="text-[13.5px] font-bold">{t("cr.platform")}</span>
                     <select value={form.platform} onChange={(e) => set("platform", e.target.value)} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3">
-                      <option>{opt("Instagram")}</option>
-                      <option>{opt("YouTube")}</option>
-                      <option>{t("cr.both")}</option>
-                      <option>{t("cr.otherPlat")}</option>
+                      {PLATFORMS.map((p) => <option key={p} value={p}>{platformLabel(p)}</option>)}
                     </select>
                   </label>
                 </div>
@@ -177,7 +174,7 @@ export default function CreatorsPage() {
                   <label className="grid gap-1.5">
                     <span className="text-[13.5px] font-bold">{t("cr.category")}</span>
                     <select value={form.category} onChange={(e) => set("category", e.target.value)} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3">
-                      {CATEGORIES.map((c) => <option key={c}>{opt(c)}</option>)}
+                      {CATEGORIES.map((c) => <option key={c} value={c}>{opt(c)}</option>)}
                     </select>
                   </label>
                 </div>

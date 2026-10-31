@@ -4,6 +4,7 @@ import { desc, eq, isNull, ne, or } from "drizzle-orm";
 import { getSessionUser } from "@/backend/auth";
 import { getClientKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
 import { normalizeInstagramUrl, normalizeProfileUrl, normalizeYouTubeUrl } from "@/backend/social-url";
+import { normalizeCategory, normalizeContentTypeList, normalizeLanguageList, normalizePlatform } from "@/shared/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,14 @@ export async function GET() {
       .where(or(isNull(creators.status), ne(creators.status, "incomplete")))
       .orderBy(desc(creators.createdAt))
       .limit(50);
-    return Response.json({ creators: rows });
+    const canonicalRows = rows.map((row) => ({
+      ...row,
+      platform: normalizePlatform(row.platform) ?? "Instagram",
+      category: normalizeCategory(row.category) ?? row.category,
+      languages: row.languages ? (normalizeLanguageList(row.languages, true) ?? []).join(", ") : row.languages,
+      contentTypes: row.contentTypes ? (normalizeContentTypeList(row.contentTypes, true) ?? []).join(", ") : row.contentTypes,
+    }));
+    return Response.json({ creators: canonicalRows });
   } catch (e) {
     console.error(e);
     return Response.json({ creators: [] }, { status: 500 });
@@ -51,11 +59,26 @@ export async function POST(req: Request) {
     if (!b.name) return Response.json({ error: "Name is required" }, { status: 400 });
     const email = b.email ? String(b.email).toLowerCase().trim() : "";
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return Response.json({ error: "Please enter a valid email." }, { status: 400 });
+
+    const hasPlatform = !(b.platform == null || (typeof b.platform === "string" && !b.platform.trim()));
+    const platform = hasPlatform ? normalizePlatform(b.platform) : "Instagram";
+    if (!platform) return Response.json({ error: "Please choose a valid platform." }, { status: 400 });
+
+    const hasCategory = !(b.category == null || (typeof b.category === "string" && !b.category.trim()));
+    const category = hasCategory ? normalizeCategory(b.category) : null;
+    if (hasCategory && !category) return Response.json({ error: "Please choose a valid category." }, { status: 400 });
+
+    const languages = b.languages == null || b.languages === "" ? ["English"] : normalizeLanguageList(b.languages);
+    if (!languages || languages.length === 0) return Response.json({ error: "Please select at least one valid language." }, { status: 400 });
+
+    const contentTypes = b.contentTypes == null || b.contentTypes === "" ? ["Story"] : normalizeContentTypeList(b.contentTypes);
+    if (!contentTypes) return Response.json({ error: "Please select valid content types." }, { status: 400 });
+
     const instagram = b.instagram ? normalizeInstagramUrl(b.instagram) : null;
     if (b.instagram && !instagram) return Response.json({ error: "Please enter a valid Instagram handle or profile URL." }, { status: 400 });
     const youtube = b.youtube ? normalizeYouTubeUrl(b.youtube) : null;
     if (b.youtube && !youtube) return Response.json({ error: "Please enter a valid YouTube channel handle or URL." }, { status: 400 });
-    let profileUrl = b.profileUrl ? normalizeProfileUrl(b.profileUrl, b.platform) : null;
+    let profileUrl = b.profileUrl ? normalizeProfileUrl(b.profileUrl, platform) : null;
     if (b.profileUrl && !profileUrl) return Response.json({ error: "Please enter a valid profile URL." }, { status: 400 });
 
     // If the creator gave a social handle but left the profile-link field
@@ -73,12 +96,12 @@ export async function POST(req: Request) {
       instagram: resolvedInstagram?.slice(0, 160) ?? null,
       youtube: resolvedYouTube?.slice(0, 160) ?? null,
       profileUrl: profileUrl?.slice(0, 200) ?? null,
-      platform: b.platform ? String(b.platform).slice(0, 40) : "Instagram",
+      platform,
       followers: isNaN(followers) ? 0 : followers,
-      category: b.category ? String(b.category).slice(0, 60) : null,
-      languages: Array.isArray(b.languages) ? b.languages.join(", ") : String(b.languages || "English").slice(0, 120),
+      category,
+      languages: languages.join(", "),
       location: b.location ? String(b.location).slice(0, 100) : null,
-      contentTypes: Array.isArray(b.contentTypes) ? b.contentTypes.join(", ") : String(b.contentTypes || "Story").slice(0, 160),
+      contentTypes: contentTypes.join(", "),
       bio: b.bio ? String(b.bio).slice(0, 500) : null,
       status: "pending",
     };

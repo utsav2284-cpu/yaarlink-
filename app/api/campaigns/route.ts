@@ -4,6 +4,7 @@ import { desc } from "drizzle-orm";
 import { getSessionUser } from "@/backend/auth";
 import { getClientKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
 import { normalizeProfileUrl } from "@/backend/social-url";
+import { normalizeCategory, normalizeContentType, normalizeLanguage, normalizePromotionType } from "@/shared/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,14 @@ export async function GET() {
       .from(campaigns)
       .orderBy(desc(campaigns.createdAt))
       .limit(50);
-    return Response.json({ campaigns: rows });
+    const canonicalRows = rows.map((row) => ({
+      ...row,
+      promotionType: normalizePromotionType(row.promotionType) ?? row.promotionType,
+      category: normalizeCategory(row.category) ?? row.category,
+      language: normalizeLanguage(row.language) ?? row.language,
+      format: normalizeContentType(row.format) ?? row.format,
+    }));
+    return Response.json({ campaigns: canonicalRows });
   } catch (e) {
     console.error(e);
     return Response.json({ campaigns: [] }, { status: 500 });
@@ -58,6 +66,23 @@ export async function POST(req: Request) {
     if (!Number.isFinite(budget) || budget < 500 || budget > 10_000_000) {
       return Response.json({ error: "Please enter a budget between ₹500 and ₹1,00,00,000." }, { status: 400 });
     }
+
+    const hasPromotionType = !(b.promotionType == null || (typeof b.promotionType === "string" && !b.promotionType.trim()));
+    const promotionType = hasPromotionType ? normalizePromotionType(b.promotionType) : "Product";
+    if (!promotionType) return Response.json({ error: "Please choose a valid promotion type." }, { status: 400 });
+
+    const hasCategory = !(b.category == null || (typeof b.category === "string" && !b.category.trim()));
+    const category = hasCategory ? normalizeCategory(b.category) : null;
+    if (hasCategory && !category) return Response.json({ error: "Please choose a valid category." }, { status: 400 });
+
+    const hasLanguage = !(b.language == null || (typeof b.language === "string" && !b.language.trim()));
+    const language = hasLanguage ? normalizeLanguage(b.language) : "English";
+    if (!language) return Response.json({ error: "Please choose a valid language." }, { status: 400 });
+
+    const hasFormat = !(b.format == null || (typeof b.format === "string" && !b.format.trim()));
+    const format = hasFormat ? normalizeContentType(b.format) : "Story";
+    if (!format) return Response.json({ error: "Please choose a valid format." }, { status: 400 });
+
     const [row] = await db
       .insert(campaigns)
       .values({
@@ -67,14 +92,14 @@ export async function POST(req: Request) {
         email: email ? email.slice(0, 120) : null,
         phone: b.phone ? String(b.phone).slice(0, 20) : null,
         title: String(b.title).slice(0, 160),
-        promotionType: b.promotionType ? String(b.promotionType).slice(0, 40) : "Product",
-        category: b.category ? String(b.category).slice(0, 60) : null,
+        promotionType,
+        category,
         description: b.description ? String(b.description).slice(0, 2000) : null,
         budget,
         location: b.location ? String(b.location).slice(0, 100) : null,
-        language: b.language ? String(b.language).slice(0, 60) : "English",
+        language,
         targetAudience: b.targetAudience ? String(b.targetAudience).slice(0, 300) : null,
-        format: b.format ? String(b.format).slice(0, 60) : "Story",
+        format,
         website,
         status: "open",
       })

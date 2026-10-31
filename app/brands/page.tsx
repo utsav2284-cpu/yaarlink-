@@ -5,7 +5,7 @@ import { useLang } from "@/frontend/i18n";
 import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { CATEGORIES, LANGUAGES, CONTENT_TYPES, PROMOTION_TYPES } from "@/shared/constants";
+import { CATEGORIES, LANGUAGES, CONTENT_TYPES, PROMOTION_TYPES, normalizePromotionType } from "@/shared/constants";
 import ContactLink from "@/frontend/components/ContactLink";
 import { SITE, instagramDmLink, whatsappWithText } from "@/config/site";
 
@@ -13,7 +13,7 @@ import { SITE, instagramDmLink, whatsappWithText } from "@/config/site";
 function BrandInner() {
   const params = useSearchParams();
   const { t, opt, promo } = useLang();
-  const preset = params.get("type") || "";
+  const preset = normalizePromotionType(params.get("type")) ?? "";
   const [creators, setCreators] = useState<any[]>([]);
   const [filter, setFilter] = useState({ lang: "", category: "" });
   const [form, setForm] = useState({
@@ -170,7 +170,7 @@ function BrandInner() {
                 <label className="grid gap-1.5">
                   <span className="text-[13.5px] font-bold">{t("brand.category")}</span>
                   <select value={form.category} onChange={(e) => set("category", e.target.value)} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none">
-                    {CATEGORIES.map((c) => <option key={c}>{opt(c)}</option>)}
+                    {CATEGORIES.map((c) => <option key={c} value={c}>{opt(c)}</option>)}
                   </select>
                 </label>
               </div>
@@ -224,13 +224,13 @@ function BrandInner() {
                 <label className="grid gap-1.5">
                   <span className="text-[13.5px] font-bold">{t("brand.language")}</span>
                   <select value={form.language} onChange={(e) => set("language", e.target.value)} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none">
-                    {LANGUAGES.slice(0, 5).map((l) => <option key={l}>{opt(l)}</option>)}
+                    {LANGUAGES.slice(0, 5).map((l) => <option key={l} value={l}>{opt(l)}</option>)}
                   </select>
                 </label>
                 <label className="grid gap-1.5">
                   <span className="text-[13.5px] font-bold">{t("brand.format")}</span>
                   <select value={form.format} onChange={(e) => set("format", e.target.value)} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none">
-                    {CONTENT_TYPES.map((c) => <option key={c}>{opt(c)}</option>)}
+                    {CONTENT_TYPES.map((c) => <option key={c} value={c}>{opt(c)}</option>)}
                   </select>
                 </label>
               </div>
@@ -278,7 +278,7 @@ function BrandInner() {
                   <span className="sr-only">{t("browse.filterCat")}</span>
                   <select value={filter.category} onChange={(e) => setFilter((f) => ({ ...f, category: e.target.value }))} className="w-full min-w-0 appearance-none truncate rounded-xl border border-white/25 bg-white/10 py-3 pl-3.5 pr-9 text-[14px] font-bold text-white outline-none focus:border-[#ffc53d] [&>option]:bg-white [&>option]:text-[#1c1917]">
                     <option value="">{t("browse.allCat")}</option>
-                    {CATEGORIES.map((c) => <option key={c}>{opt(c)}</option>)}
+                    {CATEGORIES.map((c) => <option key={c} value={c}>{opt(c)}</option>)}
                   </select>
                   <span aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[11px] text-[#ffc53d]">▼</span>
                 </label>

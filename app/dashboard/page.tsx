@@ -50,7 +50,7 @@ function Stat({ value, label }: { value: string | number; label: string }) {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { t } = useLang();
+  const { t, opt } = useLang();
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState("");
   const [currentHour, setCurrentHour] = useState(() => new Date().getHours());
@@ -148,7 +148,7 @@ export default function DashboardPage() {
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="text-[16px] font-extrabold">{c.title}</p>
-                      <p className="text-[13px] text-[#78716c]">{[c.businessName, c.location, c.language, c.format].filter(Boolean).join(" · ")}</p>
+                      <p className="text-[13px] text-[#78716c]">{[c.businessName, c.location, opt(c.language), opt(c.format)].filter(Boolean).join(" · ")}</p>
                     </div>
                     <div className="flex gap-2">
                       <span className="rounded-full bg-[#fff4de] px-3 py-1 text-[12.5px] font-bold" title="Only you can see this">🔒 {formatINR(c.budget || 0)}</span>
@@ -206,7 +206,7 @@ export default function DashboardPage() {
                   <div key={a.id} className="flex items-center justify-between gap-3 rounded-2xl border border-[#e9ddc3] bg-white p-4">
                     <div className="min-w-0">
                       <p className="truncate text-[15px] font-extrabold">{a.campaignTitle ?? "Campaign"}</p>
-                      <p className="truncate text-[13px] text-[#78716c]">{[a.businessName, a.format].filter(Boolean).join(" · ")}</p>
+                      <p className="truncate text-[13px] text-[#78716c]">{[a.businessName, opt(a.format)].filter(Boolean).join(" · ")}</p>
                     </div>
                     <span className="shrink-0 rounded-full bg-[#fff4de] px-3 py-1 text-[12px] font-bold capitalize">{a.status}</span>
                   </div>
@@ -219,7 +219,7 @@ export default function DashboardPage() {
                 {(data.openCampaigns ?? []).map((c) => (
                   <Link key={c.id} href="/campaigns" className="rounded-2xl border border-[#e9ddc3] bg-white p-4 transition hover:-translate-y-0.5 hover:border-[#1c1917]">
                     <p className="text-[15px] font-extrabold">{c.title}</p>
-                    <p className="text-[13px] text-[#78716c]">{[c.businessName, c.location, c.language, c.format].filter(Boolean).join(" · ")}</p>
+                    <p className="text-[13px] text-[#78716c]">{[c.businessName, c.location, opt(c.language), opt(c.format)].filter(Boolean).join(" · ")}</p>
                   </Link>
                 ))}
                 {(data.openCampaigns ?? []).length === 0 && (
