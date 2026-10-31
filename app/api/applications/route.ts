@@ -1,5 +1,5 @@
 import { db } from "@/backend/db";
-import { applications, campaigns } from "@/backend/db/schema";
+import { applications, campaigns, creators } from "@/backend/db/schema";
 import { isAdmin } from "@/backend/admin";
 import { getSessionUser } from "@/backend/auth";
 import { and, desc, eq } from "drizzle-orm";
@@ -37,7 +37,13 @@ export async function POST(req: Request) {
     const user = await getSessionUser().catch(() => null);
     if (!user) return Response.json({ error: "Please log in as a creator before applying." }, { status: 401, headers: { "Cache-Control": "no-store" } });
     if (user.role !== "creator") return Response.json({ error: "Only creator accounts can apply to campaigns." }, { status: 403 });
-    const creatorName = String(b.creatorName || user.name || "").trim();
+    const [creatorProfile] = await db
+      .select({ id: creators.id, name: creators.name })
+      .from(creators)
+      .where(eq(creators.userId, user.id))
+      .limit(1);
+    if (!creatorProfile) return Response.json({ error: "Please complete your creator profile before applying." }, { status: 400 });
+    const creatorName = String(b.creatorName || creatorProfile.name || user.name || "").trim();
     if (!creatorName) return Response.json({ error: "Please add your name / page name" }, { status: 400 });
 
     const contact = String(b.creatorContact || user.phone || user.email || "").trim().slice(0, 120);
@@ -46,26 +52,23 @@ export async function POST(req: Request) {
       if (dup.length) return Response.json({ error: "You have already applied to this campaign." }, { status: 400 });
     }
 
-    {
-      const dup = await db
-        .select({ id: applications.id })
-        .from(applications)
-        .where(and(eq(applications.campaignId, campaignId), eq(applications.userId, user.id)))
-        .limit(1);
-      if (dup.length) return Response.json({ error: "You have already applied to this campaign." }, { status: 400 });
-    }
-
+    // The (campaign_id, user_id) unique constraint is the final arbiter. Using
+    // ON CONFLICT here closes the old read-check-insert race between parallel
+    // submissions from the same creator account.
     const [row] = await db
       .insert(applications)
       .values({
         campaignId,
         userId: user.id,
+        creatorId: creatorProfile.id,
         creatorName: creatorName.slice(0, 100),
         creatorContact: contact || null,
         message: b.message ? String(b.message).slice(0, 1000) : null,
         status: "applied",
       })
+      .onConflictDoNothing({ target: [applications.campaignId, applications.userId] })
       .returning({ id: applications.id });
+    if (!row) return Response.json({ error: "You have already applied to this campaign." }, { status: 400 });
     return Response.json({ application: row });
   } catch (e) {
     console.error(e);

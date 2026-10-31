@@ -17,13 +17,15 @@ export async function POST(req: Request) {
     if (name.length > 100 || message.length > 2000) return Response.json({ error: "Please keep the form within the allowed length." }, { status: 400 });
     const email = b.email ? String(b.email).toLowerCase().trim() : "";
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return Response.json({ error: "Please enter a valid email." }, { status: 400 });
+    const requestedKind = typeof b.kind === "string" ? b.kind.trim().toLowerCase() : "";
+    const kind = requestedKind === "creator" || requestedKind === "other" ? requestedKind : "brand";
     const [row] = await db
       .insert(contacts)
       .values({
         name: name.slice(0, 100),
         email: email ? email.slice(0, 120) : null,
         phone: b.phone ? String(b.phone).slice(0, 20) : null,
-        kind: b.kind ? String(b.kind).slice(0, 20) : "brand",
+        kind,
         message: message.slice(0, 2000),
       })
       .returning();
