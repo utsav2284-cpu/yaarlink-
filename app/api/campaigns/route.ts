@@ -3,6 +3,7 @@ import { campaigns } from "@/backend/db/schema";
 import { desc } from "drizzle-orm";
 import { getSessionUser } from "@/backend/auth";
 import { getClientKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
+import { normalizeProfileUrl } from "@/backend/social-url";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +49,11 @@ export async function POST(req: Request) {
     const email = b.email ? String(b.email).toLowerCase().trim() : "";
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return Response.json({ error: "Please enter a valid email." }, { status: 400 });
     let website: string | null = null;
-    if (b.website) { try { const u = new URL(String(b.website)); if (!["http:", "https:"].includes(u.protocol)) throw new Error(); website = u.toString().slice(0, 200); } catch { return Response.json({ error: "Please enter a valid website URL." }, { status: 400 }); } }
+    if (b.website) {
+      website = normalizeProfileUrl(b.website, "Instagram");
+      if (!website) return Response.json({ error: "Please enter a valid website or Instagram URL." }, { status: 400 });
+      website = website.slice(0, 200);
+    }
     const budget = Math.round(Number(b.budget));
     if (!Number.isFinite(budget) || budget < 500 || budget > 10_000_000) {
       return Response.json({ error: "Please enter a budget between ₹500 and ₹1,00,00,000." }, { status: 400 });
