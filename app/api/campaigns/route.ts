@@ -184,7 +184,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const rl = rateLimit(getClientKey(req, "campaign-create"), 5, 60 * 60_000);
+  const rl = await rateLimit(getClientKey(req, "campaign-create"), 5, 60 * 60_000);
   if (!rl.ok) return limitedResponse(rl.retryAfter);
   try {
     const body = bodyRecord(await req.json().catch(() => null));
@@ -221,7 +221,7 @@ export async function POST(req: Request) {
  * state that preserves an already completed verification.
  */
 export async function PATCH(req: Request) {
-  const rl = rateLimit(getClientKey(req, "campaign-manage"), 30, 60 * 60_000);
+  const rl = await rateLimit(getClientKey(req, "campaign-manage"), 30, 60 * 60_000);
   if (!rl.ok) return limitedResponse(rl.retryAfter);
   try {
     const body = bodyRecord(await req.json().catch(() => null));
@@ -360,7 +360,7 @@ export async function PATCH(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const rl = rateLimit(getClientKey(req, "campaign-manage"), 30, 60 * 60_000);
+  const rl = await rateLimit(getClientKey(req, "campaign-manage"), 30, 60 * 60_000);
   if (!rl.ok) return limitedResponse(rl.retryAfter);
   try {
     const body = bodyRecord(await req.json().catch(() => null));

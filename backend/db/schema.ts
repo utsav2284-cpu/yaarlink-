@@ -452,6 +452,52 @@ export const adminAuditLogs = pgTable(
   ],
 );
 
+// Shared fixed-window counters for every app instance/isolate. Only a
+// SHA-256 hash of the limiter key is stored, never the raw IP, email, token,
+// or user id that produced it. Expired rows are removed opportunistically.
+export const rateLimitBuckets = pgTable(
+  "rate_limit_buckets",
+  {
+    keyHash: text("key_hash").primaryKey(),
+    count: integer("count").notNull().default(0),
+    windowStartedAt: timestamp("window_started_at").defaultNow().notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("rate_limit_buckets_expires_at_idx").on(table.expiresAt),
+    check("rate_limit_buckets_key_hash_check", sql`${table.keyHash} ~ '^[0-9a-f]{64}$'`),
+    check("rate_limit_buckets_count_check", sql`${table.count} between 0 and 1000000`),
+    check("rate_limit_buckets_window_check", sql`${table.expiresAt} > ${table.windowStartedAt}`),
+  ],
+);
+
+// Shared failed-auth lockouts. Failure counts decay by age (expires_at /
+// last_failed_at), so an old failure cannot contribute to a lockout forever.
+export const authFailureLockouts = pgTable(
+  "auth_failure_lockouts",
+  {
+    keyHash: text("key_hash").primaryKey(),
+    failureCount: integer("failure_count").notNull().default(0),
+    firstFailedAt: timestamp("first_failed_at").defaultNow().notNull(),
+    lastFailedAt: timestamp("last_failed_at").defaultNow().notNull(),
+    lockedUntil: timestamp("locked_until"),
+    expiresAt: timestamp("expires_at").notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("auth_failure_lockouts_expires_at_idx").on(table.expiresAt),
+    index("auth_failure_lockouts_locked_until_idx").on(table.lockedUntil),
+    check("auth_failure_lockouts_key_hash_check", sql`${table.keyHash} ~ '^[0-9a-f]{64}$'`),
+    check("auth_failure_lockouts_count_check", sql`${table.failureCount} between 0 and 1000000`),
+    check("auth_failure_lockouts_age_check", sql`${table.lastFailedAt} >= ${table.firstFailedAt} and ${table.expiresAt} > ${table.lastFailedAt}`),
+    check(
+      "auth_failure_lockouts_locked_until_check",
+      sql`${table.lockedUntil} is null or ${table.lockedUntil} >= ${table.firstFailedAt}`,
+    ),
+  ],
+);
+
 export type Brand = typeof brands.$inferSelect;
 export type Creator = typeof creators.$inferSelect;
 export type Campaign = typeof campaigns.$inferSelect;
@@ -462,3 +508,5 @@ export type AccountToken = typeof accountTokens.$inferSelect;
 export type UserSession = typeof userSessions.$inferSelect;
 export type Application = typeof applications.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
+export type RateLimitBucket = typeof rateLimitBuckets.$inferSelect;
+export type AuthFailureLockout = typeof authFailureLockouts.$inferSelect;

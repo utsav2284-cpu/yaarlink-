@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
 export async function POST(req: Request) {
-  const rl = rateLimit(getClientKey(req, "confirm-email-change"), 10, 15 * 60_000);
+  const rl = await rateLimit(getClientKey(req, "confirm-email-change"), 10, 15 * 60_000);
   if (!rl.ok) return limitedResponse(rl.retryAfter);
 
   try {
@@ -20,7 +20,7 @@ export async function POST(req: Request) {
     }
 
     const tokenHash = await hashAccountToken("email_change", token);
-    const tokenRl = rateLimit(`confirm-email-change-token:${hashKey(tokenHash)}`, 10, 15 * 60_000);
+    const tokenRl = await rateLimit(`confirm-email-change-token:${await hashKey(tokenHash)}`, 10, 15 * 60_000);
     if (!tokenRl.ok) return limitedResponse(tokenRl.retryAfter);
 
     const completion = await consumeEmailChangeToken(token);

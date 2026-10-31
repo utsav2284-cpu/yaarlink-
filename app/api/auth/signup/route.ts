@@ -23,7 +23,7 @@ function verificationRequiredResponse() {
 }
 
 export async function POST(req: Request) {
-  const rl = rateLimit(getClientKey(req, "signup"), 5, 15 * 60_000);
+  const rl = await rateLimit(getClientKey(req, "signup"), 5, 15 * 60_000);
   if (!rl.ok) return limitedResponse(rl.retryAfter);
 
   try {
@@ -55,7 +55,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const emailRl = rateLimit(`signup-email:${hashKey(email)}`, 5, 60 * 60_000);
+    const emailRl = await rateLimit(`signup-email:${await hashKey(email)}`, 5, 60 * 60_000);
     if (!emailRl.ok) return limitedResponse(emailRl.retryAfter);
 
     if (emailDeliveryProblem()) {

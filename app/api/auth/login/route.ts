@@ -7,13 +7,13 @@ import { getClientKey, hashKey, limitedResponse, rateLimit } from "@/backend/rat
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  const rl = rateLimit(getClientKey(req, "login"), 10, 5 * 60_000);
+  const rl = await rateLimit(getClientKey(req, "login"), 10, 5 * 60_000);
   if (!rl.ok) return limitedResponse(rl.retryAfter);
   try {
     const b = await req.json();
     const email = String(b.email || "").toLowerCase().trim();
     const password = String(b.password || "");
-    const accountRl = rateLimit(`login-account:${hashKey(email)}`, 12, 15 * 60_000);
+    const accountRl = await rateLimit(`login-account:${await hashKey(email)}`, 12, 15 * 60_000);
     if (!accountRl.ok) return limitedResponse(accountRl.retryAfter);
     if (!email || !password) return Response.json({ error: "Email and password required", code: "invalid_request" }, { status: 400 });
 

@@ -17,7 +17,8 @@ repository root, so an import reads like the folder it comes from: `@/backend/au
 │   ├── db/                  #   Drizzle client + schema
 │   ├── auth.ts              #   password hashing + session cookies
 │   ├── admin.ts             #   owner/admin session
-│   └── rate-limit.ts        #   per-isolate request limiter
+│   ├── bot-challenge.ts     #   signed one-time public-form proof-of-work challenges
+│   └── rate-limit.ts        #   PostgreSQL-backed distributed request limiter + auth lockouts
 ├── shared/                  # Isomorphic domain code (usable on both sides)
 │   └── constants.ts         #   categories, languages, budgets, formatINR
 ├── config/                  # Site configuration

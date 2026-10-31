@@ -29,7 +29,7 @@ function invalidResponse() {
 }
 
 export async function POST(req: Request) {
-  const rl = rateLimit(getClientKey(req, "verify-email"), 10, 15 * 60_000);
+  const rl = await rateLimit(getClientKey(req, "verify-email"), 10, 15 * 60_000);
   if (!rl.ok) return limitedResponse(rl.retryAfter);
 
   try {
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
     }
 
     const tokenHash = await hashSignupVerificationToken(token);
-    const tokenRl = rateLimit(`verify-email-token:${hashKey(tokenHash)}`, 10, 15 * 60_000);
+    const tokenRl = await rateLimit(`verify-email-token:${await hashKey(tokenHash)}`, 10, 15 * 60_000);
     if (!tokenRl.ok) return limitedResponse(tokenRl.retryAfter);
 
     const pending = await findPendingSignupByTokenHash(tokenHash);

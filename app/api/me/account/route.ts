@@ -76,14 +76,14 @@ export async function PATCH(req: Request) {
     const context = await getSessionContext();
     if (!context) return jsonError(401, "Please log in", "unauthorized");
 
-    const rl = rateLimit(`${getClientKey(req, "account")}:${hashKey(context.user.id)}`, 30, 15 * 60_000);
+    const rl = await rateLimit(`${getClientKey(req, "account")}:${await hashKey(context.user.id)}`, 30, 15 * 60_000);
     if (!rl.ok) return limitedResponse(rl.retryAfter);
 
     const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
     const action = String(body?.action || "");
     const sensitive = ["request_email_change", "change_phone", "change_password"].includes(action);
     if (sensitive) {
-      const sensitiveRl = rateLimit(`account-sensitive:${hashKey(context.user.id)}`, 10, 15 * 60_000);
+      const sensitiveRl = await rateLimit(`account-sensitive:${await hashKey(context.user.id)}`, 10, 15 * 60_000);
       if (!sensitiveRl.ok) return limitedResponse(sensitiveRl.retryAfter);
     }
 
@@ -242,7 +242,7 @@ export async function DELETE(req: Request) {
     const context = await getSessionContext();
     if (!context) return jsonError(401, "Please log in", "unauthorized");
 
-    const rl = rateLimit(`account-delete:${hashKey(context.user.id)}`, 5, 15 * 60_000);
+    const rl = await rateLimit(`account-delete:${await hashKey(context.user.id)}`, 5, 15 * 60_000);
     if (!rl.ok) return limitedResponse(rl.retryAfter);
 
     const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;

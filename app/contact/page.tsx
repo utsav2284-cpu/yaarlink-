@@ -1,6 +1,7 @@
 "use client";
 
 import { useLang } from "@/frontend/i18n";
+import { solveBotChallenge } from "@/frontend/bot-challenge";
 import Link from "next/link";
 import ContactLink from "@/frontend/components/ContactLink";
 import PrivacyNotice from "@/frontend/components/PrivacyNotice";
@@ -45,6 +46,7 @@ function IconInstagram({ className = "" }: { className?: string }) {
 export default function ContactPage() {
   const [kind, setKind] = useState<Kind>("brand");
   const [form, setForm] = useState({ name: "", email: "", phone: "", message: "" });
+  const [websiteUrl, setWebsiteUrl] = useState("");
   const [done, setDone] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errKey, setErrKey] = useState("");
@@ -102,10 +104,17 @@ export default function ContactPage() {
     }
     setSaving(true);
     try {
+      let botChallenge;
+      try {
+        botChallenge = await solveBotChallenge("contact");
+      } catch {
+        setErrKey("api.botChallengeFailed");
+        return;
+      }
       const res = await fetch("/api/contact", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, kind }),
+        body: JSON.stringify({ ...form, kind, website_url: websiteUrl, botChallenge }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -272,6 +281,9 @@ export default function ContactPage() {
               <h2 className="font-display text-[26px] font-black">{t("cont.formTitle")}</h2>
               <p className="text-[14px] text-[#78716c]">{t("cont.formSub")}</p>
               <div className="mt-5 grid gap-3">
+                <div className="hidden" aria-hidden="true">
+                  <input name="website_url" value={websiteUrl} onChange={(e) => setWebsiteUrl(e.target.value)} tabIndex={-1} autoComplete="off" />
+                </div>
                 <label className="grid gap-1.5">
                   <span className="text-[13.5px] font-bold">{t("cont.name")}</span>
                   <input value={form.name} onChange={(e) => set("name", e.target.value)} required placeholder={kind === "creator" ? t("cont.namePhCreator") : t("cont.namePhBrand")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />

@@ -6,8 +6,8 @@ export const dynamic = "force-dynamic";
 
 const NO_STORE = { "Cache-Control": "private, no-store" };
 
-function failedAttemptResponse(clientKey: string, error: string) {
-  const lockFor = registerAuthFailure(clientKey);
+async function failedAttemptResponse(clientKey: string, error: string) {
+  const lockFor = await registerAuthFailure(clientKey);
   if (lockFor > 0) {
     return Response.json(
       { error: "Too many failed attempts. Please try again later.", code: "rate_limited" },
@@ -24,10 +24,10 @@ export async function POST(req: Request) {
     return Response.json({ error: "Admin login is not configured.", code: "admin_not_configured" }, { status: 503, headers: NO_STORE });
   }
   const clientKey = getClientKey(req, "admin-login");
-  const rl = rateLimit(clientKey, 5, 5 * 60_000);
+  const rl = await rateLimit(clientKey, 5, 5 * 60_000);
   if (!rl.ok) return limitedResponse(rl.retryAfter);
   // Hard lockout + exponential backoff on repeated failures from this client.
-  const locked = authLockoutSeconds(clientKey);
+  const locked = await authLockoutSeconds(clientKey);
   if (locked > 0) return limitedResponse(locked);
 
   try {
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
         outcome: "failure",
         details: { reason: "wrong_password", mfaConfigured: mfaUsed },
       });
-      return failedAttemptResponse(clientKey, mfaUsed ? "Wrong password or authenticator code" : "Wrong password");
+      return await failedAttemptResponse(clientKey, mfaUsed ? "Wrong password or authenticator code" : "Wrong password");
     }
 
     if (mfaUsed && !(await verifyAdminTotp(body?.totp))) {
@@ -58,11 +58,11 @@ export async function POST(req: Request) {
         outcome: "failure",
         details: { reason: "invalid_totp", mfaConfigured: true },
       });
-      return failedAttemptResponse(clientKey, "Wrong password or authenticator code");
+      return await failedAttemptResponse(clientKey, "Wrong password or authenticator code");
     }
 
-    const priorFailures = clearAuthFailures(clientKey);
-    if (priorFailures > 0) console.warn(`[admin-login] success after ${priorFailures} failed attempt(s) from ${clientKey}`);
+    const priorFailures = await clearAuthFailures(clientKey);
+    if (priorFailures > 0) console.warn(`[admin-login] success after ${priorFailures} failed attempt(s)`);
     await createAdminSession();
     await logAdminAudit(req, {
       action: "admin.login",

@@ -40,6 +40,16 @@ characters) after enrolling that secret in the owner's authenticator app. When s
 requires the current six-digit code in addition to `ADMIN_PASSWORD`. If the value is invalid or
 too short, admin login returns HTTP 503; it does not fall back to password-only access.
 
+Optional public-form challenge secret: set `BOT_CHALLENGE_SECRET` to a long random value
+different from the session secrets. If unset, `SESSION_SECRET` signs those short-lived,
+one-time challenges.
+
+Client-IP proxy trust: Cloudflare Workers, Vercel (`VERCEL=1`), and Netlify are detected
+automatically. For any other host, do not set `TRUST_CLOUDFLARE_HEADERS=true` or
+`TRUST_PROXY_HEADERS=true` unless that proxy is the only ingress, strips inbound forwarding
+headers, and the origin cannot be reached directly. With `TRUST_PROXY_HEADERS`, set
+`TRUST_PROXY_HOPS` to the number of trusted proxies appended to `x-forwarded-for` (default 1).
+
 ## 3. Security behavior in this release
 
 - Campaign creation requires an authenticated **brand** account.
@@ -82,4 +92,8 @@ was in place.
 
 ## 6. Important operational recommendation
 
-For stronger distributed bot protection, add Cloudflare WAF/Rate Limiting rules for the public POST endpoints. The application-level limiter in this package is intentionally lightweight and per Worker isolate; it is defense-in-depth, not a replacement for Cloudflare edge rate limiting.
+The application limiter and failed-login lockouts are now shared through PostgreSQL, so limits do
+not reset merely because a request reaches a different Vercel instance or Cloudflare isolate.
+For volumetric attacks, still add provider-edge WAF/rate-limit rules for public POST endpoints:
+edge controls can reject traffic before it reaches the app/database, while the database limiter
+remains defense-in-depth if the edge layer is bypassed or unavailable.

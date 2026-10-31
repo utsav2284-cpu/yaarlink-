@@ -1,5 +1,6 @@
 import { db } from "@/backend/db";
 import { adminAuditLogs } from "@/backend/db/schema";
+import { getClientIp } from "@/backend/rate-limit";
 
 export type AdminAuditOutcome = "success" | "failure";
 
@@ -13,10 +14,8 @@ export type AdminAuditInput = {
 
 function clientIp(req?: Request): string | null {
   if (!req) return null;
-  const direct = req.headers.get("cf-connecting-ip")?.trim();
-  if (direct) return direct.slice(0, 120);
-  const forwarded = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return forwarded ? forwarded.slice(0, 120) : null;
+  const ip = getClientIp(req);
+  return ip === "unknown" ? null : ip.slice(0, 120);
 }
 
 function serializeDetails(details?: AdminAuditInput["details"]): string | null {
