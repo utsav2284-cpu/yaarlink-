@@ -53,6 +53,7 @@ export default function DashboardPage() {
   const { t } = useLang();
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState("");
+  const [currentHour, setCurrentHour] = useState(() => new Date().getHours());
 
   useEffect(() => {
     fetch("/api/me/dashboard", { cache: "no-store" })
@@ -67,6 +68,11 @@ export default function DashboardPage() {
       })
       .catch((e) => setError(e.message));
   }, [router]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setCurrentHour(new Date().getHours()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const logout = async () => {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
@@ -87,16 +93,25 @@ export default function DashboardPage() {
 
   const { user } = data;
   const isBrand = user.role === "brand";
+  const greetingKey =
+    currentHour >= 5 && currentHour < 12
+      ? "dash.goodMorning"
+      : currentHour >= 12 && currentHour < 17
+        ? "dash.goodAfternoon"
+        : currentHour >= 17 && currentHour < 22
+          ? "dash.goodEvening"
+          : "dash.goodNight";
+  const accountLabel = isBrand ? t("dash.brandAccount") : t("dash.creatorAccount");
   const completedProfiles = (data.profiles ?? []).filter((profile) => profile.status !== "incomplete");
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
-          <p className="text-[12.5px] font-bold uppercase tracking-widest text-[#e4572e]">{t("dash.eyebrow")}, {user.name.split(" ")[0]} 🙏</p>
+          <p className="text-[12.5px] font-bold uppercase tracking-widest text-[#e4572e]">{t(greetingKey)}, {user.name.split(" ")[0]} 🙏</p>
           <h1 className="font-display text-[30px] font-black sm:text-[40px]">{t("dash.title")}</h1>
           <p className="text-[14.5px] text-[#78716c]">
-            {user.email} · <span className="font-bold capitalize">{user.role}</span> account
+            {user.email} · <span className="font-bold">{accountLabel}</span>
           </p>
         </div>
         <div className="flex gap-2">
