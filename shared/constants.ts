@@ -20,12 +20,12 @@ export const CONTENT_TYPES = ["Story", "Reel", "Post", "UGC Video", "YouTube Sho
 export const PLATFORMS = ["Instagram", "YouTube", "Both", "Other"] as const;
 
 export const PROMOTION_TYPES = [
-  { id: "Local Business", emoji: "🏪", title: "Local Business", desc: "Shops, cafes, salons, gyms, coaching. Get footfall from your own city.", example: "e.g. Cafe in Model Town, Ludhiana" },
-  { id: "App", emoji: "📱", title: "App", desc: "Get installs from the right audience, in the right language.", example: "e.g. New UPI / gaming / learning app" },
-  { id: "Website", emoji: "🌐", title: "Website", desc: "Drive traffic and enquiries to your site or landing page.", example: "e.g. D2C store, booking site" },
-  { id: "Product", emoji: "🛍️", title: "Product", desc: "Unboxings, honest reviews and UGC that people trust.", example: "e.g. Snacks, skincare, clothing" },
-  { id: "Creator / UGC", emoji: "🎥", title: "Creator / UGC", desc: "Raw, real videos made by creators — for ads or your own page.", example: "e.g. 30-sec Hindi review video" },
-  { id: "Event", emoji: "🎟️", title: "Event", desc: "Fill seats for gigs, expos, college fests and store launches.", example: "e.g. Food fest in Chandigarh" },
+  { id: "Local Business", emoji: "🏪", title: "Local Business" },
+  { id: "App", emoji: "📱", title: "App" },
+  { id: "Website", emoji: "🌐", title: "Website" },
+  { id: "Product", emoji: "🛍️", title: "Product" },
+  { id: "Creator / UGC", emoji: "🎥", title: "Creator / UGC" },
+  { id: "Event", emoji: "🎟️", title: "Event" },
 ] as const;
 
 export type Category = (typeof CATEGORIES)[number];
@@ -270,8 +270,12 @@ export function parseBudget(b: string): number {
   return 60000;
 }
 
-export function formatINR(n: number) {
-  return "₹" + Number(n || 0).toLocaleString("en-IN");
+export function formatINR(n: number, locale = "en-IN") {
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(Number(n || 0));
 }
 
 /** Public-listing review states. Only approved/open + verified rows are public. */

@@ -4,7 +4,7 @@ import { useLang } from "@/frontend/i18n";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { CATEGORIES, CONTENT_TYPES, LANGUAGES, PLATFORMS, PROMOTION_TYPES, formatINR } from "@/shared/constants";
+import { CATEGORIES, CONTENT_TYPES, LANGUAGES, PLATFORMS, PROMOTION_TYPES } from "@/shared/constants";
 import PrivacyNotice from "@/frontend/components/PrivacyNotice";
 
 type User = { id: string; name: string; email: string; phone?: string | null; role: string; emailVerifiedAt?: string | null; createdAt?: string };
@@ -118,6 +118,12 @@ type ProfileForm = {
 const inputClass = "w-full rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 text-[14px] outline-none focus:border-[#1c1917]";
 const labelClass = "grid gap-1.5 text-[13.5px] font-bold";
 
+class DisplayKeyError extends Error {
+  constructor(public key: string) {
+    super(key);
+  }
+}
+
 function Stat({ value, label }: { value: string | number; label: string }) {
   return (
     <div className="rounded-2xl border border-[#e9ddc3] bg-white p-5 text-center">
@@ -191,11 +197,11 @@ function profileToForm(p: Profile): ProfileForm {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { lang, t, opt, promo, platform: platformLabel } = useLang();
+  const { t, opt, promo, platform: platformLabel, apiErrorKey, formatNumber, formatCurrency, formatDate } = useLang();
   const [data, setData] = useState<Data | null>(null);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const [actionError, setActionError] = useState("");
+  const [errorKey, setErrorKey] = useState("");
+  const [noticeKey, setNoticeKey] = useState("");
+  const [actionErrorKey, setActionErrorKey] = useState("");
   const [busyKey, setBusyKey] = useState("");
   const [currentHour, setCurrentHour] = useState(() => new Date().getHours());
   const [editingCampaignId, setEditingCampaignId] = useState("");
@@ -214,10 +220,10 @@ export default function DashboardPage() {
       router.replace("/login");
       return null;
     }
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.error || "Could not load");
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new DisplayKeyError(apiErrorKey(r.status, d?.code, "api.loadFailed"));
     return d as Data;
-  }, [router]);
+  }, [apiErrorKey, router]);
 
   const loadData = async () => {
     const d = await fetchData();
@@ -229,7 +235,7 @@ export default function DashboardPage() {
       .then((d) => {
         if (d) setData(d);
       })
-      .catch((e: Error) => setError(e.message));
+      .catch((e: unknown) => setErrorKey(e instanceof DisplayKeyError ? e.key : "api.loadFailed"));
   }, [fetchData]);
 
   useEffect(() => {
@@ -247,8 +253,8 @@ export default function DashboardPage() {
 
   const runAction = async (key: string, request: () => Promise<Response>, after?: () => void) => {
     setBusyKey(key);
-    setNotice("");
-    setActionError("");
+    setNoticeKey("");
+    setActionErrorKey("");
     try {
       const res = await request();
       if (res.status === 401) {
@@ -256,12 +262,15 @@ export default function DashboardPage() {
         return;
       }
       const result = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(result.error || "Action failed");
+      if (!res.ok) {
+        setActionErrorKey(apiErrorKey(res.status, result?.code, "dash.actionFailed"));
+        return;
+      }
       await loadData();
       after?.();
-      setNotice(t("dash.saved"));
-    } catch {
-      setActionError(t("dash.actionFailed"));
+      setNoticeKey("dash.saved");
+    } catch (e) {
+      setActionErrorKey(e instanceof DisplayKeyError ? e.key : "dash.actionFailed");
     } finally {
       setBusyKey("");
     }
@@ -273,7 +282,7 @@ export default function DashboardPage() {
     router.refresh();
   };
 
-  if (error) return <div className="mx-auto max-w-4xl p-10 text-center text-red-700">{error}</div>;
+  if (errorKey) return <div className="mx-auto max-w-4xl p-10 text-center text-red-700">{t(errorKey)}</div>;
   if (!data)
     return (
       <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
@@ -299,12 +308,6 @@ export default function DashboardPage() {
   const notifications = data.notifications ?? [];
   const unreadCount = data.unreadNotificationCount ?? notifications.filter((n) => !n.readAt).length;
   const statusLabel = (status: string | null | undefined) => (status ? t(`status.${status}`) : "");
-  const dateLocale = lang === "hi" ? "hi-IN" : lang === "pa" ? "pa-IN" : "en-IN";
-  const formatDate = (value?: string | null) => {
-    if (!value) return "";
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString(dateLocale, { dateStyle: "medium" });
-  };
   const notificationText = (n: Notification) => {
     const template = t(
       n.kind === "application_received" ? "notify.received" : n.kind === "application_withdrawn" ? "notify.withdrawn" : "notify.status",
@@ -319,7 +322,7 @@ export default function DashboardPage() {
     <section className="mt-8 rounded-[24px] border border-[#e9ddc3] bg-white p-5 card-shadow" aria-labelledby="notifications-heading">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 id="notifications-heading" className="text-[19px] font-extrabold">
-          {t("notify.title")} {unreadCount > 0 && <span className="ml-1 rounded-full bg-[#e4572e] px-2.5 py-1 text-[12px] text-white">{unreadCount} {t("notify.unread")}</span>}
+          {t("notify.title")} {unreadCount > 0 && <span className="ml-1 rounded-full bg-[#e4572e] px-2.5 py-1 text-[12px] text-white">{formatNumber(unreadCount)} {t("notify.unread")}</span>}
         </h2>
         {unreadCount > 0 && (
           <button
@@ -490,7 +493,7 @@ export default function DashboardPage() {
         onSubmit={(e) => {
           e.preventDefault();
           if (profileForm.languages.length === 0) {
-            setActionError(t("cr.err"));
+            setActionErrorKey("cr.err");
             return;
           }
           runAction(`profile:${profile.id}:edit`, () => jsonRequest("/api/creators", "PATCH", { ...profileForm }), () => {
@@ -719,8 +722,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {notice && <p role="status" className="mt-5 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-[14px] font-bold text-green-800">{notice}</p>}
-      {actionError && <p role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[14px] font-bold text-red-700">{actionError}</p>}
+      {noticeKey && <p role="status" className="mt-5 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-[14px] font-bold text-green-800">{t(noticeKey)}</p>}
+      {actionErrorKey && <p role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[14px] font-bold text-red-700">{t(actionErrorKey)}</p>}
 
       {!user.emailVerifiedAt && (
         <div className="mt-5 flex flex-col justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center">
@@ -737,9 +740,9 @@ export default function DashboardPage() {
       {isBrand ? (
         <>
           <div className="mt-6 grid gap-3 sm:grid-cols-3">
-            <Stat value={data.campaigns?.length ?? 0} label={t("dash.statCampaigns")} />
-            <Stat value={data.applications.length} label={t("dash.statApps")} />
-            <Stat value={formatINR((data.campaigns ?? []).reduce((s, c) => s + (c.budget || 0), 0))} label={t("dash.statBudget")} />
+            <Stat value={formatNumber(data.campaigns?.length ?? 0)} label={t("dash.statCampaigns")} />
+            <Stat value={formatNumber(data.applications.length)} label={t("dash.statApps")} />
+            <Stat value={formatCurrency((data.campaigns ?? []).reduce((s, c) => s + (c.budget || 0), 0))} label={t("dash.statBudget")} />
           </div>
 
           <h2 className="mt-10 text-[19px] font-extrabold">{t("dash.yourCampaigns")}</h2>
@@ -762,7 +765,7 @@ export default function DashboardPage() {
                       <p className="text-[13px] text-[#78716c]">{[c.businessName, c.location, opt(c.language), opt(c.format)].filter(Boolean).join(" · ")}</p>
                     </div>
                     <div className="flex gap-2">
-                      <span className="rounded-full bg-[#fff4de] px-3 py-1 text-[12.5px] font-bold">🔒 {formatINR(c.budget || 0)}</span>
+                      <span className="rounded-full bg-[#fff4de] px-3 py-1 text-[12.5px] font-bold">🔒 {formatCurrency(c.budget || 0)}</span>
                       <span className={`rounded-full px-3 py-1 text-[12.5px] font-bold ${statusPillClass(c.status)}`}>{statusLabel(c.status)}</span>
                     </div>
                   </div>
@@ -838,7 +841,7 @@ export default function DashboardPage() {
                   {renderCampaignEdit(c)}
 
                   <div className="mt-4 rounded-xl border border-[#f0e6cc] bg-[#fffbf1] p-3">
-                    <p className="text-[12px] font-bold uppercase tracking-widest text-[#a8a29e]">{apps.length} {t("dash.applications")}</p>
+                    <p className="text-[12px] font-bold uppercase tracking-widest text-[#a8a29e]">{formatNumber(apps.length)} {t("dash.applications")}</p>
                     {apps.length === 0 ? (
                       <p className="mt-1 text-[13.5px] text-[#78716c]">{t("dash.noApps")}</p>
                     ) : (
@@ -853,9 +856,9 @@ export default function DashboardPage() {
       ) : (
         <>
           <div className="mt-6 grid gap-3 sm:grid-cols-3">
-            <Stat value={completedProfiles.length} label={t("dash.statProfiles")} />
-            <Stat value={data.applications.length} label={t("dash.statApplied")} />
-            <Stat value={data.openCampaigns?.length ?? 0} label={t("dash.statOpen")} />
+            <Stat value={formatNumber(completedProfiles.length)} label={t("dash.statProfiles")} />
+            <Stat value={formatNumber(data.applications.length)} label={t("dash.statApplied")} />
+            <Stat value={formatNumber(data.openCampaigns?.length ?? 0)} label={t("dash.statOpen")} />
           </div>
 
           {completedProfiles.length === 0 && (
@@ -879,7 +882,7 @@ export default function DashboardPage() {
                           <p className="text-[16px] font-extrabold">{profile.name}</p>
                           <p className="text-[13px] text-[#78716c]">{[platformLabel(profile.platform), opt(profile.category), opt(profile.languages), profile.location].filter(Boolean).join(" · ")}</p>
                           <p className="mt-1 text-[13px] font-semibold text-[#57534e]">
-                            {profile.verifiedFollowers != null ? t("dash.verifiedFollowers") : t("dash.claimedFollowers")}: {followerCount.toLocaleString("en-IN")}
+                            {profile.verifiedFollowers != null ? t("dash.verifiedFollowers") : t("dash.claimedFollowers")}: {formatNumber(followerCount)}
                           </p>
                           {profileLink && (
                             <a href={profileLink} target="_blank" rel="noopener noreferrer" className="mt-1 block break-all text-[13px] font-semibold text-[#e4572e]">{profileLink}</a>

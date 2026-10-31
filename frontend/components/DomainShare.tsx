@@ -9,7 +9,7 @@ export default function DomainShare() {
   const { t } = useLang();
   const [copied, setCopied] = useState(false);
   const [name, tld] = [SITE.domain.replace(/\.[^.]+$/, ""), SITE.domain.match(/\.[^.]+$/)?.[0] ?? ""];
-  const shareText = `Promote your business with creators & local pages, or earn as a creator 👉 ${SITE.url}`;
+  const shareText = t("dom.shareText").replace("{url}", SITE.url);
 
   const copy = async () => {
     let ok = false;
@@ -32,7 +32,7 @@ export default function DomainShare() {
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
     } else {
-      window.prompt("Copy this link:", SITE.url);
+      window.prompt(t("dom.copyPrompt"), SITE.url);
     }
   };
 

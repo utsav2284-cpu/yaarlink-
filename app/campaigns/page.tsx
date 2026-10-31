@@ -9,7 +9,7 @@ import PrivacyNotice from "@/frontend/components/PrivacyNotice";
 import ReportButton from "@/frontend/components/ReportButton";
 
 export default function CampaignsPage() {
-  const { t, opt, promo } = useLang();
+  const { t, opt, promo, apiErrorKey: getApiErrorKey } = useLang();
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
@@ -17,7 +17,8 @@ export default function CampaignsPage() {
   const [applyId, setApplyId] = useState<string | null>(null);
   const [applyForm, setApplyForm] = useState({ name: "", contact: "", message: "" });
   const [applyConsent, setApplyConsent] = useState(false);
-  const [applyError, setApplyError] = useState<"" | "name" | "contact" | "consent" | "login" | "creator" | "duplicate" | "closed" | "rate" | "generic">("");
+  const [applyError, setApplyError] = useState<"" | "name" | "contact" | "consent" | "login" | "creator" | "duplicate" | "closed" | "rate" | "generic" | "api">("");
+  const [applyApiErrorKey, setApplyApiErrorKey] = useState("camp.applyGenericErr");
   const [applyingId, setApplyingId] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
@@ -56,17 +57,19 @@ export default function CampaignsPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = String(data?.error || "");
         const code = String(data?.code || "");
         if (res.status === 401) setApplyError("login");
         else if (res.status === 403) setApplyError("creator");
-        else if (res.status === 429) setApplyError("rate");
+        else if (res.status === 429 || code === "rate_limited") setApplyError("rate");
         else if (code === "contact_required") setApplyError("contact");
         else if (code === "contact_sharing_consent_required") setApplyError("consent");
-        else if (message.includes("already applied")) setApplyError("duplicate");
-        else if (message.includes("no longer")) setApplyError("closed");
-        else if (message.includes("name / page name")) setApplyError("name");
-        else setApplyError("generic");
+        else if (code === "already_applied") setApplyError("duplicate");
+        else if (code === "campaign_closed") setApplyError("closed");
+        else if (code === "name_required") setApplyError("name");
+        else {
+          setApplyApiErrorKey(getApiErrorKey(res.status, code, "camp.applyGenericErr"));
+          setApplyError("api");
+        }
         return;
       }
 
@@ -98,7 +101,9 @@ export default function CampaignsPage() {
             ? "camp.applyClosedErr"
             : applyError === "rate"
               ? "camp.applyRateErr"
-              : "camp.applyGenericErr";
+              : applyError === "api"
+                ? applyApiErrorKey
+                : "camp.applyGenericErr";
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
@@ -159,7 +164,7 @@ export default function CampaignsPage() {
               </div>
               <div className="mt-4 flex items-center justify-between border-t border-[#f5edd8] pt-4">
                 <p className="text-[13.5px] font-bold text-[#17452e]">{t("camp.paid")}</p>
-                <button onClick={() => { setApplyError(""); setApplyConsent(false); setApplyId(applyId === c.id ? null : c.id); }} className="rounded-xl bg-[#1c1917] px-5 py-2.5 text-[13.5px] font-bold text-white hover:bg-black">
+                <button onClick={() => { setApplyError(""); setApplyApiErrorKey("camp.applyGenericErr"); setApplyConsent(false); setApplyId(applyId === c.id ? null : c.id); }} className="rounded-xl bg-[#1c1917] px-5 py-2.5 text-[13.5px] font-bold text-white hover:bg-black">
                   {applyId === c.id ? t("camp.close") : t("camp.apply")}
                 </button>
               </div>

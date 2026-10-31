@@ -44,7 +44,7 @@ type CampaignValues = {
   website: string | null;
 };
 
-type ParseResult = { ok: true; values: CampaignValues } | { ok: false; error: string };
+type ParseResult = { ok: true; values: CampaignValues } | { ok: false; error: string; code: string };
 
 function bodyRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
@@ -63,46 +63,46 @@ function optionalText(value: unknown, maxLength: number): string | null {
 function parseCampaign(body: Record<string, unknown>, user: SessionUser, current?: Campaign): ParseResult {
   const businessName = optionalText(hasField(body, "businessName") ? body.businessName : current?.businessName, 120);
   const title = optionalText(hasField(body, "title") ? body.title : current?.title, 160);
-  if (!businessName || !title) return { ok: false, error: "Business name and title required" };
+  if (!businessName || !title) return { ok: false, error: "Business name and title required", code: "campaign_required_fields" };
 
   const rawEmail = hasField(body, "email") ? body.email : current?.email;
   const emailInput = rawEmail == null ? "" : String(rawEmail).toLowerCase().trim();
   const email = emailInput || (current && hasField(body, "email") ? null : user.email);
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: "Please enter a valid email." };
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: "Please enter a valid email.", code: "invalid_email" };
 
   const rawWebsite = hasField(body, "website") ? body.website : current?.website;
   let website: string | null = null;
   if (rawWebsite) {
     website = normalizeProfileUrl(rawWebsite, "Instagram");
-    if (!website) return { ok: false, error: "Please enter a valid website or Instagram URL." };
+    if (!website) return { ok: false, error: "Please enter a valid website or Instagram URL.", code: "invalid_website" };
     website = website.slice(0, 200);
   }
 
   const rawBudget = hasField(body, "budget") ? body.budget : current?.budget;
   const budget = Math.round(Number(rawBudget));
   if (!Number.isFinite(budget) || budget < 500 || budget > 10_000_000) {
-    return { ok: false, error: "Please enter a budget between ₹500 and ₹1,00,00,000." };
+    return { ok: false, error: "Please enter a budget between ₹500 and ₹1,00,00,000.", code: "invalid_budget" };
   }
 
   const rawPromotionType = hasField(body, "promotionType") ? body.promotionType : current?.promotionType;
   const hasPromotionType = !(rawPromotionType == null || (typeof rawPromotionType === "string" && !rawPromotionType.trim()));
   const promotionType = hasPromotionType ? normalizePromotionType(rawPromotionType) : "Product";
-  if (!promotionType) return { ok: false, error: "Please choose a valid promotion type." };
+  if (!promotionType) return { ok: false, error: "Please choose a valid promotion type.", code: "invalid_promotion_type" };
 
   const rawCategory = hasField(body, "category") ? body.category : current?.category;
   const hasCategory = !(rawCategory == null || (typeof rawCategory === "string" && !rawCategory.trim()));
   const category = hasCategory ? normalizeCategory(rawCategory) : null;
-  if (hasCategory && !category) return { ok: false, error: "Please choose a valid category." };
+  if (hasCategory && !category) return { ok: false, error: "Please choose a valid category.", code: "invalid_category" };
 
   const rawLanguage = hasField(body, "language") ? body.language : current?.language;
   const hasLanguage = !(rawLanguage == null || (typeof rawLanguage === "string" && !rawLanguage.trim()));
   const language = hasLanguage ? normalizeLanguage(rawLanguage) : "English";
-  if (!language) return { ok: false, error: "Please choose a valid language." };
+  if (!language) return { ok: false, error: "Please choose a valid language.", code: "invalid_language" };
 
   const rawFormat = hasField(body, "format") ? body.format : current?.format;
   const hasFormat = !(rawFormat == null || (typeof rawFormat === "string" && !rawFormat.trim()));
   const format = hasFormat ? normalizeContentType(rawFormat) : "Story";
-  if (!format) return { ok: false, error: "Please choose a valid format." };
+  if (!format) return { ok: false, error: "Please choose a valid format.", code: "invalid_format" };
 
   return {
     ok: true,
@@ -136,8 +136,8 @@ const returningCampaign = {
 
 async function requireBrand() {
   const user = await getSessionUser().catch(() => null);
-  if (!user) return { error: Response.json({ error: "Please log in as a brand to manage campaigns." }, { status: 401, headers: NO_STORE }) };
-  if (user.role !== "brand") return { error: Response.json({ error: "Only brand accounts can manage campaigns." }, { status: 403, headers: NO_STORE }) };
+  if (!user) return { error: Response.json({ error: "Please log in as a brand to manage campaigns.", code: "unauthorized" }, { status: 401, headers: NO_STORE }) };
+  if (user.role !== "brand") return { error: Response.json({ error: "Only brand accounts can manage campaigns.", code: "forbidden" }, { status: 403, headers: NO_STORE }) };
   return { user };
 }
 
@@ -186,12 +186,12 @@ export async function POST(req: Request) {
   if (!rl.ok) return limitedResponse(rl.retryAfter);
   try {
     const body = bodyRecord(await req.json().catch(() => null));
-    if (!body) return Response.json({ error: "Invalid campaign" }, { status: 400, headers: NO_STORE });
+    if (!body) return Response.json({ error: "Invalid campaign", code: "invalid_request" }, { status: 400, headers: NO_STORE });
     const auth = await requireBrand();
     if (auth.error) return auth.error;
 
     const parsed = parseCampaign(body, auth.user);
-    if (!parsed.ok) return Response.json({ error: parsed.error }, { status: 400, headers: NO_STORE });
+    if (!parsed.ok) return Response.json({ error: parsed.error, code: parsed.code }, { status: 400, headers: NO_STORE });
 
     const [row] = await db
       .insert(campaigns)
@@ -209,7 +209,7 @@ export async function POST(req: Request) {
     return Response.json({ campaign: row }, { headers: NO_STORE });
   } catch (e) {
     console.error(e);
-    return Response.json({ error: "Could not create campaign" }, { status: 500, headers: NO_STORE });
+    return Response.json({ error: "Could not create campaign", code: "request_failed" }, { status: 500, headers: NO_STORE });
   }
 }
 
@@ -223,7 +223,7 @@ export async function PATCH(req: Request) {
   if (!rl.ok) return limitedResponse(rl.retryAfter);
   try {
     const body = bodyRecord(await req.json().catch(() => null));
-    if (!body || !isUuid(body.id)) return Response.json({ error: "Invalid campaign" }, { status: 400, headers: NO_STORE });
+    if (!body || !isUuid(body.id)) return Response.json({ error: "Invalid campaign", code: "invalid_target" }, { status: 400, headers: NO_STORE });
     const id = body.id;
 
     const auth = await requireBrand();
@@ -234,7 +234,7 @@ export async function PATCH(req: Request) {
       .from(campaigns)
       .where(and(eq(campaigns.id, id), eq(campaigns.ownerId, auth.user.id)))
       .limit(1);
-    if (!existing) return Response.json({ error: "Campaign not found." }, { status: 404, headers: NO_STORE });
+    if (!existing) return Response.json({ error: "Campaign not found.", code: "campaign_not_found" }, { status: 404, headers: NO_STORE });
     const now = new Date();
 
     if (hasField(body, "action")) {
@@ -242,15 +242,15 @@ export async function PATCH(req: Request) {
       let update: Partial<Campaign> | null = null;
 
       if (action === "pause") {
-        if (existing.status !== "open") return Response.json({ error: "Only an open campaign can be paused." }, { status: 409, headers: NO_STORE });
+        if (existing.status !== "open") return Response.json({ error: "Only an open campaign can be paused.", code: "campaign_must_be_open_to_pause" }, { status: 409, headers: NO_STORE });
         update = { status: "paused", updatedAt: now };
       } else if (action === "close") {
-        if (existing.status === "closed") return Response.json({ error: "This campaign is already closed." }, { status: 409, headers: NO_STORE });
+        if (existing.status === "closed") return Response.json({ error: "This campaign is already closed.", code: "campaign_already_closed" }, { status: 409, headers: NO_STORE });
         update = { status: "closed", updatedAt: now };
       } else if (action === "republish") {
         if (existing.status === "paused") {
           if (existing.verificationStatus !== "verified") {
-            return Response.json({ error: "This campaign must finish verification before it can be republished." }, { status: 409, headers: NO_STORE });
+            return Response.json({ error: "This campaign must finish verification before it can be republished.", code: "campaign_verification_required" }, { status: 409, headers: NO_STORE });
           }
           update = { status: "open", updatedAt: now };
         } else if (existing.status === "closed" || existing.status === "rejected") {
@@ -267,10 +267,10 @@ export async function PATCH(req: Request) {
                 }),
           };
         } else {
-          return Response.json({ error: "This campaign cannot be republished from its current status." }, { status: 409, headers: NO_STORE });
+          return Response.json({ error: "This campaign cannot be republished from its current status.", code: "campaign_cannot_republish" }, { status: 409, headers: NO_STORE });
         }
       } else {
-        return Response.json({ error: "Invalid campaign action" }, { status: 400, headers: NO_STORE });
+        return Response.json({ error: "Invalid campaign action", code: "invalid_action" }, { status: 400, headers: NO_STORE });
       }
 
       const [row] = await db
@@ -278,16 +278,16 @@ export async function PATCH(req: Request) {
         .set(update)
         .where(and(eq(campaigns.id, id), eq(campaigns.ownerId, auth.user.id), eq(campaigns.status, existing.status)))
         .returning(returningCampaign);
-      if (!row) return Response.json({ error: "This campaign changed while you were editing it. Please refresh and try again." }, { status: 409, headers: NO_STORE });
+      if (!row) return Response.json({ error: "This campaign changed while you were editing it. Please refresh and try again.", code: "campaign_changed" }, { status: 409, headers: NO_STORE });
       return Response.json({ campaign: row }, { headers: NO_STORE });
     }
 
     if (!CAMPAIGN_FIELDS.some((field) => hasField(body, field))) {
-      return Response.json({ error: "No campaign changes were provided." }, { status: 400, headers: NO_STORE });
+      return Response.json({ error: "No campaign changes were provided.", code: "no_changes" }, { status: 400, headers: NO_STORE });
     }
 
     const parsed = parseCampaign(body, auth.user, existing);
-    if (!parsed.ok) return Response.json({ error: parsed.error }, { status: 400, headers: NO_STORE });
+    if (!parsed.ok) return Response.json({ error: parsed.error, code: parsed.code }, { status: 400, headers: NO_STORE });
 
     const materialFields: Array<keyof CampaignValues> = [
       "businessName",
@@ -349,11 +349,11 @@ export async function PATCH(req: Request) {
       )
       .where(and(eq(campaigns.id, id), eq(campaigns.ownerId, auth.user.id)))
       .returning(returningCampaign);
-    if (!row) return Response.json({ error: "Campaign not found." }, { status: 404, headers: NO_STORE });
+    if (!row) return Response.json({ error: "Campaign not found.", code: "campaign_not_found" }, { status: 404, headers: NO_STORE });
     return Response.json({ campaign: row, reviewRequired: materialChanged }, { headers: NO_STORE });
   } catch (e) {
     console.error(e);
-    return Response.json({ error: "Could not update campaign" }, { status: 500, headers: NO_STORE });
+    return Response.json({ error: "Could not update campaign", code: "request_failed" }, { status: 500, headers: NO_STORE });
   }
 }
 
@@ -364,7 +364,7 @@ export async function DELETE(req: Request) {
     const body = bodyRecord(await req.json().catch(() => null));
     const queryId = new URL(req.url).searchParams.get("id");
     const id = body?.id ?? queryId;
-    if (!isUuid(id)) return Response.json({ error: "Invalid campaign" }, { status: 400, headers: NO_STORE });
+    if (!isUuid(id)) return Response.json({ error: "Invalid campaign", code: "invalid_target" }, { status: 400, headers: NO_STORE });
 
     const auth = await requireBrand();
     if (auth.error) return auth.error;
@@ -373,10 +373,10 @@ export async function DELETE(req: Request) {
       .delete(campaigns)
       .where(and(eq(campaigns.id, id), eq(campaigns.ownerId, auth.user.id)))
       .returning({ id: campaigns.id });
-    if (!row) return Response.json({ error: "Campaign not found." }, { status: 404, headers: NO_STORE });
+    if (!row) return Response.json({ error: "Campaign not found.", code: "campaign_not_found" }, { status: 404, headers: NO_STORE });
     return Response.json({ ok: true, deleted: true }, { headers: NO_STORE });
   } catch (e) {
     console.error(e);
-    return Response.json({ error: "Could not delete campaign" }, { status: 500, headers: NO_STORE });
+    return Response.json({ error: "Could not delete campaign", code: "request_failed" }, { status: 500, headers: NO_STORE });
   }
 }

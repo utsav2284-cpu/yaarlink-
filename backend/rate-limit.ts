@@ -44,7 +44,7 @@ export function rateLimit(key: string, limit: number, windowMs: number) {
 
 export function limitedResponse(retryAfter: number) {
   return Response.json(
-    { error: "Too many requests. Please try again later." },
+    { error: "Too many requests. Please try again later.", code: "rate_limited" },
     { status: 429, headers: { "Retry-After": String(retryAfter), "Cache-Control": "no-store" } },
   );
 }

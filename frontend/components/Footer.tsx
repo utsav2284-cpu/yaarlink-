@@ -7,7 +7,7 @@ import { SITE, callLink, gmailComposeLink, instagramLink, mailtoLink, whatsappLi
 import ContactLink from "./ContactLink";
 
 export default function Footer() {
-  const { lang, t } = useLang();
+  const { t, formatNumber } = useLang();
   return (
     <footer className="bg-[#14100d] text-[#e7e5e4]">
       <div className="mx-auto max-w-6xl px-4 py-14 sm:px-6">
@@ -56,7 +56,7 @@ export default function Footer() {
               {SITE.instagram && (
                 <ContactLink kind="instagram" href={instagramLink} value={"@" + SITE.instagram} title={t("cont.ig")} className="hover:text-[#ffc53d]">📸 @{SITE.instagram}</ContactLink>
               )}
-              <p className="text-[#a8a29e]">📍 {SITE.city}</p>
+              <p className="text-[#a8a29e]">📍 {t("site.city")}</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {whatsappLink && (
                   <ContactLink kind="whatsapp" href={whatsappLink} value={SITE.phoneDisplay} title={t("cont.wa")} className="inline-flex w-fit rounded-full bg-[#25D366] px-4 py-2 text-[13.5px] font-bold text-white hover:brightness-95">
@@ -88,7 +88,7 @@ export default function Footer() {
           the<span className="text-[#ffc53d]/30">yaar</span>.com
         </a>
         <div className="mt-6 flex flex-col gap-2 border-t border-white/10 pt-6 text-[12.5px] text-[#78716c] sm:flex-row sm:items-center sm:justify-between">
-          <p>© 2026 YaarLink · <span className="font-bold text-[#ffc53d]">{SITE.domain}</span> · {t("foot.rights")} {lang === "hi" ? "• सरल मार्केटिंग, सबके लिए" : lang === "pa" ? "• ਸਧਾਰਨ ਮਾਰਕੀਟਿੰਗ, ਸਭ ਲਈ" : "• Simple marketing for everyone."}</p>
+          <p>© {formatNumber(2026, { useGrouping: false })} YaarLink · <span className="font-bold text-[#ffc53d]">{SITE.domain}</span> · {t("foot.rights")} • {t("foot.tagline")}</p>
           <p>{t("foot.principle")}</p>
         </div>
       </div>

@@ -41,7 +41,7 @@ type EmailNotice = {
 // Applications contain creators' contact details — owner (admin) only.
 // Brands see applications for their own campaigns via /api/me/dashboard.
 export async function GET() {
-  if (!(await isAdmin())) return Response.json({ error: "Not allowed" }, { status: 401, headers: NO_STORE });
+  if (!(await isAdmin())) return Response.json({ error: "Not allowed", code: "unauthorized" }, { status: 401, headers: NO_STORE });
   try {
     const rows = await db.select().from(applications).orderBy(desc(applications.createdAt)).limit(200);
     return Response.json({ applications: rows }, { headers: NO_STORE });
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
   if (!rl.ok) return limitedResponse(rl.retryAfter);
   try {
     const body = bodyRecord(await req.json().catch(() => null));
-    if (!body || !isUuid(body.campaignId)) return Response.json({ error: "Invalid campaign" }, { status: 400, headers: NO_STORE });
+    if (!body || !isUuid(body.campaignId)) return Response.json({ error: "Invalid campaign", code: "invalid_target" }, { status: 400, headers: NO_STORE });
     const campaignId = body.campaignId;
 
     const camp = await db
@@ -64,24 +64,24 @@ export async function POST(req: Request) {
       .from(campaigns)
       .where(eq(campaigns.id, campaignId))
       .limit(1);
-    if (!camp.length) return Response.json({ error: "Campaign not found" }, { status: 404, headers: NO_STORE });
+    if (!camp.length) return Response.json({ error: "Campaign not found", code: "campaign_not_found" }, { status: 404, headers: NO_STORE });
     if (camp[0].status !== "open" || camp[0].verificationStatus !== "verified") {
-      return Response.json({ error: "This campaign is no longer accepting applications." }, { status: 400, headers: NO_STORE });
+      return Response.json({ error: "This campaign is no longer accepting applications.", code: "campaign_closed" }, { status: 400, headers: NO_STORE });
     }
 
     const user = await getSessionUser().catch(() => null);
-    if (!user) return Response.json({ error: "Please log in as a creator before applying." }, { status: 401, headers: NO_STORE });
-    if (user.role !== "creator") return Response.json({ error: "Only creator accounts can apply to campaigns." }, { status: 403, headers: NO_STORE });
+    if (!user) return Response.json({ error: "Please log in as a creator before applying.", code: "unauthorized" }, { status: 401, headers: NO_STORE });
+    if (user.role !== "creator") return Response.json({ error: "Only creator accounts can apply to campaigns.", code: "forbidden" }, { status: 403, headers: NO_STORE });
 
     const [initialCreatorProfile] = await db
       .select({ id: creators.id, name: creators.name })
       .from(creators)
       .where(eq(creators.userId, user.id))
       .limit(1);
-    if (!initialCreatorProfile) return Response.json({ error: "Please complete your creator profile before applying." }, { status: 400, headers: NO_STORE });
+    if (!initialCreatorProfile) return Response.json({ error: "Please complete your creator profile before applying.", code: "creator_profile_incomplete" }, { status: 400, headers: NO_STORE });
 
     const creatorName = typeof body.creatorName === "string" ? body.creatorName.trim().slice(0, 100) : "";
-    if (!creatorName) return Response.json({ error: "Please add your name / page name" }, { status: 400, headers: NO_STORE });
+    if (!creatorName) return Response.json({ error: "Please add your name / page name", code: "name_required" }, { status: 400, headers: NO_STORE });
 
     // Never reuse the account phone/email as the brand-facing contact. The
     // creator must enter the exact contact for this application and confirm
@@ -237,13 +237,13 @@ export async function POST(req: Request) {
       await sendApplicationNotificationEmailBestEffort({ req, ...outcome.email });
       return Response.json({ application: outcome.application, reactivated: outcome.kind === "reactivated" }, { headers: NO_STORE });
     }
-    if (outcome.kind === "duplicate") return Response.json({ error: "You have already applied to this campaign." }, { status: 400, headers: NO_STORE });
-    if (outcome.kind === "closed") return Response.json({ error: "This campaign is no longer accepting applications." }, { status: 400, headers: NO_STORE });
-    if (outcome.kind === "profile_missing") return Response.json({ error: "Please complete your creator profile before applying." }, { status: 400, headers: NO_STORE });
-    return Response.json({ error: "Campaign not found" }, { status: 404, headers: NO_STORE });
+    if (outcome.kind === "duplicate") return Response.json({ error: "You have already applied to this campaign.", code: "already_applied" }, { status: 400, headers: NO_STORE });
+    if (outcome.kind === "closed") return Response.json({ error: "This campaign is no longer accepting applications.", code: "campaign_closed" }, { status: 400, headers: NO_STORE });
+    if (outcome.kind === "profile_missing") return Response.json({ error: "Please complete your creator profile before applying.", code: "creator_profile_incomplete" }, { status: 400, headers: NO_STORE });
+    return Response.json({ error: "Campaign not found", code: "campaign_not_found" }, { status: 404, headers: NO_STORE });
   } catch (e) {
     console.error(e);
-    return Response.json({ error: "Could not apply" }, { status: 500, headers: NO_STORE });
+    return Response.json({ error: "Could not apply", code: "request_failed" }, { status: 500, headers: NO_STORE });
   }
 }
 
@@ -260,36 +260,36 @@ export async function PATCH(req: Request) {
   if (!rl.ok) return limitedResponse(rl.retryAfter);
   try {
     const body = bodyRecord(await req.json().catch(() => null));
-    if (!body || !isUuid(body.id)) return Response.json({ error: "Invalid application" }, { status: 400, headers: NO_STORE });
+    if (!body || !isUuid(body.id)) return Response.json({ error: "Invalid application", code: "invalid_target" }, { status: 400, headers: NO_STORE });
     const id = body.id;
     const action = typeof body.action === "string" ? body.action.trim().toLowerCase() : "";
     if (!CREATOR_ACTIONS.has(action) && !(action in BRAND_ACTIONS)) {
-      return Response.json({ error: "Invalid application action" }, { status: 400, headers: NO_STORE });
+      return Response.json({ error: "Invalid application action", code: "invalid_action" }, { status: 400, headers: NO_STORE });
     }
 
     if (hasField(body, "message") && body.message !== null && typeof body.message !== "string") {
-      return Response.json({ error: "Please enter a valid application message." }, { status: 400, headers: NO_STORE });
+      return Response.json({ error: "Please enter a valid application message.", code: "invalid_application_message" }, { status: 400, headers: NO_STORE });
     }
     if (hasField(body, "creatorContact") && typeof body.creatorContact !== "string") {
-      return Response.json({ error: "Please enter a valid contact for the brand." }, { status: 400, headers: NO_STORE });
+      return Response.json({ error: "Please enter a valid contact for the brand.", code: "invalid_application_contact" }, { status: 400, headers: NO_STORE });
     }
     if (hasField(body, "decisionNote") && body.decisionNote !== null && typeof body.decisionNote !== "string") {
-      return Response.json({ error: "Please enter a valid decision note." }, { status: 400, headers: NO_STORE });
+      return Response.json({ error: "Please enter a valid decision note.", code: "invalid_decision_note" }, { status: 400, headers: NO_STORE });
     }
 
     const nextMessage = hasField(body, "message") ? cleanText(body.message, 1000) ?? null : undefined;
     const nextContact = hasField(body, "creatorContact") ? String(body.creatorContact).trim().slice(0, 120) : undefined;
     if (nextContact !== undefined && nextContact.length < 3) {
-      return Response.json({ error: "Please enter a valid contact for the brand." }, { status: 400, headers: NO_STORE });
+      return Response.json({ error: "Please enter a valid contact for the brand.", code: "invalid_application_contact" }, { status: 400, headers: NO_STORE });
     }
     const contactSharingConsent = body.contactSharingConsent === true;
     const decisionNote = hasField(body, "decisionNote") ? cleanText(body.decisionNote, 1000) ?? null : null;
 
     const user = await getSessionUser().catch(() => null);
-    if (!user) return Response.json({ error: "Please log in to manage this application." }, { status: 401, headers: NO_STORE });
+    if (!user) return Response.json({ error: "Please log in to manage this application.", code: "unauthorized" }, { status: 401, headers: NO_STORE });
 
     const [peek] = await db.select({ campaignId: applications.campaignId }).from(applications).where(eq(applications.id, id)).limit(1);
-    if (!peek) return Response.json({ error: "Application not found." }, { status: 404, headers: NO_STORE });
+    if (!peek) return Response.json({ error: "Application not found.", code: "application_not_found" }, { status: 404, headers: NO_STORE });
 
     type PatchOutcome =
       | { kind: "updated"; application: typeof applications.$inferSelect; email?: EmailNotice }
@@ -500,11 +500,11 @@ export async function PATCH(req: Request) {
       if (outcome.email) await sendApplicationNotificationEmailBestEffort({ req, ...outcome.email });
       return Response.json({ application: outcome.application }, { headers: NO_STORE });
     }
-    if (outcome.kind === "forbidden") return Response.json({ error: "You cannot manage this application." }, { status: 403, headers: NO_STORE });
-    if (outcome.kind === "not_found") return Response.json({ error: "Application not found." }, { status: 404, headers: NO_STORE });
-    if (outcome.kind === "invalid_input") return Response.json({ error: "No application changes were provided." }, { status: 400, headers: NO_STORE });
+    if (outcome.kind === "forbidden") return Response.json({ error: "You cannot manage this application.", code: "forbidden" }, { status: 403, headers: NO_STORE });
+    if (outcome.kind === "not_found") return Response.json({ error: "Application not found.", code: "application_not_found" }, { status: 404, headers: NO_STORE });
+    if (outcome.kind === "invalid_input") return Response.json({ error: "No application changes were provided.", code: "no_changes" }, { status: 400, headers: NO_STORE });
     if (outcome.kind === "duplicate_contact") {
-      return Response.json({ error: "That contact is already used by another application for this campaign." }, { status: 409, headers: NO_STORE });
+      return Response.json({ error: "That contact is already used by another application for this campaign.", code: "application_contact_conflict" }, { status: 409, headers: NO_STORE });
     }
     if (outcome.kind === "contact_required") {
       return Response.json(
@@ -518,13 +518,13 @@ export async function PATCH(req: Request) {
         { status: 400, headers: NO_STORE },
       );
     }
-    if (outcome.kind === "closed") return Response.json({ error: "This campaign is no longer accepting applications." }, { status: 409, headers: NO_STORE });
+    if (outcome.kind === "closed") return Response.json({ error: "This campaign is no longer accepting applications.", code: "campaign_closed" }, { status: 409, headers: NO_STORE });
     return Response.json(
-      { error: `This application cannot be changed from its current status (${outcome.currentStatus ?? "unknown"}).` },
+      { error: `This application cannot be changed from its current status (${outcome.currentStatus ?? "unknown"}).`, code: "application_status_conflict" },
       { status: 409, headers: NO_STORE },
     );
   } catch (e) {
     console.error(e);
-    return Response.json({ error: "Could not update application" }, { status: 500, headers: NO_STORE });
+    return Response.json({ error: "Could not update application", code: "request_failed" }, { status: 500, headers: NO_STORE });
   }
 }

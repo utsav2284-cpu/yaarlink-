@@ -24,10 +24,10 @@ async function resolveOpenReports(targetType: "campaign" | "creator", targetId: 
 
 export async function POST(req: Request) {
   try {
-    if (!(await isAdmin())) return Response.json({ error: "Not allowed" }, { status: 401, headers: NO_STORE });
+    if (!(await isAdmin())) return Response.json({ error: "Not allowed", code: "unauthorized" }, { status: 401, headers: NO_STORE });
 
     const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!body) return Response.json({ error: "Invalid moderation request" }, { status: 400, headers: NO_STORE });
+    if (!body) return Response.json({ error: "Invalid moderation request", code: "invalid_request" }, { status: 400, headers: NO_STORE });
 
     const entity = body.entity;
     const action = typeof body.action === "string" ? body.action.trim().toLowerCase() : "";
@@ -36,9 +36,9 @@ export async function POST(req: Request) {
     const now = new Date();
 
     if (entity !== "creator" && entity !== "campaign" && entity !== "report" && entity !== "application" && entity !== "contact") {
-      return Response.json({ error: "Invalid moderation target" }, { status: 400, headers: NO_STORE });
+      return Response.json({ error: "Invalid moderation target", code: "invalid_target" }, { status: 400, headers: NO_STORE });
     }
-    if (!isUuid(id)) return Response.json({ error: "Invalid moderation target" }, { status: 400, headers: NO_STORE });
+    if (!isUuid(id)) return Response.json({ error: "Invalid moderation target", code: "invalid_target" }, { status: 400, headers: NO_STORE });
 
     const auditModeration = (details: Record<string, string | number | boolean | null | undefined> = {}) =>
       logAdminAudit(req, {
@@ -50,7 +50,7 @@ export async function POST(req: Request) {
 
     if (entity === "creator") {
       const [existing] = await db.select().from(creators).where(eq(creators.id, id)).limit(1);
-      if (!existing) return Response.json({ error: "Creator not found" }, { status: 404, headers: NO_STORE });
+      if (!existing) return Response.json({ error: "Creator not found", code: "creator_profile_not_found" }, { status: 404, headers: NO_STORE });
 
       if (action === "delete") {
         await db.delete(creators).where(eq(creators.id, id));
@@ -60,22 +60,22 @@ export async function POST(req: Request) {
       }
 
       if (normalizeReviewStatus(existing.status) === "incomplete") {
-        return Response.json({ error: "This creator has not completed a profile yet." }, { status: 400, headers: NO_STORE });
+        return Response.json({ error: "This creator has not completed a profile yet.", code: "creator_profile_incomplete" }, { status: 400, headers: NO_STORE });
       }
 
       if (action === "approve") {
         if (!existing.verificationCode) {
-          return Response.json({ error: "Send this creator back to review first so a verification code is issued." }, { status: 400, headers: NO_STORE });
+          return Response.json({ error: "Send this creator back to review first so a verification code is issued.", code: "creator_review_required" }, { status: 400, headers: NO_STORE });
         }
         if (!existing.profileUrl && !existing.instagram && !existing.youtube) {
-          return Response.json({ error: "This creator has no linked social profile to verify." }, { status: 400, headers: NO_STORE });
+          return Response.json({ error: "This creator has no linked social profile to verify.", code: "creator_no_linked_profile" }, { status: 400, headers: NO_STORE });
         }
 
         let verifiedFollowers = existing.followers ?? 0;
         if (body.verifiedFollowers !== undefined && body.verifiedFollowers !== null && body.verifiedFollowers !== "") {
           const parsed = Number(body.verifiedFollowers);
           if (!Number.isInteger(parsed) || parsed < 0 || parsed > 100_000_000) {
-            return Response.json({ error: "Please enter a valid verified follower count." }, { status: 400, headers: NO_STORE });
+            return Response.json({ error: "Please enter a valid verified follower count.", code: "invalid_followers" }, { status: 400, headers: NO_STORE });
           }
           verifiedFollowers = parsed;
         }
@@ -129,12 +129,12 @@ export async function POST(req: Request) {
         return Response.json({ ok: true, creator }, { headers: NO_STORE });
       }
 
-      return Response.json({ error: "Invalid creator action" }, { status: 400, headers: NO_STORE });
+      return Response.json({ error: "Invalid creator action", code: "invalid_action" }, { status: 400, headers: NO_STORE });
     }
 
     if (entity === "campaign") {
       const [existing] = await db.select().from(campaigns).where(eq(campaigns.id, id)).limit(1);
-      if (!existing) return Response.json({ error: "Campaign not found" }, { status: 404, headers: NO_STORE });
+      if (!existing) return Response.json({ error: "Campaign not found", code: "campaign_not_found" }, { status: 404, headers: NO_STORE });
 
       if (action === "delete") {
         await db.delete(campaigns).where(eq(campaigns.id, id));
@@ -145,7 +145,7 @@ export async function POST(req: Request) {
 
       if (action === "approve") {
         if (!existing.verificationCode) {
-          return Response.json({ error: "Send this campaign back to review first so a verification code is issued." }, { status: 400, headers: NO_STORE });
+          return Response.json({ error: "Send this campaign back to review first so a verification code is issued.", code: "campaign_review_required" }, { status: 400, headers: NO_STORE });
         }
         const [campaign] = await db
           .update(campaigns)
@@ -193,13 +193,13 @@ export async function POST(req: Request) {
         return Response.json({ ok: true, campaign }, { headers: NO_STORE });
       }
 
-      return Response.json({ error: "Invalid campaign action" }, { status: 400, headers: NO_STORE });
+      return Response.json({ error: "Invalid campaign action", code: "invalid_action" }, { status: 400, headers: NO_STORE });
     }
 
     if (entity === "application") {
       const [existing] = await db.select().from(applications).where(eq(applications.id, id)).limit(1);
-      if (!existing) return Response.json({ error: "Application not found" }, { status: 404, headers: NO_STORE });
-      if (action !== "delete") return Response.json({ error: "Invalid application action" }, { status: 400, headers: NO_STORE });
+      if (!existing) return Response.json({ error: "Application not found", code: "application_not_found" }, { status: 404, headers: NO_STORE });
+      if (action !== "delete") return Response.json({ error: "Invalid application action", code: "invalid_action" }, { status: 400, headers: NO_STORE });
       await db.delete(applications).where(eq(applications.id, id));
       await auditModeration({ fromStatus: existing.status, toStatus: "deleted", campaignId: existing.campaignId });
       return Response.json({ ok: true, deleted: true }, { headers: NO_STORE });
@@ -207,18 +207,18 @@ export async function POST(req: Request) {
 
     if (entity === "contact") {
       const [existing] = await db.select().from(contacts).where(eq(contacts.id, id)).limit(1);
-      if (!existing) return Response.json({ error: "Contact message not found" }, { status: 404, headers: NO_STORE });
-      if (action !== "delete") return Response.json({ error: "Invalid contact action" }, { status: 400, headers: NO_STORE });
+      if (!existing) return Response.json({ error: "Contact message not found", code: "contact_not_found" }, { status: 404, headers: NO_STORE });
+      if (action !== "delete") return Response.json({ error: "Invalid contact action", code: "invalid_action" }, { status: 400, headers: NO_STORE });
       await db.delete(contacts).where(eq(contacts.id, id));
       await auditModeration({ fromStatus: existing.kind, toStatus: "deleted" });
       return Response.json({ ok: true, deleted: true }, { headers: NO_STORE });
     }
 
     const [existingReport] = await db.select().from(reports).where(eq(reports.id, id)).limit(1);
-    if (!existingReport) return Response.json({ error: "Report not found" }, { status: 404, headers: NO_STORE });
+    if (!existingReport) return Response.json({ error: "Report not found", code: "report_not_found" }, { status: 404, headers: NO_STORE });
 
     if (action !== "resolve" && action !== "dismiss" && action !== "reopen") {
-      return Response.json({ error: "Invalid report action" }, { status: 400, headers: NO_STORE });
+      return Response.json({ error: "Invalid report action", code: "invalid_action" }, { status: 400, headers: NO_STORE });
     }
 
     const [report] = await db
@@ -240,6 +240,6 @@ export async function POST(req: Request) {
     return Response.json({ ok: true, report }, { headers: NO_STORE });
   } catch (e) {
     console.error(e);
-    return Response.json({ error: "Could not complete moderation action" }, { status: 500, headers: NO_STORE });
+    return Response.json({ error: "Could not complete moderation action", code: "moderation_failed" }, { status: 500, headers: NO_STORE });
   }
 }

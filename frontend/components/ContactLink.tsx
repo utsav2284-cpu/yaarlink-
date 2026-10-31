@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
+import { useLang } from "@/frontend/i18n";
 
 export type ContactKind = "whatsapp" | "call" | "email" | "instagram";
 
@@ -63,6 +64,7 @@ const EXTERNAL = new Set<ContactKind>(["whatsapp", "instagram"]);
  * - Inside a preview frame (where browsers block these links): shows a QR code + copy button.
  */
 export default function ContactLink({ kind, href, value, title, webHref, className, ariaLabel, children }: Props) {
+  const { t } = useLang();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState<"frame" | "desktop">("frame");
   const [qr, setQr] = useState("");
@@ -110,12 +112,12 @@ export default function ContactLink({ kind, href, value, title, webHref, classNa
 
   const scanLabel =
     kind === "whatsapp"
-      ? "Scan with your phone camera to open the WhatsApp chat."
+      ? t("contactLink.scanWhatsApp")
       : kind === "call"
-        ? "Scan with your phone camera to call."
+        ? t("contactLink.scanCall")
         : kind === "email"
-          ? "Scan with your phone camera to write an email."
-          : "Scan with your phone camera to open Instagram.";
+          ? t("contactLink.scanEmail")
+          : t("contactLink.scanInstagram");
 
   return (
     <>
@@ -149,7 +151,7 @@ export default function ContactLink({ kind, href, value, title, webHref, classNa
               <button
                 onClick={() => setOpen(false)}
                 className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#e9ddc3] text-[16px]"
-                aria-label="Close"
+                aria-label={t("common.close")}
               >
                 ✕
               </button>
@@ -158,9 +160,9 @@ export default function ContactLink({ kind, href, value, title, webHref, classNa
             <div className="mx-auto mt-4 grid h-[220px] w-[220px] place-items-center rounded-2xl border border-[#e9ddc3] bg-white p-2">
               {qr ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={qr} alt={`QR code for ${value}`} className="h-full w-full" />
+                <img src={qr} alt={t("contactLink.qrAlt").replace("{value}", value)} className="h-full w-full" />
               ) : (
-                <span className="text-[13px] text-[#a8a29e]">Loading…</span>
+                <span className="text-[13px] text-[#a8a29e]">{t("common.loading")}</span>
               )}
             </div>
             <p className="mt-3 text-[14px] font-semibold text-[#57534e]">{scanLabel}</p>
@@ -169,17 +171,24 @@ export default function ContactLink({ kind, href, value, title, webHref, classNa
               onClick={doCopy}
               className="mt-4 w-full rounded-xl bg-[#1c1917] py-3 text-[15px] font-extrabold text-white hover:bg-black"
             >
-              {copied ? "✓ Copied!" : `Copy ${kind === "email" ? "email" : kind === "instagram" ? "link" : kind === "whatsapp" ? "WhatsApp link" : "number"}`}
+              {copied
+                ? t("contactLink.copied")
+                : kind === "email"
+                  ? t("contactLink.copyEmail")
+                  : kind === "instagram"
+                    ? t("contactLink.copyLink")
+                    : kind === "whatsapp"
+                      ? t("contactLink.copyWhatsApp")
+                      : t("contactLink.copyNumber")}
             </button>
 
             {reason === "frame" ? (
               <p className="mt-3 rounded-xl bg-[#fff4de] px-3 py-2.5 text-[12.5px] leading-snug text-[#78716c]">
-                You&apos;re in a preview window, which blocks outside links. On your live website this button opens
-                directly.
+                {t("contactLink.frameNote")}
               </p>
             ) : (
               <a href={href} className="mt-3 block text-[13.5px] font-bold text-[#e4572e]">
-                Have a calling app on this computer? Call now →
+                {t("contactLink.desktopCall")}
               </a>
             )}
           </div>

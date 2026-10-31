@@ -15,11 +15,11 @@ export async function POST(req: Request) {
     const password = String(b.password || "");
     const accountRl = rateLimit(`login-account:${hashKey(email)}`, 12, 15 * 60_000);
     if (!accountRl.ok) return limitedResponse(accountRl.retryAfter);
-    if (!email || !password) return Response.json({ error: "Email and password required" }, { status: 400 });
+    if (!email || !password) return Response.json({ error: "Email and password required", code: "invalid_request" }, { status: 400 });
 
     const rows = await db.select().from(users).where(eq(users.email, email)).limit(1);
     // Same message for unknown email and wrong password, so emails can't be probed.
-    const fail = () => Response.json({ error: "Wrong email or password." }, { status: 400 });
+    const fail = () => Response.json({ error: "Wrong email or password.", code: "wrong_credentials" }, { status: 400 });
     if (!rows.length) return fail();
 
     const u = rows[0];
@@ -33,6 +33,6 @@ export async function POST(req: Request) {
     return Response.json({ user: { id: u.id, name: u.name, email: u.email, role: u.role } }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     console.error(e);
-    return Response.json({ error: "Could not log in" }, { status: 500 });
+    return Response.json({ error: "Could not log in", code: "request_failed" }, { status: 500 });
   }
 }

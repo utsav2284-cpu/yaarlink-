@@ -1,26 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { formatINR } from "@/shared/constants";
+import { useLang } from "@/frontend/i18n";
 
 type Tab = "campaigns" | "creators" | "reports" | "applications" | "contacts" | "audit";
 type ModerationEntity = "campaign" | "creator" | "report" | "application" | "contact";
 
 const emptyAdminData = () => ({ campaigns: [], creators: [], applications: [], contacts: [], reports: [], auditLogs: [] });
-
-const REPORT_REASON_LABELS: Record<string, string> = {
-  impersonation: "Impersonation / not the owner",
-  scam: "Scam or fraud",
-  spam: "Spam",
-  "incorrect-info": "Incorrect information",
-  other: "Other",
-};
-
-function formatDate(value?: string | null) {
-  if (!value) return "";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "" : date.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
-}
 
 function statusClass(status?: string | null, isReport = false) {
   if (isReport && status === "open") return "bg-red-100 text-red-800";
@@ -50,10 +36,13 @@ function statusClass(status?: string | null, isReport = false) {
 }
 
 function StatusPill({ status, isReport = false }: { status?: string | null; isReport?: boolean }) {
+  const { t } = useLang();
   if (!status) return <span className="text-stone-400">—</span>;
+  const key = `status.${status}`;
+  const label = t(key);
   return (
-    <span className={`inline-flex rounded-full px-2.5 py-1 text-[11.5px] font-bold capitalize ${statusClass(status, isReport)}`}>
-      {status}
+    <span className={`inline-flex rounded-full px-2.5 py-1 text-[11.5px] font-bold ${statusClass(status, isReport)}`}>
+      {label === key ? status : label}
     </span>
   );
 }
@@ -104,13 +93,14 @@ function ProfileLinks({ links }: { links: Array<string | null | undefined> }) {
 }
 
 export default function AdminPage() {
+  const { t, opt, promo, platform, apiErrorKey, formatNumber, formatCurrency, formatDateTime } = useLang();
   const [data, setData] = useState<any>(emptyAdminData);
   const [tab, setTab] = useState<Tab>("campaigns");
   const [key, setKey] = useState("");
   const [totp, setTotp] = useState("");
   const [authed, setAuthed] = useState(false);
-  const [err, setErr] = useState("");
-  const [notice, setNotice] = useState("");
+  const [errKey, setErrKey] = useState("");
+  const [noticeKey, setNoticeKey] = useState("");
   const [loading, setLoading] = useState(false);
   const [busyKey, setBusyKey] = useState("");
   const [verifiedFollowers, setVerifiedFollowers] = useState<Record<string, string>>({});
@@ -121,24 +111,28 @@ export default function AdminPage() {
     setTab("campaigns");
     setKey("");
     setTotp("");
-    setNotice("");
+    setNoticeKey("");
     setBusyKey("");
     setAuthed(false);
   };
 
   const load = async () => {
     setLoading(true);
-    setErr("");
+    setErrKey("");
     try {
       const res = await fetch("/api/admin/data", { credentials: "include", cache: "no-store" });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error || "Wrong password");
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const nextErrorKey = apiErrorKey(res.status, d?.code, "api.loadFailed");
+        clearAdminState();
+        setErrKey(nextErrorKey);
+        return;
+      }
       setData({ ...emptyAdminData(), ...d });
       setAuthed(true);
-    } catch (e: any) {
-      const message = e.message || "Could not load admin data";
+    } catch {
       clearAdminState();
-      setErr(message);
+      setErrKey("api.loadFailed");
     } finally {
       setLoading(false);
     }
@@ -149,29 +143,33 @@ export default function AdminPage() {
   const moderate = async (entity: ModerationEntity, id: string, action: string, extra: Record<string, unknown> = {}) => {
     if (action === "delete") {
       const label =
-        entity === "application" ? "application" : entity === "contact" ? "contact message" : entity === "report" ? "report" : "listing";
-      if (!window.confirm(`Delete this ${label} permanently?`)) return;
+        entity === "application"
+          ? t("admin.entityApplication")
+          : entity === "contact"
+            ? t("admin.entityContact")
+            : entity === "report"
+              ? t("admin.entityReport")
+              : t("admin.entityListing");
+      if (!window.confirm(t("admin.confirmDelete").replace("{entity}", label))) return;
     }
     if (action === "approve") {
       const confirmed = window.confirm(
-        entity === "creator"
-          ? "Confirm: the creator sent this code from the linked social account (or placed it in the bio/about section), and the follower count has been checked."
-          : "Confirm: the brand sent this code from the business WhatsApp, email, or official social account connected with this campaign.",
+        entity === "creator" ? t("admin.confirmCreatorApprove") : t("admin.confirmCampaignApprove"),
       );
       if (!confirmed) return;
     }
 
     let note: string | undefined;
     if (["reject", "suspend", "close", "review"].includes(action)) {
-      const entered = window.prompt("Optional note for the owner (leave blank if none):", "");
+      const entered = window.prompt(t("admin.notePrompt"), "");
       if (entered === null) return;
       note = entered.trim() || undefined;
     }
 
     const actionKey = `${entity}:${id}:${action}`;
     setBusyKey(actionKey);
-    setErr("");
-    setNotice("");
+    setErrKey("");
+    setNoticeKey("");
     try {
       const res = await fetch("/api/admin/moderation", {
         method: "POST",
@@ -180,11 +178,14 @@ export default function AdminPage() {
         body: JSON.stringify({ entity, id, action, note, ...extra }),
       });
       const d = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(d.error || "Moderation action failed");
+      if (!res.ok) {
+        setErrKey(apiErrorKey(res.status, d?.code, "api.moderationFailed"));
+        return;
+      }
       await load();
-      setNotice("Moderation updated.");
-    } catch (e: any) {
-      setErr(e.message || "Moderation action failed");
+      setNoticeKey("admin.moderationUpdated");
+    } catch {
+      setErrKey("api.moderationFailed");
     } finally {
       setBusyKey("");
     }
@@ -193,8 +194,8 @@ export default function AdminPage() {
   const login = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setErr("");
-    setNotice("");
+    setErrKey("");
+    setNoticeKey("");
     try {
       const res = await fetch("/api/admin/login", {
         method: "POST",
@@ -203,16 +204,24 @@ export default function AdminPage() {
         body: JSON.stringify({ password: key, totp: totp.trim() || undefined }),
       });
       const d = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(d.error || "Wrong password");
+      if (!res.ok) {
+        setData(emptyAdminData());
+        setVerifiedFollowers({});
+        setTotp("");
+        setAuthed(false);
+        setErrKey(apiErrorKey(res.status, d?.code, "api.adminWrongCredentials"));
+        setLoading(false);
+        return;
+      }
       setKey("");
       setTotp("");
       await load();
-    } catch (error: any) {
+    } catch {
       setData(emptyAdminData());
       setVerifiedFollowers({});
       setTotp("");
       setAuthed(false);
-      setErr(error.message || "Could not log in");
+      setErrKey("api.adminLoginFailed");
       setLoading(false);
     }
   };
@@ -221,14 +230,14 @@ export default function AdminPage() {
     // Remove sensitive rows from memory/DOM immediately; the browser cookie is
     // independent of React state and is still sent with the logout request.
     clearAdminState();
-    setErr("");
+    setErrKey("");
     setLoading(true);
     try {
       const res = await fetch("/api/admin/logout", { method: "POST", credentials: "include", cache: "no-store" });
       const d = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(d.error || "Server-side sign-out failed. Please try again.");
-    } catch (error: any) {
-      setErr(error.message || "Admin data was cleared locally, but server-side sign-out failed. Log in again and choose Lock admin to revoke all sessions.");
+      if (!res.ok) setErrKey(apiErrorKey(res.status, d?.code, "admin.signOutFailed"));
+    } catch {
+      setErrKey("admin.signOutFailed");
     } finally {
       setLoading(false);
     }
@@ -241,14 +250,15 @@ export default function AdminPage() {
           onSubmit={login}
           className="rounded-[28px] border border-[#e9ddc3] bg-white p-8 card-shadow"
         >
-          <p className="text-[12.5px] font-bold uppercase tracking-widest text-[#e4572e]">Owner only 🔒</p>
-          <h1 className="font-display mt-1 text-[28px] font-black">Admin login</h1>
-          <p className="mt-1 text-[14px] text-[#78716c]">Budgets and contact details are visible only here.</p>
+          <p className="text-[12.5px] font-bold uppercase tracking-widest text-[#e4572e]">{t("admin.ownerOnly")}</p>
+          <h1 className="font-display mt-1 text-[28px] font-black">{t("admin.loginTitle")}</h1>
+          <p className="mt-1 text-[14px] text-[#78716c]">{t("admin.loginSub")}</p>
           <input
             type="password"
             value={key}
             onChange={(e) => setKey(e.target.value)}
-            placeholder="Admin password"
+            placeholder={t("admin.passwordPlaceholder")}
+            aria-label={t("admin.passwordPlaceholder")}
             autoComplete="current-password"
             className="mt-5 w-full rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]"
           />
@@ -256,14 +266,15 @@ export default function AdminPage() {
             type="text"
             value={totp}
             onChange={(e) => setTotp(e.target.value.replace(/[^0-9 ]/g, "").slice(0, 7))}
-            placeholder="Authenticator code (if enabled)"
+            placeholder={t("admin.totpPlaceholder")}
+            aria-label={t("admin.totpPlaceholder")}
             autoComplete="one-time-code"
             inputMode="numeric"
             className="mt-3 w-full rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]"
           />
-          {err && <p className="mt-3 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-[13.5px] font-bold text-red-700">{err}</p>}
+          {errKey && <p role="alert" className="mt-3 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-[13.5px] font-bold text-red-700">{t(errKey)}</p>}
           <button disabled={loading || !key} className="mt-4 w-full rounded-2xl bg-[#1c1917] py-3.5 text-[15.5px] font-extrabold text-white disabled:opacity-50">
-            {loading ? "Checking…" : "Open admin →"}
+            {loading ? t("admin.checking") : t("admin.open")}
           </button>
         </form>
       </div>
@@ -283,6 +294,86 @@ export default function AdminPage() {
   const activeRows =
     tab === "campaigns" ? campaigns : tab === "creators" ? creators : tab === "reports" ? reports : tab === "applications" ? applications : tab === "audit" ? auditLogs : contacts;
 
+  const formatDate = formatDateTime;
+  const statusLabel = (status?: string | null) => {
+    if (!status) return "—";
+    const key = `status.${status}`;
+    const label = t(key);
+    return label === key ? status : label;
+  };
+  const entityLabel = (entity?: string | null) => {
+    switch (entity) {
+      case "campaign":
+        return t("admin.targetCampaign");
+      case "creator":
+        return t("admin.targetCreator");
+      case "report":
+        return t("admin.entityReport");
+      case "application":
+        return t("admin.entityApplication");
+      case "contact":
+        return t("admin.entityContact");
+      default:
+        return entity || t("admin.adminEntity");
+    }
+  };
+  const contactKindLabel = (kind?: string | null) => {
+    switch (kind) {
+      case "brand":
+        return t("cont.kindBrand");
+      case "creator":
+        return t("cont.kindCreator");
+      case "other":
+        return t("cont.kindOther");
+      default:
+        return kind || "—";
+    }
+  };
+  const reportReasonLabel = (reason?: string | null) => {
+    if (!reason) return "—";
+    const key = `report.${reason}`;
+    const label = t(key);
+    return label === key ? reason : label;
+  };
+  const auditActionLabel = (action?: string | null) => {
+    if (!action) return "—";
+    if (action === "admin.login") return t("admin.auditLogin");
+    if (action === "admin.logout") return t("admin.auditLogout");
+    const match = /^moderation\.([^.]+)\.([^.]+)$/.exec(action);
+    if (!match) return action;
+    const actionKey = `admin.auditAction.${match[2]}`;
+    const actionLabel = t(actionKey);
+    return t("admin.auditModeration")
+      .replace("{action}", actionLabel === actionKey ? match[2] : actionLabel)
+      .replace("{entity}", entityLabel(match[1]));
+  };
+  const auditDetailEntries = (details?: string | null): Array<[string, string]> => {
+    if (!details) return [];
+    try {
+      const parsed = JSON.parse(details) as Record<string, unknown>;
+      return Object.entries(parsed).map(([detailKey, rawValue]) => {
+        const labelKey = `admin.auditDetail.${detailKey}`;
+        const label = t(labelKey);
+        let value: string;
+        if (rawValue === null || rawValue === undefined || rawValue === "") value = "—";
+        else if (typeof rawValue === "boolean") value = rawValue ? t("admin.yes") : t("admin.no");
+        else if (typeof rawValue === "number") value = formatNumber(rawValue);
+        else if (detailKey === "fromStatus" || detailKey === "toStatus") {
+          const text = String(rawValue);
+          value = ["brand", "creator", "other"].includes(text) ? contactKindLabel(text) : statusLabel(text);
+        } else if (detailKey === "targetType") value = entityLabel(String(rawValue));
+        else if (detailKey === "reason") {
+          const reasonKey = `admin.auditReason.${String(rawValue)}`;
+          const reasonLabel = t(reasonKey);
+          value = reasonLabel === reasonKey ? String(rawValue) : reasonLabel;
+        } else value = String(rawValue);
+        return [label === labelKey ? detailKey : label, value] as [string, string];
+      });
+    } catch {
+      return [[t("admin.details"), details]];
+    }
+  };
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
       <div className="mb-2 flex justify-end">
@@ -291,68 +382,67 @@ export default function AdminPage() {
           disabled={loading}
           className="rounded-full border border-[#e9ddc3] bg-white px-4 py-2 text-[13px] font-bold disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Lock admin 🔒
+          {t("admin.lock")}
         </button>
       </div>
-      <p className="text-[12.5px] font-bold uppercase tracking-widest text-[#e4572e]">Internal • Team YaarLink</p>
-      <h1 className="font-display text-[30px] font-black sm:text-[40px]">Admin overview</h1>
-      <p className="text-[14.5px] text-[#78716c]">Real data from Postgres. Only approved/open listings that pass verification are public.</p>
+      <p className="text-[12.5px] font-bold uppercase tracking-widest text-[#e4572e]">{t("admin.internal")}</p>
+      <h1 className="font-display text-[30px] font-black sm:text-[40px]">{t("admin.overview")}</h1>
+      <p className="text-[14.5px] text-[#78716c]">{t("admin.overviewSub")}</p>
 
       <div className="mt-6 grid gap-3 sm:grid-cols-3 xl:grid-cols-6">
         {[
-          { a: campaigns.length, b: "Campaigns" },
-          { a: creators.length, b: "Creators" },
-          { a: applications.length, b: "Applications" },
-          { a: contacts.length, b: "Messages" },
-          { a: pendingReviews, b: "Pending reviews" },
-          { a: openReports, b: "Open reports" },
+          { a: campaigns.length, b: t("admin.campaigns") },
+          { a: creators.length, b: t("admin.creators") },
+          { a: applications.length, b: t("admin.applications") },
+          { a: contacts.length, b: t("admin.messages") },
+          { a: pendingReviews, b: t("admin.pendingReviews") },
+          { a: openReports, b: t("admin.openReports") },
         ].map((s) => (
           <div key={s.b} className="rounded-2xl border border-[#e9ddc3] bg-white p-5 text-center">
-            <p className="font-display text-[30px] font-black">{s.a}</p>
+            <p className="font-display text-[30px] font-black">{formatNumber(s.a)}</p>
             <p className="text-[13px] font-bold text-[#78716c]">{s.b}</p>
           </div>
         ))}
       </div>
 
       <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-[13.5px] leading-relaxed text-[#57534e]">
-        <b className="text-[#1c1917]">Before approving:</b> creators must send their code from the linked Instagram/YouTube account
-        (or place it temporarily in the bio/about section), and the displayed follower count should be checked. Brands should
-        send their code from the business WhatsApp, email, or official social account connected with the campaign.
+        <b className="text-[#1c1917]">{t("admin.beforeApproving")}</b> {t("admin.approvalHelp")}
       </div>
 
       <div className="mt-6 flex gap-2 overflow-x-auto no-scrollbar">
         {([
-          { id: "campaigns", label: "campaigns" },
-          { id: "creators", label: "creators" },
-          { id: "reports", label: `reports${openReports ? ` (${openReports})` : ""}` },
-          { id: "applications", label: "applications" },
-          { id: "contacts", label: "contacts" },
-          { id: "audit", label: "audit log" },
+          { id: "campaigns", label: t("admin.campaigns") },
+          { id: "creators", label: t("admin.creators") },
+          { id: "reports", label: `${t("admin.reports")}${openReports ? ` (${formatNumber(openReports)})` : ""}` },
+          { id: "applications", label: t("admin.applications") },
+          { id: "contacts", label: t("admin.contacts") },
+          { id: "audit", label: t("admin.auditLog") },
         ] as Array<{ id: Tab; label: string }>).map((item) => (
           <button
             key={item.id}
             onClick={() => setTab(item.id)}
-            className={`shrink-0 rounded-full px-5 py-2.5 text-[14px] font-bold capitalize ${tab === item.id ? "bg-[#1c1917] text-white" : "bg-white border border-[#e9ddc3]"}`}
+            aria-pressed={tab === item.id}
+            className={`shrink-0 rounded-full px-5 py-2.5 text-[14px] font-bold ${tab === item.id ? "bg-[#1c1917] text-white" : "bg-white border border-[#e9ddc3]"}`}
           >
             {item.label}
           </button>
         ))}
       </div>
 
-      {notice && <p role="status" className="mt-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-[13.5px] font-bold text-green-800">{notice}</p>}
-      {err && <p role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13.5px] font-bold text-red-700">{err}</p>}
+      {noticeKey && <p role="status" className="mt-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-[13.5px] font-bold text-green-800">{t(noticeKey)}</p>}
+      {errKey && <p role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13.5px] font-bold text-red-700">{t(errKey)}</p>}
 
       <div className="mt-4 overflow-x-auto rounded-2xl border border-[#e9ddc3] bg-white">
         {tab === "campaigns" && (
           <table className="w-full min-w-[980px] text-left text-[13.5px]">
             <thead>
               <tr className="border-b border-[#f0e6cc] text-[#a8a29e]">
-                <th className="p-4">Campaign</th>
-                <th className="p-4">Business & contact</th>
-                <th className="p-4">Budget & details</th>
-                <th className="p-4">Verification</th>
-                <th className="p-4">Status</th>
-                <th className="p-4">Actions</th>
+                <th scope="col" className="p-4">{t("admin.campaign")}</th>
+                <th scope="col" className="p-4">{t("admin.businessContact")}</th>
+                <th scope="col" className="p-4">{t("admin.budgetDetails")}</th>
+                <th scope="col" className="p-4">{t("admin.verification")}</th>
+                <th scope="col" className="p-4">{t("admin.status")}</th>
+                <th scope="col" className="p-4">{t("admin.actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -376,36 +466,36 @@ export default function AdminPage() {
                       )}
                     </td>
                     <td className="p-4">
-                      <p className="font-bold">{formatINR(c.budget)}</p>
-                      <p className="text-[12.5px] text-[#78716c]">{[c.promotionType, c.category, c.language, c.location, c.format].filter(Boolean).join(" • ")}</p>
+                      <p className="font-bold">{formatCurrency(c.budget || 0)}</p>
+                      <p className="text-[12.5px] text-[#78716c]">{[c.promotionType ? promo(c.promotionType) : "", c.category ? opt(c.category) : "", c.language ? opt(c.language) : "", c.location, c.format ? opt(c.format) : ""].filter(Boolean).join(" • ")}</p>
                     </td>
                     <td className="max-w-[220px] p-4">
                       <StatusPill status={c.verificationStatus || "unverified"} />
                       {c.verificationCode && <p className="mt-2 font-mono text-[13px] font-black tracking-wide">{c.verificationCode}</p>}
-                      {c.reviewedAt && <p className="mt-1 text-[11.5px] text-[#a8a29e]">Reviewed {formatDate(c.reviewedAt)}</p>}
-                      {c.moderationNote && <p className="mt-1 text-[12px] text-[#78716c]">Note: {c.moderationNote}</p>}
+                      {c.reviewedAt && <p className="mt-1 text-[11.5px] text-[#a8a29e]">{t("admin.reviewed")} {formatDate(c.reviewedAt)}</p>}
+                      {c.moderationNote && <p className="mt-1 text-[12px] text-[#78716c]">{t("admin.note")}: {c.moderationNote}</p>}
                     </td>
                     <td className="p-4"><StatusPill status={c.status} /></td>
                     <td className="p-4">
                       <div className="flex max-w-[220px] flex-wrap gap-1.5">
                         {c.status !== "open" && (
-                          <ActionButton tone="primary" disabled={busy} onClick={() => moderate("campaign", c.id, "approve")}>Approve & open</ActionButton>
+                          <ActionButton tone="primary" disabled={busy} onClick={() => moderate("campaign", c.id, "approve")}>{t("admin.approveOpen")}</ActionButton>
                         )}
                         {(c.status !== "pending" || !c.verificationCode) && (
                           <ActionButton tone="warning" disabled={busy} onClick={() => moderate("campaign", c.id, "review")}>
-                            {c.status === "pending" ? "Issue code" : "Send to review"}
+                            {c.status === "pending" ? t("admin.issueCode") : t("admin.sendToReview")}
                           </ActionButton>
                         )}
                         {c.status === "pending" && (
-                          <ActionButton tone="danger" disabled={busy} onClick={() => moderate("campaign", c.id, "reject")}>Reject</ActionButton>
+                          <ActionButton tone="danger" disabled={busy} onClick={() => moderate("campaign", c.id, "reject")}>{t("admin.reject")}</ActionButton>
                         )}
                         {(c.status === "open" || c.status === "paused") && (
-                          <ActionButton tone="danger" disabled={busy} onClick={() => moderate("campaign", c.id, "suspend")}>Suspend</ActionButton>
+                          <ActionButton tone="danger" disabled={busy} onClick={() => moderate("campaign", c.id, "suspend")}>{t("admin.suspend")}</ActionButton>
                         )}
                         {c.status === "open" && (
-                          <ActionButton tone="warning" disabled={busy} onClick={() => moderate("campaign", c.id, "close")}>Close</ActionButton>
+                          <ActionButton tone="warning" disabled={busy} onClick={() => moderate("campaign", c.id, "close")}>{t("admin.close")}</ActionButton>
                         )}
-                        <ActionButton tone="danger" disabled={busy} onClick={() => moderate("campaign", c.id, "delete")}>Delete</ActionButton>
+                        <ActionButton tone="danger" disabled={busy} onClick={() => moderate("campaign", c.id, "delete")}>{t("admin.delete")}</ActionButton>
                       </div>
                     </td>
                   </tr>
@@ -419,13 +509,13 @@ export default function AdminPage() {
           <table className="w-full min-w-[1120px] text-left text-[13.5px]">
             <thead>
               <tr className="border-b border-[#f0e6cc] text-[#a8a29e]">
-                <th className="p-4">Creator & contact</th>
-                <th className="p-4">Social profiles</th>
-                <th className="p-4">Details</th>
-                <th className="p-4">Followers</th>
-                <th className="p-4">Verification</th>
-                <th className="p-4">Status</th>
-                <th className="p-4">Actions</th>
+                <th scope="col" className="p-4">{t("admin.creatorContact")}</th>
+                <th scope="col" className="p-4">{t("admin.socialProfiles")}</th>
+                <th scope="col" className="p-4">{t("admin.details")}</th>
+                <th scope="col" className="p-4">{t("admin.followers")}</th>
+                <th scope="col" className="p-4">{t("admin.verification")}</th>
+                <th scope="col" className="p-4">{t("admin.status")}</th>
+                <th scope="col" className="p-4">{t("admin.actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -441,13 +531,13 @@ export default function AdminPage() {
                     </td>
                     <td className="p-4"><ProfileLinks links={[c.profileUrl, c.instagram, c.youtube]} /></td>
                     <td className="max-w-[260px] p-4">
-                      <p>{[c.platform, c.category, c.languages, c.location, c.contentTypes].filter(Boolean).join(" • ")}</p>
+                      <p>{[c.platform ? platform(c.platform) : "", c.category ? opt(c.category) : "", c.languages ? opt(c.languages) : "", c.location, c.contentTypes ? opt(c.contentTypes) : ""].filter(Boolean).join(" • ")}</p>
                       {c.bio && <p className="mt-1 line-clamp-3 text-[12.5px] text-[#78716c]">{c.bio}</p>}
                     </td>
                     <td className="min-w-[170px] p-4">
-                      <p className="text-[12.5px] text-[#78716c]">Claimed: {(c.followers || 0).toLocaleString("en-IN")}</p>
+                      <p className="text-[12.5px] text-[#78716c]">{t("dash.claimedFollowers")}: {formatNumber(c.followers || 0)}</p>
                       <label htmlFor={`verified-followers-${c.id}`} className="mt-2 block text-[11.5px] font-bold text-[#57534e]">
-                        Verified count to publish
+                        {t("admin.verifiedCount")}
                       </label>
                       <input
                         id={`verified-followers-${c.id}`}
@@ -462,8 +552,8 @@ export default function AdminPage() {
                     <td className="max-w-[220px] p-4">
                       <StatusPill status={c.verificationStatus || "unverified"} />
                       {c.verificationCode && <p className="mt-2 font-mono text-[13px] font-black tracking-wide">{c.verificationCode}</p>}
-                      {c.reviewedAt && <p className="mt-1 text-[11.5px] text-[#a8a29e]">Reviewed {formatDate(c.reviewedAt)}</p>}
-                      {c.moderationNote && <p className="mt-1 text-[12px] text-[#78716c]">Note: {c.moderationNote}</p>}
+                      {c.reviewedAt && <p className="mt-1 text-[11.5px] text-[#a8a29e]">{t("admin.reviewed")} {formatDate(c.reviewedAt)}</p>}
+                      {c.moderationNote && <p className="mt-1 text-[12px] text-[#78716c]">{t("admin.note")}: {c.moderationNote}</p>}
                     </td>
                     <td className="p-4"><StatusPill status={c.status} /></td>
                     <td className="p-4">
@@ -474,21 +564,21 @@ export default function AdminPage() {
                             disabled={busy}
                             onClick={() => moderate("creator", c.id, "approve", { verifiedFollowers: followerValue })}
                           >
-                            Approve & publish
+                            {t("admin.approvePublish")}
                           </ActionButton>
                         )}
                         {c.status !== "incomplete" && (c.status !== "pending" || !c.verificationCode) && (
                           <ActionButton tone="warning" disabled={busy} onClick={() => moderate("creator", c.id, "review")}>
-                            {c.status === "pending" ? "Issue code" : "Send to review"}
+                            {c.status === "pending" ? t("admin.issueCode") : t("admin.sendToReview")}
                           </ActionButton>
                         )}
                         {c.status === "pending" && (
-                          <ActionButton tone="danger" disabled={busy} onClick={() => moderate("creator", c.id, "reject")}>Reject</ActionButton>
+                          <ActionButton tone="danger" disabled={busy} onClick={() => moderate("creator", c.id, "reject")}>{t("admin.reject")}</ActionButton>
                         )}
                         {c.status === "approved" && (
-                          <ActionButton tone="danger" disabled={busy} onClick={() => moderate("creator", c.id, "suspend")}>Suspend</ActionButton>
+                          <ActionButton tone="danger" disabled={busy} onClick={() => moderate("creator", c.id, "suspend")}>{t("admin.suspend")}</ActionButton>
                         )}
-                        <ActionButton tone="danger" disabled={busy} onClick={() => moderate("creator", c.id, "delete")}>Delete</ActionButton>
+                        <ActionButton tone="danger" disabled={busy} onClick={() => moderate("creator", c.id, "delete")}>{t("admin.delete")}</ActionButton>
                       </div>
                     </td>
                   </tr>
@@ -502,38 +592,38 @@ export default function AdminPage() {
           <table className="w-full min-w-[920px] text-left text-[13.5px]">
             <thead>
               <tr className="border-b border-[#f0e6cc] text-[#a8a29e]">
-                <th className="p-4">Target</th>
-                <th className="p-4">Reason & details</th>
-                <th className="p-4">Reporter</th>
-                <th className="p-4">Status</th>
-                <th className="p-4">Actions</th>
+                <th scope="col" className="p-4">{t("admin.target")}</th>
+                <th scope="col" className="p-4">{t("admin.reasonDetails")}</th>
+                <th scope="col" className="p-4">{t("admin.reporter")}</th>
+                <th scope="col" className="p-4">{t("admin.status")}</th>
+                <th scope="col" className="p-4">{t("admin.actions")}</th>
               </tr>
             </thead>
             <tbody>
               {reports.map((r: any) => {
                 const busy = busyKey.startsWith(`report:${r.id}:`);
                 const targetBusy = busyKey.startsWith(`${r.targetType}:${r.targetId}:`);
-                const targetDeleted = String(r.targetLabel || "").startsWith("Deleted ");
+                const targetDeleted = Boolean(r.targetMissing ?? !r.targetLabel);
                 return (
                   <tr key={r.id} className="border-b border-[#faf3e0] align-top">
                     <td className="max-w-[240px] p-4">
-                      <p className="font-bold capitalize">{r.targetType}</p>
-                      <p>{r.targetLabel || r.targetId}</p>
+                      <p className="font-bold">{entityLabel(r.targetType)}</p>
+                      <p>{r.targetLabel || (r.targetType === "campaign" ? t("admin.deletedCampaign") : t("admin.deletedCreator"))}</p>
                       <p className="break-all text-[11.5px] text-[#a8a29e]">{r.targetId}</p>
                     </td>
                     <td className="max-w-[300px] p-4">
-                      <p className="font-semibold">{REPORT_REASON_LABELS[r.reason] ?? r.reason}</p>
+                      <p className="font-semibold">{reportReasonLabel(r.reason)}</p>
                       {r.details && <p className="mt-1 text-[12.5px] leading-relaxed text-[#78716c]">{r.details}</p>}
                     </td>
                     <td className="max-w-[220px] p-4">
                       {r.reporterName && <p>{r.reporterName}</p>}
                       {r.reporterContact && <p className="break-all text-[12px] text-[#78716c]">{r.reporterContact}</p>}
-                      {!r.reporterName && !r.reporterContact && <span className="text-stone-400">Anonymous</span>}
+                      {!r.reporterName && !r.reporterContact && <span className="text-stone-400">{t("admin.anonymous")}</span>}
                     </td>
                     <td className="p-4">
                       <StatusPill status={r.status} isReport />
                       <p className="mt-1 text-[11.5px] text-[#a8a29e]">{formatDate(r.createdAt)}</p>
-                      {r.adminNote && <p className="mt-1 text-[12px] text-[#78716c]">Note: {r.adminNote}</p>}
+                      {r.adminNote && <p className="mt-1 text-[12px] text-[#78716c]">{t("admin.note")}: {r.adminNote}</p>}
                     </td>
                     <td className="p-4">
                       <div className="flex max-w-[190px] flex-wrap gap-1.5">
@@ -541,18 +631,18 @@ export default function AdminPage() {
                           <>
                             {!targetDeleted && r.targetType === "campaign" && (
                               <>
-                                <ActionButton tone="danger" disabled={targetBusy} onClick={() => moderate("campaign", r.targetId, "suspend")}>Suspend campaign</ActionButton>
-                                <ActionButton tone="warning" disabled={targetBusy} onClick={() => moderate("campaign", r.targetId, "close")}>Close campaign</ActionButton>
+                                <ActionButton tone="danger" disabled={targetBusy} onClick={() => moderate("campaign", r.targetId, "suspend")}>{t("admin.suspendCampaign")}</ActionButton>
+                                <ActionButton tone="warning" disabled={targetBusy} onClick={() => moderate("campaign", r.targetId, "close")}>{t("admin.closeCampaign")}</ActionButton>
                               </>
                             )}
                             {!targetDeleted && r.targetType === "creator" && (
-                              <ActionButton tone="danger" disabled={targetBusy} onClick={() => moderate("creator", r.targetId, "suspend")}>Suspend creator</ActionButton>
+                              <ActionButton tone="danger" disabled={targetBusy} onClick={() => moderate("creator", r.targetId, "suspend")}>{t("admin.suspendCreator")}</ActionButton>
                             )}
-                            <ActionButton tone="primary" disabled={busy} onClick={() => moderate("report", r.id, "resolve")}>Resolve</ActionButton>
-                            <ActionButton disabled={busy} onClick={() => moderate("report", r.id, "dismiss")}>Dismiss</ActionButton>
+                            <ActionButton tone="primary" disabled={busy} onClick={() => moderate("report", r.id, "resolve")}>{t("admin.resolve")}</ActionButton>
+                            <ActionButton disabled={busy} onClick={() => moderate("report", r.id, "dismiss")}>{t("admin.dismiss")}</ActionButton>
                           </>
                         ) : (
-                          <ActionButton tone="warning" disabled={busy} onClick={() => moderate("report", r.id, "reopen")}>Reopen</ActionButton>
+                          <ActionButton tone="warning" disabled={busy} onClick={() => moderate("report", r.id, "reopen")}>{t("admin.reopen")}</ActionButton>
                         )}
                       </div>
                     </td>
@@ -567,11 +657,11 @@ export default function AdminPage() {
           <table className="w-full min-w-[920px] text-left text-[13.5px]">
             <thead>
               <tr className="border-b border-[#f0e6cc] text-[#a8a29e]">
-                <th className="p-4">Creator</th>
-                <th className="p-4">Campaign</th>
-                <th className="p-4">Contact & message</th>
-                <th className="p-4">Status</th>
-                <th className="p-4">Actions</th>
+                <th scope="col" className="p-4">{t("admin.creator")}</th>
+                <th scope="col" className="p-4">{t("admin.campaign")}</th>
+                <th scope="col" className="p-4">{t("admin.contactMessage")}</th>
+                <th scope="col" className="p-4">{t("admin.status")}</th>
+                <th scope="col" className="p-4">{t("admin.actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -583,19 +673,19 @@ export default function AdminPage() {
                       <p className="font-bold">{a.creatorLabel || a.creatorName}</p>
                       <p className="mt-1 text-[11.5px] text-[#a8a29e]">{formatDate(a.createdAt)}</p>
                     </td>
-                    <td className="max-w-[240px] p-4">{a.campaignLabel || a.campaignId}</td>
+                    <td className="max-w-[240px] p-4">{a.campaignLabel || (a.campaignMissing ? t("admin.deletedCampaign") : a.campaignId)}</td>
                     <td className="max-w-[300px] p-4">
                       {a.creatorContact && <p className="break-all font-semibold">{a.creatorContact}</p>}
                       {a.message && <p className="mt-1 text-[12.5px] leading-relaxed text-[#78716c]">{a.message}</p>}
-                      {a.decisionNote && <p className="mt-1 text-[12px] text-[#78716c]">Brand note: {a.decisionNote}</p>}
+                      {a.decisionNote && <p className="mt-1 text-[12px] text-[#78716c]">{t("dash.brandNote")}: {a.decisionNote}</p>}
                     </td>
                     <td className="p-4">
                       <StatusPill status={a.status} />
-                      {a.decisionAt && <p className="mt-1 text-[11.5px] text-[#a8a29e]">Updated {formatDate(a.decisionAt)}</p>}
+                      {a.decisionAt && <p className="mt-1 text-[11.5px] text-[#a8a29e]">{t("dash.updatedOn")} {formatDate(a.decisionAt)}</p>}
                     </td>
                     <td className="p-4">
                       <ActionButton tone="danger" disabled={busy} onClick={() => moderate("application", a.id, "delete")}>
-                        Delete spam/test
+                        {t("admin.deleteSpam")}
                       </ActionButton>
                     </td>
                   </tr>
@@ -608,11 +698,11 @@ export default function AdminPage() {
           <table className="w-full min-w-[860px] text-left text-[13.5px]">
             <thead>
               <tr className="border-b border-[#f0e6cc] text-[#a8a29e]">
-                <th className="p-4">Name</th>
-                <th className="p-4">Type</th>
-                <th className="p-4">Message</th>
-                <th className="p-4">Contact</th>
-                <th className="p-4">Actions</th>
+                <th scope="col" className="p-4">{t("admin.name")}</th>
+                <th scope="col" className="p-4">{t("admin.type")}</th>
+                <th scope="col" className="p-4">{t("admin.message")}</th>
+                <th scope="col" className="p-4">{t("admin.contact")}</th>
+                <th scope="col" className="p-4">{t("admin.actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -624,12 +714,12 @@ export default function AdminPage() {
                       <p className="font-bold">{c.name}</p>
                       <p className="mt-1 text-[11.5px] text-[#a8a29e]">{formatDate(c.createdAt)}</p>
                     </td>
-                    <td className="p-4 capitalize">{c.kind}</td>
+                    <td className="p-4">{contactKindLabel(c.kind)}</td>
                     <td className="max-w-[320px] p-4">{c.message}</td>
                     <td className="max-w-[220px] break-all p-4">{c.phone || c.email}</td>
                     <td className="p-4">
                       <ActionButton tone="danger" disabled={busy} onClick={() => moderate("contact", c.id, "delete")}>
-                        Delete spam/test
+                        {t("admin.deleteSpam")}
                       </ActionButton>
                     </td>
                   </tr>
@@ -642,34 +732,46 @@ export default function AdminPage() {
           <table className="w-full min-w-[920px] text-left text-[13.5px]">
             <thead>
               <tr className="border-b border-[#f0e6cc] text-[#a8a29e]">
-                <th className="p-4">Time</th>
-                <th className="p-4">Action</th>
-                <th className="p-4">Outcome</th>
-                <th className="p-4">Target</th>
-                <th className="p-4">Details</th>
+                <th scope="col" className="p-4">{t("admin.time")}</th>
+                <th scope="col" className="p-4">{t("admin.action")}</th>
+                <th scope="col" className="p-4">{t("admin.outcome")}</th>
+                <th scope="col" className="p-4">{t("admin.target")}</th>
+                <th scope="col" className="p-4">{t("admin.details")}</th>
               </tr>
             </thead>
             <tbody>
-              {auditLogs.map((log: any) => (
-                <tr key={log.id} className="border-b border-[#faf3e0] align-top">
-                  <td className="whitespace-nowrap p-4 text-[12.5px] text-[#78716c]">{formatDate(log.createdAt)}</td>
-                  <td className="p-4 font-mono text-[12.5px] font-bold">{log.action}</td>
-                  <td className="p-4"><StatusPill status={log.outcome} /></td>
-                  <td className="max-w-[220px] p-4">
-                    {log.entity ? <p className="font-semibold capitalize">{log.entity}</p> : <span className="text-stone-400">Admin</span>}
-                    {log.entityId && <p className="mt-1 break-all text-[11.5px] text-[#a8a29e]">{log.entityId}</p>}
-                  </td>
-                  <td className="max-w-[360px] p-4">
-                    {log.details && <p className="break-all font-mono text-[11.5px] leading-relaxed text-[#57534e]">{log.details}</p>}
-                    {log.ipAddress && <p className="mt-1 text-[11.5px] text-[#a8a29e]">IP: {log.ipAddress}</p>}
-                    {!log.details && !log.ipAddress && <span className="text-stone-400">—</span>}
-                  </td>
-                </tr>
-              ))}
+              {auditLogs.map((log: any) => {
+                const detailEntries = auditDetailEntries(log.details);
+                return (
+                  <tr key={log.id} className="border-b border-[#faf3e0] align-top">
+                    <td className="whitespace-nowrap p-4 text-[12.5px] text-[#78716c]">{formatDate(log.createdAt)}</td>
+                    <td className="p-4 text-[12.5px] font-bold">{auditActionLabel(log.action)}</td>
+                    <td className="p-4"><StatusPill status={log.outcome} /></td>
+                    <td className="max-w-[220px] p-4">
+                      {log.entity ? <p className="font-semibold">{entityLabel(log.entity)}</p> : <span className="text-stone-400">{t("admin.adminEntity")}</span>}
+                      {log.entityId && <p className="mt-1 break-all text-[11.5px] text-[#a8a29e]">{log.entityId}</p>}
+                    </td>
+                    <td className="max-w-[360px] p-4">
+                      {detailEntries.length > 0 && (
+                        <dl className="grid gap-1 text-[11.5px] leading-relaxed text-[#57534e]">
+                          {detailEntries.map(([label, value]) => (
+                            <div key={`${label}:${value}`} className="flex flex-wrap gap-x-1.5">
+                              <dt className="font-bold">{label}:</dt>
+                              <dd className="break-all">{value}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      )}
+                      {log.ipAddress && <p className="mt-1 text-[11.5px] text-[#a8a29e]">{t("admin.ipAddress")}: {log.ipAddress}</p>}
+                      {detailEntries.length === 0 && !log.ipAddress && <span className="text-stone-400">—</span>}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
-        {activeRows.length === 0 && <p className="p-8 text-center text-[14px] text-[#a8a29e]">Nothing here yet — data will appear as people sign up.</p>}
+        {activeRows.length === 0 && <p className="p-8 text-center text-[14px] text-[#a8a29e]">{t("admin.empty")}</p>}
       </div>
     </div>
   );

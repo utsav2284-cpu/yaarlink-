@@ -36,7 +36,7 @@ async function loadNotifications(userId: string) {
 export async function GET() {
   try {
     const user = await getSessionUser();
-    if (!user) return Response.json({ error: "Please log in" }, { status: 401, headers: NO_STORE });
+    if (!user) return Response.json({ error: "Please log in", code: "unauthorized" }, { status: 401, headers: NO_STORE });
     const notificationData = await loadNotifications(user.id);
 
     if (user.role === "brand") {
@@ -118,6 +118,6 @@ export async function GET() {
     );
   } catch (e) {
     console.error(e);
-    return Response.json({ error: "Could not load dashboard" }, { status: 500, headers: NO_STORE });
+    return Response.json({ error: "Could not load dashboard", code: "load_failed" }, { status: 500, headers: NO_STORE });
   }
 }

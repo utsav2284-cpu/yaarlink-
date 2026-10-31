@@ -75,6 +75,9 @@ export default function Navbar() {
           <div className="relative">
             <button
               onClick={() => setLangOpen((v) => !v)}
+              aria-label={t("nav.chooseLanguage")}
+              aria-expanded={langOpen}
+              aria-haspopup="true"
               className="flex items-center gap-1.5 rounded-full border border-[#e9ddc3] bg-white px-3 py-2 text-[13.5px] font-bold text-[#1c1917]"
             >
               <span>🌐</span>
@@ -101,7 +104,7 @@ export default function Navbar() {
                     </button>
                   ))}
                   <p className="border-t border-[#f0e6cc] bg-[#fffbf1] px-4 py-2 text-[11px] text-[#78716c]">
-                    More languages coming soon…
+                    {t("nav.moreLanguages")}
                   </p>
                 </div>
               </>
@@ -127,7 +130,7 @@ export default function Navbar() {
                   onClick={logout}
                   className="rounded-full border border-[#e9ddc3] bg-white px-3 py-2 text-[13px] font-bold text-[#78716c]"
                 >
-                  Out
+                  {t("nav.logout")}
                 </button>
               </>
             ) : (
@@ -148,7 +151,8 @@ export default function Navbar() {
           <button
             onClick={() => setOpen((v) => !v)}
             className="grid h-10 w-10 place-items-center rounded-full border border-[#e9ddc3] bg-white text-[18px] lg:hidden"
-            aria-label="menu"
+            aria-label={t("nav.menu")}
+            aria-expanded={open}
           >
             {open ? "✕" : "☰"}
           </button>
@@ -180,7 +184,7 @@ export default function Navbar() {
                     {t("nav.dashboard")}
                   </Link>
                   <button onClick={() => { logout(); setOpen(false); }} className="rounded-xl border border-[#e9ddc3] bg-white px-4 py-3 text-[15px] font-bold">
-                    Log out
+                    {t("nav.logout")}
                   </button>
                   <Link
                     href="/account"
