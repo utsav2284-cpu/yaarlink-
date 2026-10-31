@@ -39,6 +39,12 @@ export async function POST(req: Request) {
     if (!name || !email || !password) {
       return Response.json({ error: "Name, email and password required" }, { status: 400, headers: NO_STORE });
     }
+    if (body.legalConsent !== true) {
+      return Response.json(
+        { error: "Please agree to the Terms of Service and Privacy Policy.", code: "legal_consent_required" },
+        { status: 400, headers: NO_STORE },
+      );
+    }
     if (email.length > 160 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return Response.json({ error: "Please enter a valid email." }, { status: 400, headers: NO_STORE });
     }

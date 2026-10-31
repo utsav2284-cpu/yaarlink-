@@ -99,6 +99,13 @@ export default function AccountPage() {
       .catch(() => setLoadFailed(true));
   }, [applyData, fetchAccount]);
 
+  useEffect(() => {
+    if (!data) return;
+    const targetId = window.location.hash.slice(1);
+    if (targetId !== "export-data" && targetId !== "delete-account") return;
+    document.getElementById(targetId)?.scrollIntoView({ block: "start" });
+  }, [data]);
+
   const errorMessage = useCallback(
     (status: number, code?: string) => {
       if (status === 401) return t("account.errorUnauthorized");
@@ -314,6 +321,13 @@ export default function AccountPage() {
         <p className="mt-1 max-w-2xl text-[15px] leading-relaxed text-[#78716c]">{t("account.subtitle")}</p>
       </div>
 
+      <nav aria-label={t("legal.navLabel")} className="mt-4 flex flex-wrap gap-2 text-[13.5px] font-extrabold">
+        <Link href="/privacy" className="rounded-full border border-[#e9ddc3] bg-white px-4 py-2 hover:border-[#1c1917]">{t("legal.privacy")}</Link>
+        <Link href="/terms" className="rounded-full border border-[#e9ddc3] bg-white px-4 py-2 hover:border-[#1c1917]">{t("legal.terms")}</Link>
+        <Link href="/data-rights" className="rounded-full border border-[#e9ddc3] bg-white px-4 py-2 hover:border-[#1c1917]">{t("legal.dataRights")}</Link>
+        <Link href="/account-deletion" className="rounded-full border border-[#e9ddc3] bg-white px-4 py-2 hover:border-[#1c1917]">{t("legal.accountDeletion")}</Link>
+      </nav>
+
       {notice && <p role="status" className="mt-5 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-[14px] font-bold text-green-800">{notice}</p>}
       {actionError && <p role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[14px] font-bold text-red-700">{actionError}</p>}
 
@@ -449,6 +463,7 @@ export default function AccountPage() {
       </div>
 
       <div className="mt-5 grid items-start gap-5 lg:grid-cols-2">
+        <div id="export-data" className="scroll-mt-24">
         <Section title={t("account.exportTitle")} help={t("account.exportHelp")}>
           <form onSubmit={exportData} className="grid gap-3">
             <label className={labelClass}>
@@ -460,7 +475,9 @@ export default function AccountPage() {
             </button>
           </form>
         </Section>
+        </div>
 
+        <div id="delete-account" className="scroll-mt-24">
         <Section title={t("account.deleteTitle")} help={t("account.deleteHelp")} danger>
           <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13.5px] font-bold text-amber-900">{t("account.deleteWarning")}</p>
           <form onSubmit={deleteAccount} className="mt-4 grid gap-3">
@@ -477,6 +494,7 @@ export default function AccountPage() {
             </button>
           </form>
         </Section>
+        </div>
       </div>
     </div>
   );

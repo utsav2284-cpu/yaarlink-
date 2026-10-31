@@ -5,6 +5,7 @@ import { useLang } from "@/frontend/i18n";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { LANGUAGES } from "@/shared/constants";
+import PrivacyNotice from "@/frontend/components/PrivacyNotice";
 import ReportButton from "@/frontend/components/ReportButton";
 
 export default function CampaignsPage() {
@@ -15,7 +16,8 @@ export default function CampaignsPage() {
   const [lang, setLang] = useState("");
   const [applyId, setApplyId] = useState<string | null>(null);
   const [applyForm, setApplyForm] = useState({ name: "", contact: "", message: "" });
-  const [applyError, setApplyError] = useState<"" | "name" | "login" | "creator" | "duplicate" | "closed" | "rate" | "generic">("");
+  const [applyConsent, setApplyConsent] = useState(false);
+  const [applyError, setApplyError] = useState<"" | "name" | "contact" | "consent" | "login" | "creator" | "duplicate" | "closed" | "rate" | "generic">("");
   const [applyingId, setApplyingId] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
@@ -33,7 +35,10 @@ export default function CampaignsPage() {
 
   const apply = async (campaignId: string) => {
     const creatorName = applyForm.name.trim();
+    const creatorContact = applyForm.contact.trim();
     if (!creatorName) { setApplyError("name"); return; }
+    if (creatorContact.length < 3) { setApplyError("contact"); return; }
+    if (!applyConsent) { setApplyError("consent"); return; }
 
     setApplyError("");
     setApplyingId(campaignId);
@@ -41,14 +46,23 @@ export default function CampaignsPage() {
       const res = await fetch("/api/applications", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ campaignId, creatorName, creatorContact: applyForm.contact.trim(), message: applyForm.message.trim() }),
+        body: JSON.stringify({
+          campaignId,
+          creatorName,
+          creatorContact,
+          message: applyForm.message.trim(),
+          contactSharingConsent: true,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         const message = String(data?.error || "");
+        const code = String(data?.code || "");
         if (res.status === 401) setApplyError("login");
         else if (res.status === 403) setApplyError("creator");
         else if (res.status === 429) setApplyError("rate");
+        else if (code === "contact_required") setApplyError("contact");
+        else if (code === "contact_sharing_consent_required") setApplyError("consent");
         else if (message.includes("already applied")) setApplyError("duplicate");
         else if (message.includes("no longer")) setApplyError("closed");
         else if (message.includes("name / page name")) setApplyError("name");
@@ -59,6 +73,7 @@ export default function CampaignsPage() {
       setDone(true);
       setApplyId(null);
       setApplyForm({ name: "", contact: "", message: "" });
+      setApplyConsent(false);
       setTimeout(() => setDone(false), 4000);
     } catch {
       setApplyError("generic");
@@ -69,7 +84,11 @@ export default function CampaignsPage() {
 
   const applyErrorKey = applyError === "name"
     ? "camp.applyErr"
-    : applyError === "login"
+    : applyError === "contact"
+      ? "camp.applyContactErr"
+      : applyError === "consent"
+        ? "camp.applyConsentErr"
+        : applyError === "login"
       ? "camp.applyLoginErr"
       : applyError === "creator"
         ? "camp.applyCreatorErr"
@@ -140,15 +159,27 @@ export default function CampaignsPage() {
               </div>
               <div className="mt-4 flex items-center justify-between border-t border-[#f5edd8] pt-4">
                 <p className="text-[13.5px] font-bold text-[#17452e]">{t("camp.paid")}</p>
-                <button onClick={() => { setApplyError(""); setApplyId(applyId === c.id ? null : c.id); }} className="rounded-xl bg-[#1c1917] px-5 py-2.5 text-[13.5px] font-bold text-white hover:bg-black">
+                <button onClick={() => { setApplyError(""); setApplyConsent(false); setApplyId(applyId === c.id ? null : c.id); }} className="rounded-xl bg-[#1c1917] px-5 py-2.5 text-[13.5px] font-bold text-white hover:bg-black">
                   {applyId === c.id ? t("camp.close") : t("camp.apply")}
                 </button>
               </div>
               {applyId === c.id && (
                 <div className="mt-3 grid gap-2 rounded-2xl bg-[#fffbf1] border border-[#f0e6cc] p-4">
+                  <PrivacyNotice textKey="camp.applySharingNotice" compact />
                   <input value={applyForm.name} onChange={(e) => setApplyForm({ ...applyForm, name: e.target.value })} placeholder={t("camp.applyName")} className="rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-2.5 text-[14px] outline-none" />
-                  <input value={applyForm.contact} onChange={(e) => setApplyForm({ ...applyForm, contact: e.target.value })} placeholder={t("camp.applyContact")} className="rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-2.5 text-[14px] outline-none" />
+                  <input value={applyForm.contact} onChange={(e) => setApplyForm({ ...applyForm, contact: e.target.value })} required aria-required="true" placeholder={t("camp.applyContact")} className="rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-2.5 text-[14px] outline-none" />
                   <textarea value={applyForm.message} onChange={(e) => setApplyForm({ ...applyForm, message: e.target.value })} rows={2} placeholder={t("camp.applyPhMsg")} className="rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-2.5 text-[14px] outline-none" />
+                  <label htmlFor={`application-consent-${c.id}`} className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-3 text-[13px] font-semibold leading-relaxed text-[#57534e]">
+                    <input
+                      id={`application-consent-${c.id}`}
+                      type="checkbox"
+                      checked={applyConsent}
+                      onChange={(e) => setApplyConsent(e.target.checked)}
+                      required
+                      className="mt-0.5 h-4 w-4 shrink-0 accent-[#e4572e]"
+                    />
+                    <span>{t("camp.applySharingConsent")}</span>
+                  </label>
                   {applyError && (
                     <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-[13.5px] font-semibold leading-relaxed text-red-800">
                       <p>{t(applyErrorKey)}</p>

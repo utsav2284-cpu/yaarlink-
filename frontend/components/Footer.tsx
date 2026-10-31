@@ -70,9 +70,19 @@ export default function Footer() {
             </div>
           </div>
         </div>
+        <nav
+          aria-label={t("legal.navLabel")}
+          className="mt-12 flex flex-wrap justify-center gap-x-6 gap-y-2.5 border-t border-white/10 pt-6 text-[13.5px] font-bold text-[#a8a29e]"
+        >
+          <Link href="/privacy" className="hover:text-[#ffc53d]">{t("legal.privacy")}</Link>
+          <Link href="/terms" className="hover:text-[#ffc53d]">{t("legal.terms")}</Link>
+          <Link href="/refund-policy" className="hover:text-[#ffc53d]">{t("legal.refunds")}</Link>
+          <Link href="/data-rights" className="hover:text-[#ffc53d]">{t("legal.dataRights")}</Link>
+          <Link href="/account-deletion" className="hover:text-[#ffc53d]">{t("legal.accountDeletion")}</Link>
+        </nav>
         <a
           href={SITE.url}
-          className="font-display mt-14 block select-none whitespace-nowrap text-center text-[11vw] font-black leading-[0.9] tracking-tight text-white/[0.07] transition hover:text-white/[0.12] md:text-[150px]"
+          className="font-display mt-10 block select-none whitespace-nowrap text-center text-[11vw] font-black leading-[0.9] tracking-tight text-white/[0.07] transition hover:text-white/[0.12] md:text-[150px]"
           aria-label={SITE.domain}
         >
           the<span className="text-[#ffc53d]/30">yaar</span>.com

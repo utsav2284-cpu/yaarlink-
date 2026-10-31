@@ -5,6 +5,7 @@ import { useLang } from "@/frontend/i18n";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { CATEGORIES, LANGUAGES, CONTENT_TYPES, PLATFORMS } from "@/shared/constants";
+import PrivacyNotice from "@/frontend/components/PrivacyNotice";
 import ReportButton from "@/frontend/components/ReportButton";
 
 export default function CreatorsPage() {
@@ -225,6 +226,7 @@ export default function CreatorsPage() {
                   <span className="text-[13.5px] font-bold">{t("cr.bio")} <span className="font-medium text-[#a8a29e]">{t("cr.optional")}</span></span>
                   <textarea value={form.bio} onChange={(e) => set("bio", e.target.value)} rows={3} placeholder={t("cr.phBio")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                 </label>
+                <PrivacyNotice textKey="privacy.creatorNotice" />
                 {err && <p className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-[14px] font-bold text-red-700">{err}</p>}
                 <div className="flex gap-2">
                   <button onClick={() => setStep(2)} className="flex-1 rounded-2xl border border-[#e9ddc3] py-3.5 text-[15px] font-bold">{t("cr.back")}</button>

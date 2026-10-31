@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { CATEGORIES, CONTENT_TYPES, LANGUAGES, PLATFORMS, PROMOTION_TYPES, formatINR } from "@/shared/constants";
+import PrivacyNotice from "@/frontend/components/PrivacyNotice";
 
 type User = { id: string; name: string; email: string; phone?: string | null; role: string; emailVerifiedAt?: string | null; createdAt?: string };
 type Campaign = {
@@ -202,7 +203,9 @@ export default function DashboardPage() {
   const [editingProfileId, setEditingProfileId] = useState("");
   const [profileForm, setProfileForm] = useState<ProfileForm | null>(null);
   const [editingApplicationId, setEditingApplicationId] = useState("");
+  const [reactivatingApplicationId, setReactivatingApplicationId] = useState("");
   const [applicationForm, setApplicationForm] = useState({ creatorContact: "", message: "" });
+  const [applicationConsent, setApplicationConsent] = useState(false);
   const [decisionNotes, setDecisionNotes] = useState<Record<string, string>>({});
 
   const fetchData = useCallback(async (): Promise<Data | null> => {
@@ -435,7 +438,12 @@ export default function DashboardPage() {
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
             <p className="font-bold">{a.creatorName}</p>
-            {a.creatorContact && <p className="break-all text-[#e4572e]">{a.creatorContact}</p>}
+            {a.creatorContact && (
+              <>
+                <p className="break-all text-[#e4572e]">{a.creatorContact}</p>
+                <p className="mt-0.5 text-[11.5px] font-semibold text-[#78716c]">🔒 {t("dash.brandContactUse")}</p>
+              </>
+            )}
             <p className="mt-0.5 text-[12px] text-[#a8a29e]">{t("dash.appliedOn")}: {formatDate(a.createdAt)}</p>
           </div>
           <span className={`rounded-full px-3 py-1 text-[12px] font-bold ${statusPillClass(a.status)}`}>{statusLabel(a.status)}</span>
@@ -541,6 +549,8 @@ export default function DashboardPage() {
 
   const renderCreatorApplication = (a: Application) => {
     const editing = editingApplicationId === a.id;
+    const reactivating = reactivatingApplicationId === a.id;
+    const applicationFormOpen = editing || reactivating;
     const canEdit = a.status === "applied" || a.status === "shortlisted";
     const canWithdraw = canEdit || a.status === "hired";
     return (
@@ -554,21 +564,91 @@ export default function DashboardPage() {
           <span className={`shrink-0 rounded-full px-3 py-1 text-[12px] font-bold ${statusPillClass(a.status)}`}>{statusLabel(a.status)}</span>
         </div>
         {a.message && <p className="mt-3 text-[13.5px] text-[#57534e]"><b>{t("dash.yourMessage")}:</b> “{a.message}”</p>}
+        {a.creatorContact && (
+          <p className="mt-2 break-all text-[13px] text-[#57534e]">
+            <b>{t("dash.sharedContact")}:</b> {a.creatorContact}
+          </p>
+        )}
         {a.decisionNote && <p className="mt-2 rounded-xl bg-[#fffbf1] p-3 text-[13px] text-[#57534e]"><b>{t("dash.brandNote")}:</b> {a.decisionNote}</p>}
 
-        {editing ? (
+        {applicationFormOpen ? (
           <form
             className="mt-3 grid gap-3 rounded-xl border border-[#e9ddc3] bg-[#fffbf1] p-3"
             onSubmit={(e) => {
               e.preventDefault();
-              runAction(`application:${a.id}:edit`, () => jsonRequest("/api/applications", "PATCH", { id: a.id, action: "edit", ...applicationForm }), () => setEditingApplicationId(""));
+              if (reactivating) {
+                runAction(
+                  `application:${a.id}:reactivate`,
+                  () =>
+                    jsonRequest("/api/applications", "PATCH", {
+                      id: a.id,
+                      action: "reactivate",
+                      ...applicationForm,
+                      contactSharingConsent: applicationConsent,
+                    }),
+                  () => {
+                    setReactivatingApplicationId("");
+                    setApplicationConsent(false);
+                  },
+                );
+                return;
+              }
+              runAction(
+                `application:${a.id}:edit`,
+                () => jsonRequest("/api/applications", "PATCH", { id: a.id, action: "edit", ...applicationForm }),
+                () => setEditingApplicationId(""),
+              );
             }}
           >
-            <label className={labelClass}>{t("dash.contactForBrand")}<input value={applicationForm.creatorContact} onChange={(e) => setApplicationForm((f) => ({ ...f, creatorContact: e.target.value }))} placeholder={t("camp.applyContact")} className={inputClass} /></label>
+            <PrivacyNotice textKey={reactivating ? "dash.reactivateNotice" : "privacy.applicationEditNotice"} compact />
+            <label className={labelClass}>
+              {t("dash.contactForBrand")}
+              <input
+                value={applicationForm.creatorContact}
+                onChange={(e) => setApplicationForm((f) => ({ ...f, creatorContact: e.target.value }))}
+                required
+                minLength={3}
+                placeholder={t("camp.applyContact")}
+                className={inputClass}
+              />
+            </label>
             <label className={labelClass}>{t("dash.yourMessage")}<textarea value={applicationForm.message} onChange={(e) => setApplicationForm((f) => ({ ...f, message: e.target.value }))} rows={3} placeholder={t("camp.applyPhMsg")} className={inputClass} /></label>
+            {reactivating && (
+              <label htmlFor={`reactivate-consent-${a.id}`} className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-3 text-[13px] font-semibold leading-relaxed text-[#57534e]">
+                <input
+                  id={`reactivate-consent-${a.id}`}
+                  type="checkbox"
+                  checked={applicationConsent}
+                  onChange={(e) => setApplicationConsent(e.target.checked)}
+                  required
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-[#e4572e]"
+                />
+                <span>{t("dash.reactivateConsent")}</span>
+              </label>
+            )}
             <div className="flex flex-wrap gap-2">
-              <button type="submit" disabled={busyKey === `application:${a.id}:edit`} className="rounded-xl bg-[#1c1917] px-4 py-2 text-[13px] font-bold text-white disabled:opacity-50">{t("dash.saveChanges")}</button>
-              <button type="button" onClick={() => setEditingApplicationId("")} className="rounded-xl border border-[#e9ddc3] bg-white px-4 py-2 text-[13px] font-bold">{t("dash.cancel")}</button>
+              <button
+                type="submit"
+                disabled={
+                  applicationForm.creatorContact.trim().length < 3 ||
+                  (reactivating && !applicationConsent) ||
+                  busyKey === `application:${a.id}:${reactivating ? "reactivate" : "edit"}`
+                }
+                className="rounded-xl bg-[#1c1917] px-4 py-2 text-[13px] font-bold text-white disabled:opacity-50"
+              >
+                {reactivating ? t("dash.reactivateApplication") : t("dash.saveChanges")}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingApplicationId("");
+                  setReactivatingApplicationId("");
+                  setApplicationConsent(false);
+                }}
+                className="rounded-xl border border-[#e9ddc3] bg-white px-4 py-2 text-[13px] font-bold"
+              >
+                {t("dash.cancel")}
+              </button>
             </div>
           </form>
         ) : (
@@ -578,6 +658,8 @@ export default function DashboardPage() {
                 type="button"
                 onClick={() => {
                   setEditingApplicationId(a.id);
+                  setReactivatingApplicationId("");
+                  setApplicationConsent(false);
                   setApplicationForm({ creatorContact: a.creatorContact ?? "", message: a.message ?? "" });
                 }}
                 className="rounded-xl bg-[#1c1917] px-4 py-2 text-[13px] font-bold text-white"
@@ -603,7 +685,12 @@ export default function DashboardPage() {
               <button
                 type="button"
                 disabled={busyKey === `application:${a.id}:reactivate`}
-                onClick={() => runAction(`application:${a.id}:reactivate`, () => jsonRequest("/api/applications", "PATCH", { id: a.id, action: "reactivate" }))}
+                onClick={() => {
+                  setEditingApplicationId("");
+                  setReactivatingApplicationId(a.id);
+                  setApplicationConsent(false);
+                  setApplicationForm({ creatorContact: a.creatorContact ?? "", message: a.message ?? "" });
+                }}
                 className="rounded-xl bg-[#e4572e] px-4 py-2 text-[13px] font-bold text-white disabled:opacity-50"
               >
                 {t("dash.reactivateApplication")}
