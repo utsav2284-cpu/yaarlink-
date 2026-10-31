@@ -10,12 +10,11 @@ export async function GET() {
       select
         current_database() as db_name,
         current_user as db_user,
-        (select count(*)::int from users) as users_count,
-        (select count(*)::int from campaigns) as campaigns_count,
-        (select count(*)::int from creators) as creators_count
+        current_schema() as db_schema,
+        (select count(*)::int from information_schema.tables where table_schema = 'public' and table_name in ('users','creators','campaigns','applications','contacts','settings')) as app_tables_present
     `)) as unknown as { rows: Array<Record<string, unknown>> };
     const row = result.rows[0] ?? {};
-    return Response.json({ ok: true, dbName: row.db_name, dbUser: row.db_user, users: row.users_count, campaigns: row.campaigns_count, creators: row.creators_count });
+    return Response.json({ ok: true, dbName: row.db_name, dbUser: row.db_user, dbSchema: row.db_schema, appTablesPresent: row.app_tables_present });
   } catch (e) {
     // TEMP DIAGNOSTIC (remove after DB connection is fixed): expose a redacted
     // error summary so production connection failures can be identified.
