@@ -14,7 +14,7 @@ repository root, so an import reads like the folder it comes from: `@/backend/au
 │   ├── components/          #   shared React components (Navbar, Footer, …)
 │   └── i18n.tsx             #   language provider + dictionaries
 ├── backend/                 # Server-side only
-│   ├── db/                  #   Drizzle client + schema
+│   ├── db/                  #   Drizzle client, verified-TLS pool config + schema
 │   ├── auth.ts              #   password hashing + session cookies
 │   ├── admin.ts             #   owner/admin session
 │   ├── bot-challenge.ts     #   signed one-time public-form proof-of-work challenges
@@ -24,8 +24,8 @@ repository root, so an import reads like the folder it comes from: `@/backend/au
 ├── config/                  # Site configuration
 │   └── site.ts              #   contact details + WhatsApp/e-mail/Instagram links
 ├── docs/                    # This folder — structure and deployment notes
-├── public/                  # Static assets served as-is
-└── <tooling configs>        # next/tsconfig/drizzle/wrangler/postcss/eslint at the root
+├── proxy.ts                 # Per-request CSP nonce + reporting headers for documents
+└── <tooling configs>        # next/tsconfig/drizzle/postcss/eslint at the root
 ```
 
 ## Why `app/` is at the root and not inside `frontend/`
@@ -45,7 +45,6 @@ in `frontend/`, `backend/`, `shared/` or `config/`, and the handlers import it f
 - `shared/` — pure values and helpers with no framework or platform dependency.
 - `config/` — settings a non-developer may need to edit (site name, phone number, links).
 
-Tool configs (`next.config.ts`, `tsconfig.json`, `drizzle.config.json`, `wrangler.jsonc`,
-`open-next.config.ts`, `eslint.config.mjs`, `postcss.config.mjs`) stay at the repository root
-because the tools look for them there; `drizzle.config.json` and the docs point at the moved
-schema at `backend/db/schema.ts`.
+Tool configs (`next.config.ts`, `tsconfig.json`, `drizzle.config.json`, `eslint.config.mjs`,
+`postcss.config.mjs`) stay at the repository root because the tools look for them there;
+`drizzle.config.json` and the docs point at the moved schema at `backend/db/schema.ts`.

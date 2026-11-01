@@ -91,42 +91,17 @@ function firstHeaderIp(req: Request, name: string): string | null {
   return ipList(req.headers.get(name))[0] ?? null;
 }
 
-function envFlag(name: string): boolean {
-  return ["1", "true", "yes", "on"].includes((process.env[name] ?? "").trim().toLowerCase());
-}
-
-function isCloudflareWorkers(): boolean {
-  return typeof navigator !== "undefined" && (navigator as { userAgent?: string }).userAgent === "Cloudflare-Workers";
-}
-
-function trustedForwardedForIp(req: Request): string | null {
-  const parsedHops = Number.parseInt(process.env.TRUST_PROXY_HOPS ?? "1", 10);
-  const hops = Number.isFinite(parsedHops) ? Math.min(10, Math.max(1, parsedHops)) : 1;
-  const ips = ipList(req.headers.get("x-forwarded-for"));
-  return ips[ips.length - hops] ?? null;
-}
-
 /**
- * Resolve the client IP only from a platform/trusted-proxy source.
+ * Resolve the client IP only on the supported Vercel deployment path.
  *
- * - Cloudflare Workers: `cf-connecting-ip` is injected by Cloudflare itself.
- * - Vercel (`VERCEL=1`): Vercel overwrites its forwarded-for headers; prefer
- *   the Vercel-specific header, then `x-real-ip`/`x-forwarded-for`.
- * - Netlify: use its platform client-connection header.
- * - Self-hosted/other proxies: forwarded headers are ignored unless the
- *   deployment explicitly opts in with TRUST_CLOUDFLARE_HEADERS=true (only
- *   when Cloudflare is the sole ingress/origin is locked down) or
- *   TRUST_PROXY_HEADERS=true plus TRUST_PROXY_HOPS for a trusted proxy chain
- *   that strips inbound forwarded headers.
- *
- * Everywhere else all callers share the conservative `unknown` bucket rather
- * than trusting a client-supplied header.
+ * Vercel sets `VERCEL=1` and overwrites its forwarding headers, so prefer the
+ * Vercel-specific header, then `x-real-ip`/`x-forwarded-for`. Everywhere else
+ * (including local development) callers share the conservative `unknown`
+ * bucket rather than trusting a client-supplied proxy header. There is no
+ * proxy-trust environment switch to misconfigure.
  */
 export function getClientIp(req: Request): string {
   try {
-    if (isCloudflareWorkers()) {
-      return firstHeaderIp(req, "cf-connecting-ip") ?? "unknown";
-    }
     if (process.env.VERCEL === "1") {
       return (
         firstHeaderIp(req, "x-vercel-forwarded-for") ??
@@ -134,15 +109,6 @@ export function getClientIp(req: Request): string {
         firstHeaderIp(req, "x-forwarded-for") ??
         "unknown"
       );
-    }
-    if (envFlag("NETLIFY")) {
-      return firstHeaderIp(req, "x-nf-client-connection-ip") ?? "unknown";
-    }
-    if (envFlag("TRUST_CLOUDFLARE_HEADERS")) {
-      return firstHeaderIp(req, "cf-connecting-ip") ?? "unknown";
-    }
-    if (envFlag("TRUST_PROXY_HEADERS")) {
-      return trustedForwardedForIp(req) ?? "unknown";
     }
   } catch {
     return "unknown";
@@ -213,8 +179,8 @@ type RateLimitRow = { count: number | string; expires_at: Date | string };
 
 /**
  * Distributed fixed-window limiter backed by Postgres. The counter increment
- * and window reset are one atomic upsert, so Vercel functions, Cloudflare
- * isolates, and other instances sharing the database observe the same count.
+ * and window reset are one atomic upsert, so every Vercel function instance
+ * sharing the database observes the same count.
  * If the database is briefly unavailable, a bounded in-process limiter is
  * used as an emergency fallback instead of failing completely open.
  */

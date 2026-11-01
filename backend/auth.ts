@@ -7,8 +7,8 @@ import { PASSWORD_MAX_LENGTH, passwordLength } from "@/backend/password-policy";
 import { getSigningSecret, signingSecretProblemForName } from "@/backend/secret-config";
 
 /*
- * Auth helpers built on Web Crypto, so they run fast on Node and on Cloudflare Workers.
- * - Passwords: PBKDF2-SHA256 (100k iterations, the Workers maximum). Old bcrypt hashes still verify.
+ * Auth helpers built on Web Crypto for the Node.js runtime.
+ * - Passwords: PBKDF2-SHA256 (100k iterations). Old bcrypt hashes still verify.
  * - Sessions: signed, httpOnly cookie (HMAC-SHA256) carrying a server-side
  *   session ID. Individual devices can be revoked in user_sessions, while
  *   users.token_version remains the "revoke everything" backstop.
