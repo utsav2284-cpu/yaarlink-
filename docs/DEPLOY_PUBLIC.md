@@ -2,6 +2,14 @@
 
 Vercel + Supabase is the only supported production deployment path for this repository. Keeping one authoritative path prevents a second host configuration from drifting on environment variables, database TLS, client-IP trust, or security headers.
 
+### Canonical production project
+
+For theyaar.com, the only authorized Vercel project is **`yaarlink-`** in the **`utsav-936a`** team. It is the project that owns `www.theyaar.com`, `theyaar.com`, and `yaarlink.vercel.app`. Use that same project's Preview deployments for branches and pull requests.
+
+Do not import this repository into a second Vercel project—even as a temporary test or fallback. A duplicate project creates a second set of Git-triggered builds, generated URLs, integration connections, and environment variables that can silently diverge from production. If another project is discovered connected to this repository, pause it immediately, confirm it owns no custom domains, record only its project/integration identifiers and environment-variable **names** for the audit trail (never values), and delete it. Then verify that production still belongs to `yaarlink-` and `/api/health` is healthy.
+
+The canonical database is Supabase PostgreSQL, reached by the application only through `DATABASE_URL` plus verified-TLS settings. A Neon integration, `NEON_*` variables, or an application project relying on integration-generated `POSTGRES_*` variables indicates infrastructure drift; the application code does not use those variables.
+
 ## 1. Database and verified TLS
 
 For initial provisioning, run the schema push once with the Supabase **Direct connection** string (or the **Session pooler** string from an IPv4-only network) before the first production deployment:
@@ -35,6 +43,10 @@ Set these as server-side Vercel environment variables for the Production environ
 - `EMAIL_FROM`
 
 Configure Preview separately. Do not give Preview deployments the production database URL or production signing secrets unless you intentionally want previews to share production data and sessions.
+
+The application requires **no project-defined `NEXT_PUBLIC_*` environment variables**. Never give a database URL, database password, service-role key, JWT secret, signing secret, API secret, or access token a `NEXT_PUBLIC_*` name: that prefix makes a value eligible to be inlined into a browser bundle if code ever references it. This applies even when the Vercel variable is marked Sensitive/Secret—the storage type does not make a browser-prefixed name safe.
+
+`next.config.ts` enforces this before bundling by checking variable **names only**. Builds fail for unapproved or secret-like `NEXT_PUBLIC_*` names, including duplicated/re-prefixed integration aliases such as `NEXT_PUBLIC_SUPABASE_SUPABASE_SECRET_KEY` and `NEXT_PUBLIC_SUPABASE_POSTGRES_URL_NON_POOLING`. Vercel's own `NEXT_PUBLIC_VERCEL_*` framework metadata is allowed unless its suffix is secret-like. The canonical Supabase integration's exact public identifier names—`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`—are tolerated as unused configuration only; do not reference them in browser code without a separate security review, including Supabase Row Level Security. Adding any other public name requires a reviewed code change to the allowlist in `backend/public-env.ts`.
 
 Verify the `EMAIL_FROM` sending domain in Resend before deployment. Signup verification fails closed with HTTP 503 when either email setting is missing; it never falls back to creating an unverified account. `APP_URL` may optionally pin the public origin used in verification links.
 
@@ -88,6 +100,8 @@ Import the repository into Vercel as a Next.js project with the repository root 
 - Production Branch: `main`
 
 Install with `npm ci` so builds use the exact versions recorded in the tracked `package-lock.json`. Before promoting a production deployment, verify in Vercel's deployment output that the build completed successfully.
+
+Before deploying, also confirm there is exactly one Vercel project connected to this GitHub repository: canonical `yaarlink-`. Check project **names, domains, and environment-variable names only**; do not open, copy, or log secret values during the audit. A second connected project, a Neon resource, or any non-allowlisted `NEXT_PUBLIC_*` name is a release blocker until the drift is removed.
 
 After deployment, check:
 
