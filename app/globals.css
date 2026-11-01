@@ -76,6 +76,14 @@ input, select, textarea {
   font-size: 16px;
   min-width: 0;
   max-width: 100%;
+}
+
+/*
+ * Text-like controls should fill their field container. Checkboxes and radios
+ * must keep their compact utility size; forcing them to 100% wide pushes the
+ * accompanying consent text outside its label/card.
+ */
+input:not([type="checkbox"]):not([type="radio"]), select, textarea {
   width: 100%;
 }
 

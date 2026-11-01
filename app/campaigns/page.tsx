@@ -437,16 +437,16 @@ export default function CampaignsPage() {
                       </datalist>
                       <p className="text-[12.5px] font-semibold leading-relaxed text-[#78716c]">{t("camp.contactMustBeYours")}</p>
                       <textarea value={applyForm.message} onChange={(e) => setApplyForm({ ...applyForm, message: e.target.value })} rows={2} placeholder={t("camp.applyPhMsg")} className="rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-2.5 text-[14px] outline-none" />
-                      <label htmlFor={`application-consent-${c.id}`} className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-3 text-[13px] font-semibold leading-relaxed text-[#57534e]">
+                      <label htmlFor={`application-consent-${c.id}`} className="flex w-full min-w-0 cursor-pointer items-start gap-3 rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-3 text-[13px] font-semibold leading-relaxed text-[#57534e]">
                         <input
                           id={`application-consent-${c.id}`}
                           type="checkbox"
                           checked={applyConsent}
                           onChange={(e) => setApplyConsent(e.target.checked)}
                           required
-                          className="mt-0.5 h-4 w-4 shrink-0 accent-[#e4572e]"
+                          className="mt-0.5 h-4 w-4 flex-none accent-[#e4572e]"
                         />
-                        <span>{t("camp.applySharingConsent")}</span>
+                        <span className="min-w-0 flex-1">{t("camp.applySharingConsent")}</span>
                       </label>
                       {applyError && (
                         <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-[13.5px] font-semibold leading-relaxed text-red-800">

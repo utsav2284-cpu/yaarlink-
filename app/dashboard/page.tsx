@@ -914,16 +914,16 @@ export default function DashboardPage() {
             </label>
             <label className={labelClass}>{t("dash.yourMessage")}<textarea value={applicationForm.message} onChange={(e) => setApplicationForm((f) => ({ ...f, message: e.target.value }))} rows={3} placeholder={t("camp.applyPhMsg")} className={inputClass} /></label>
             {reactivating && (
-              <label htmlFor={`reactivate-consent-${a.id}`} className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-3 text-[13px] font-semibold leading-relaxed text-[#57534e]">
+              <label htmlFor={`reactivate-consent-${a.id}`} className="flex w-full min-w-0 cursor-pointer items-start gap-3 rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-3 text-[13px] font-semibold leading-relaxed text-[#57534e]">
                 <input
                   id={`reactivate-consent-${a.id}`}
                   type="checkbox"
                   checked={applicationConsent}
                   onChange={(e) => setApplicationConsent(e.target.checked)}
                   required
-                  className="mt-0.5 h-4 w-4 shrink-0 accent-[#e4572e]"
+                  className="mt-0.5 h-4 w-4 flex-none accent-[#e4572e]"
                 />
-                <span>{t("dash.reactivateConsent")}</span>
+                <span className="min-w-0 flex-1">{t("dash.reactivateConsent")}</span>
               </label>
             )}
             <div className="flex flex-wrap gap-2">

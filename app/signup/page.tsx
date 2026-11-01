@@ -141,16 +141,16 @@ export default function SignupPage() {
               <input value={form.email} onChange={(e) => set("email", e.target.value)} required type="email" autoComplete="email" placeholder={t("auth.email")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
               <input value={form.phone} onChange={(e) => set("phone", e.target.value)} autoComplete="tel" placeholder={t("auth.phone")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
               <input value={form.password} onChange={(e) => set("password", e.target.value)} required type="password" minLength={10} maxLength={256} autoComplete="new-password" placeholder={t("auth.pwHint")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
-              <label htmlFor="signup-legal-consent" className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 text-[13.5px] font-semibold leading-relaxed text-[#57534e]">
+              <label htmlFor="signup-legal-consent" className="flex w-full min-w-0 cursor-pointer items-start gap-3 rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 text-[13.5px] font-semibold leading-relaxed text-[#57534e]">
                 <input
                   id="signup-legal-consent"
                   type="checkbox"
                   checked={acceptedLegal}
                   onChange={(e) => setAcceptedLegal(e.target.checked)}
                   required
-                  className="mt-1 h-4 w-4 shrink-0 accent-[#e4572e]"
+                  className="mt-1 h-4 w-4 flex-none accent-[#e4572e]"
                 />
-                <span>
+                <span className="min-w-0 flex-1">
                   {t("auth.legalConsentStart")}{" "}
                   <Link href="/terms" target="_blank" rel="noreferrer" className="font-extrabold text-[#e4572e] underline-offset-2 hover:underline">
                     {t("legal.terms")}
