@@ -42,11 +42,11 @@ export default function HomePage() {
   const [creatorsErrorKey, setCreatorsErrorKey] = useState("listing.loadFailed");
 
   const requestCampaigns = useCallback(
-    () => fetchJsonList<Campaign>("/api/campaigns", "campaigns", { cache: "no-store" }),
+    () => fetchJsonList<Campaign>("/api/campaigns?limit=3&sort=newest", "campaigns", { cache: "no-store" }),
     [],
   );
   const handleCampaignsSuccess = useCallback((rows: Campaign[]) => {
-    setCampaigns(rows.slice(0, 3));
+    setCampaigns(rows);
     setCampaignsStatus("success");
   }, []);
   const handleCampaignsError = useCallback((error: unknown) => {
@@ -70,11 +70,11 @@ export default function HomePage() {
   }, [fetchCampaigns]);
 
   const requestCreators = useCallback(
-    () => fetchJsonList<Creator>("/api/creators", "creators", { cache: "no-store" }),
+    () => fetchJsonList<Creator>("/api/creators?limit=4&sort=newest", "creators", { cache: "no-store" }),
     [],
   );
   const handleCreatorsSuccess = useCallback((rows: Creator[]) => {
-    setCreators(rows.slice(0, 4));
+    setCreators(rows);
     setCreatorsStatus("success");
   }, []);
   const handleCreatorsError = useCallback((error: unknown) => {

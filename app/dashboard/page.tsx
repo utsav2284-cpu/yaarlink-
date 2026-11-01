@@ -3,10 +3,11 @@
 import { useLang } from "@/frontend/i18n";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
-import { CATEGORIES, CONTENT_TYPES, LANGUAGES, PLATFORMS, PROMOTION_TYPES } from "@/shared/constants";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { APPLICATION_STATUSES, CAMPAIGN_REVIEW_STATUSES, CATEGORIES, CONTENT_TYPES, LANGUAGES, PLATFORMS, PROMOTION_TYPES } from "@/shared/constants";
 import PrivacyNotice from "@/frontend/components/PrivacyNotice";
-import { ListingError } from "@/frontend/components/ListingState";
+import { ListingError, ListingPagination } from "@/frontend/components/ListingState";
+import { appendUniqueById } from "@/frontend/api-json";
 
 type User = { id: string; name: string; email: string; phone?: string | null; role: string; emailVerifiedAt?: string | null; createdAt?: string };
 type Campaign = {
@@ -75,6 +76,30 @@ type Notification = {
   readAt?: string | null;
   createdAt?: string | null;
 };
+interface PaginationMeta {
+  limit: number;
+  total: number;
+  returned: number;
+  hasMore: boolean;
+  nextCursor: string | null;
+}
+type DashboardCounts = {
+  campaigns?: number;
+  applications?: number;
+  campaignBudgetTotal?: number;
+  profiles?: number;
+  completedProfiles?: number;
+  openCampaigns?: number;
+  notifications?: number;
+  unreadNotifications?: number;
+};
+type DashboardPagination = {
+  campaigns?: PaginationMeta;
+  applications?: PaginationMeta;
+  profiles?: PaginationMeta;
+  openCampaigns?: PaginationMeta;
+  notifications?: PaginationMeta;
+};
 type Data = {
   user: User;
   campaigns?: Campaign[];
@@ -84,7 +109,12 @@ type Data = {
   applicationContactOptions?: string[];
   notifications?: Notification[];
   unreadNotificationCount?: number;
+  counts?: DashboardCounts;
+  pagination?: DashboardPagination;
+  applicationCountsByCampaign?: Record<string, number>;
+  applicationPaginationByCampaign?: Record<string, PaginationMeta>;
 };
+type ListQuery = { q: string; status: string; sort: string };
 type CampaignForm = {
   businessName: string;
   contactName: string;
@@ -215,25 +245,219 @@ export default function DashboardPage() {
   const [applicationForm, setApplicationForm] = useState({ creatorContact: "", message: "" });
   const [applicationConsent, setApplicationConsent] = useState(false);
   const [decisionNotes, setDecisionNotes] = useState<Record<string, string>>({});
+  const [campaignDraft, setCampaignDraft] = useState<ListQuery>({ q: "", status: "", sort: "newest" });
+  const [campaignQuery, setCampaignQuery] = useState<ListQuery>({ q: "", status: "", sort: "newest" });
+  const [applicationDraft, setApplicationDraft] = useState<ListQuery>({ q: "", status: "", sort: "newest" });
+  const [applicationQuery, setApplicationQuery] = useState<ListQuery>({ q: "", status: "", sort: "newest" });
+  const [openSort, setOpenSort] = useState("newest");
+  const [listBusyKey, setListBusyKey] = useState("");
+  const sectionRequestRef = useRef<Record<string, number>>({});
 
-  const fetchData = useCallback(async (): Promise<Data | null> => {
-    let r: Response;
+  const fetchData = useCallback(
+    async (
+      extra: Record<string, string> = {},
+      overrides: { campaignQuery?: ListQuery; applicationQuery?: ListQuery; openSort?: string } = {},
+    ): Promise<Data | null> => {
+      const activeCampaignQuery = overrides.campaignQuery ?? campaignQuery;
+      const activeApplicationQuery = overrides.applicationQuery ?? applicationQuery;
+      const params = new URLSearchParams({
+        campaignLimit: "10",
+        campaignSort: activeCampaignQuery.sort,
+        applicationLimit: "10",
+        applicationSort: activeApplicationQuery.sort,
+        profileLimit: "10",
+        profileSort: "newest",
+        openLimit: "6",
+        openSort: overrides.openSort ?? openSort,
+        notificationLimit: "20",
+        notificationSort: "newest",
+      });
+      if (activeCampaignQuery.q) params.set("campaignQ", activeCampaignQuery.q);
+      if (activeCampaignQuery.status) params.set("campaignStatus", activeCampaignQuery.status);
+      if (activeApplicationQuery.q) params.set("applicationQ", activeApplicationQuery.q);
+      if (activeApplicationQuery.status) params.set("applicationStatus", activeApplicationQuery.status);
+      for (const [key, value] of Object.entries(extra)) params.set(key, value);
+
+      let r: Response;
+      try {
+        r = await fetch(`/api/me/dashboard?${params.toString()}`, { cache: "no-store" });
+      } catch {
+        throw new DisplayKeyError("api.network");
+      }
+      if (r.status === 401) {
+        router.replace("/login");
+        return null;
+      }
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new DisplayKeyError(apiErrorKey(r.status, d?.code, "api.loadFailed"));
+      if (!d || typeof d !== "object" || !d.user || typeof d.user !== "object" || typeof d.user.id !== "string") {
+        throw new DisplayKeyError("api.loadFailed");
+      }
+      return d as Data;
+    },
+    [apiErrorKey, applicationQuery, campaignQuery, openSort, router],
+  );
+  const fetchDataRef = useRef(fetchData);
+  useEffect(() => {
+    fetchDataRef.current = fetchData;
+  }, [fetchData]);
+
+  const mergeDashboardData = (
+    next: Data,
+    append: Partial<Record<"campaigns" | "applications" | "profiles" | "openCampaigns" | "notifications", boolean>> = {},
+  ) => {
+    setData((current) => {
+      if (!current) return { ...next, applications: next.applications ?? [] };
+      return {
+        ...current,
+        ...next,
+        user: next.user ?? current.user,
+        counts: next.counts ?? current.counts,
+        campaigns: next.campaigns
+          ? append.campaigns
+            ? appendUniqueById(current.campaigns ?? [], next.campaigns)
+            : next.campaigns
+          : current.campaigns,
+        applications: next.applications
+          ? append.applications
+            ? appendUniqueById(current.applications, next.applications)
+            : next.applications
+          : current.applications,
+        profiles: next.profiles
+          ? append.profiles
+            ? appendUniqueById(current.profiles ?? [], next.profiles)
+            : next.profiles
+          : current.profiles,
+        openCampaigns: next.openCampaigns
+          ? append.openCampaigns
+            ? appendUniqueById(current.openCampaigns ?? [], next.openCampaigns)
+            : next.openCampaigns
+          : current.openCampaigns,
+        notifications: next.notifications
+          ? append.notifications
+            ? appendUniqueById(current.notifications ?? [], next.notifications)
+            : next.notifications
+          : current.notifications,
+        applicationCountsByCampaign: {
+          ...(current.applicationCountsByCampaign ?? {}),
+          ...(next.applicationCountsByCampaign ?? {}),
+        },
+        applicationPaginationByCampaign: {
+          ...(current.applicationPaginationByCampaign ?? {}),
+          ...(next.applicationPaginationByCampaign ?? {}),
+        },
+        pagination: { ...(current.pagination ?? {}), ...(next.pagination ?? {}) },
+      };
+    });
+  };
+
+  const loadDashboardSection = async (
+    section: string,
+    extra: Record<string, string> = {},
+    append: Partial<Record<"campaigns" | "applications" | "profiles" | "openCampaigns" | "notifications", boolean>> = {},
+    overrides: { campaignQuery?: ListQuery; applicationQuery?: ListQuery; openSort?: string } = {},
+  ) => {
+    const requestKey = extra.applicationCampaignId ? `${section}:${extra.applicationCampaignId}` : section;
+    const requestId = (sectionRequestRef.current[requestKey] = (sectionRequestRef.current[requestKey] ?? 0) + 1);
+    setListBusyKey(requestKey);
+    setActionErrorKey("");
     try {
-      r = await fetch("/api/me/dashboard", { cache: "no-store" });
-    } catch {
-      throw new DisplayKeyError("api.network");
+      const next = await fetchData({ section, ...extra }, overrides);
+      if (next && sectionRequestRef.current[requestKey] === requestId) {
+        mergeDashboardData(next, append);
+        setErrorKey("");
+      }
+    } catch (e) {
+      if (sectionRequestRef.current[requestKey] === requestId) {
+        setActionErrorKey(e instanceof DisplayKeyError ? e.key : "api.loadFailed");
+      }
+    } finally {
+      if (sectionRequestRef.current[requestKey] === requestId) {
+        setListBusyKey((current) => (current === requestKey ? "" : current));
+      }
     }
-    if (r.status === 401) {
-      router.replace("/login");
-      return null;
-    }
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new DisplayKeyError(apiErrorKey(r.status, d?.code, "api.loadFailed"));
-    if (!d || typeof d !== "object" || !d.user || typeof d.user !== "object" || typeof d.user.id !== "string") {
-      throw new DisplayKeyError("api.loadFailed");
-    }
-    return d as Data;
-  }, [apiErrorKey, router]);
+  };
+
+  const applyBrandFilters = (event: React.FormEvent) => {
+    event.preventDefault();
+    const nextCampaignQuery = { ...campaignDraft, q: campaignDraft.q.trim() };
+    const nextApplicationQuery = { ...applicationDraft, q: applicationDraft.q.trim() };
+    setCampaignDraft(nextCampaignQuery);
+    setApplicationDraft(nextApplicationQuery);
+    setCampaignQuery(nextCampaignQuery);
+    setApplicationQuery(nextApplicationQuery);
+    void loadDashboardSection("campaigns", {}, {}, { campaignQuery: nextCampaignQuery, applicationQuery: nextApplicationQuery });
+  };
+
+  const clearBrandFilters = () => {
+    const empty: ListQuery = { q: "", status: "", sort: "newest" };
+    setCampaignDraft(empty);
+    setApplicationDraft(empty);
+    setCampaignQuery(empty);
+    setApplicationQuery(empty);
+    void loadDashboardSection("campaigns", {}, {}, { campaignQuery: empty, applicationQuery: empty });
+  };
+
+  const loadMoreCampaigns = () => {
+    const cursor = data?.pagination?.campaigns?.nextCursor;
+    if (!cursor || listBusyKey === "campaigns") return;
+    void loadDashboardSection("campaigns", { campaignCursor: cursor }, { campaigns: true, applications: true });
+  };
+
+  const loadMoreBrandApplications = (campaignId: string) => {
+    const cursor = data?.applicationPaginationByCampaign?.[campaignId]?.nextCursor;
+    const busyKey = `applications:${campaignId}`;
+    if (!cursor || listBusyKey === busyKey) return;
+    void loadDashboardSection(
+      "applications",
+      { applicationCampaignId: campaignId, applicationCursor: cursor },
+      { applications: true },
+    );
+  };
+
+  const applyCreatorApplicationFilters = (event: React.FormEvent) => {
+    event.preventDefault();
+    const nextApplicationQuery = { ...applicationDraft, q: applicationDraft.q.trim() };
+    setApplicationDraft(nextApplicationQuery);
+    setApplicationQuery(nextApplicationQuery);
+    void loadDashboardSection("applications", {}, {}, { applicationQuery: nextApplicationQuery });
+  };
+
+  const clearCreatorApplicationFilters = () => {
+    const empty: ListQuery = { q: "", status: "", sort: "newest" };
+    setApplicationDraft(empty);
+    setApplicationQuery(empty);
+    void loadDashboardSection("applications", {}, {}, { applicationQuery: empty });
+  };
+
+  const loadMoreCreatorApplications = () => {
+    const cursor = data?.pagination?.applications?.nextCursor;
+    if (!cursor || listBusyKey === "applications") return;
+    void loadDashboardSection("applications", { applicationCursor: cursor }, { applications: true });
+  };
+
+  const loadMoreProfiles = () => {
+    const cursor = data?.pagination?.profiles?.nextCursor;
+    if (!cursor || listBusyKey === "profiles") return;
+    void loadDashboardSection("profiles", { profileCursor: cursor }, { profiles: true });
+  };
+
+  const loadMoreOpenCampaigns = () => {
+    const cursor = data?.pagination?.openCampaigns?.nextCursor;
+    if (!cursor || listBusyKey === "openCampaigns") return;
+    void loadDashboardSection("openCampaigns", { openCursor: cursor }, { openCampaigns: true });
+  };
+
+  const changeOpenSort = (value: string) => {
+    setOpenSort(value);
+    void loadDashboardSection("openCampaigns", {}, {}, { openSort: value });
+  };
+
+  const loadMoreNotifications = () => {
+    const cursor = data?.pagination?.notifications?.nextCursor;
+    if (!cursor || listBusyKey === "notifications") return;
+    void loadDashboardSection("notifications", { notificationCursor: cursor }, { notifications: true });
+  };
 
   const loadData = async () => {
     const d = await fetchData();
@@ -245,14 +469,14 @@ export default function DashboardPage() {
 
   const fetchInitial = useCallback(async () => {
     try {
-      const d = await fetchData();
+      const d = await fetchDataRef.current();
       if (d) setData(d);
     } catch (e: unknown) {
       // Keep any previously loaded dashboard visible; the render below only
       // replaces the page with this error when there is no data yet.
       setErrorKey(e instanceof DisplayKeyError ? e.key : "api.loadFailed");
     }
-  }, [fetchData]);
+  }, []);
 
   const retryInitialLoad = useCallback(async () => {
     setErrorKey("");
@@ -261,7 +485,8 @@ export default function DashboardPage() {
 
   useEffect(() => {
     let alive = true;
-    fetchData()
+    fetchDataRef
+      .current()
       .then((d) => {
         if (alive && d) setData(d);
       })
@@ -271,7 +496,7 @@ export default function DashboardPage() {
     return () => {
       alive = false;
     };
-  }, [fetchData]);
+  }, []);
 
   useEffect(() => {
     const id = window.setInterval(() => setCurrentHour(new Date().getHours()), 60_000);
@@ -347,8 +572,14 @@ export default function DashboardPage() {
           : "dash.goodNight";
   const accountLabel = isBrand ? t("dash.brandAccount") : t("dash.creatorAccount");
   const completedProfiles = (data.profiles ?? []).filter((profile) => profile.status !== "incomplete");
+  const completedProfileCount = data.counts?.completedProfiles ?? completedProfiles.length;
   const notifications = data.notifications ?? [];
-  const unreadCount = data.unreadNotificationCount ?? notifications.filter((n) => !n.readAt).length;
+  const unreadCount = data.unreadNotificationCount ?? data.counts?.unreadNotifications ?? notifications.filter((n) => !n.readAt).length;
+  const brandHasFilters = Boolean(
+    campaignQuery.q || campaignQuery.status || campaignQuery.sort !== "newest" ||
+    applicationQuery.q || applicationQuery.status || applicationQuery.sort !== "newest",
+  );
+  const creatorApplicationHasFilters = Boolean(applicationQuery.q || applicationQuery.status || applicationQuery.sort !== "newest");
   const statusLabel = (status: string | null | undefined) => (status ? t(`status.${status}`) : "");
   const notificationText = (n: Notification) => {
     const template = t(
@@ -401,6 +632,15 @@ export default function DashboardPage() {
               </div>
             </div>
           ))}
+          <ListingPagination
+            loaded={notifications.length}
+            total={data.pagination?.notifications?.total ?? data.counts?.notifications ?? notifications.length}
+            hasMore={Boolean(data.pagination?.notifications?.hasMore)}
+            loading={listBusyKey === "notifications"}
+            onLoadMore={loadMoreNotifications}
+            className="mt-3 flex flex-col items-center gap-2"
+            buttonClassName="rounded-xl border border-[#e9ddc3] bg-white px-5 py-2.5 text-[13px] font-bold disabled:cursor-not-allowed disabled:opacity-60"
+          />
         </div>
       )}
     </section>
@@ -792,22 +1032,93 @@ export default function DashboardPage() {
       {isBrand ? (
         <>
           <div className="mt-6 grid gap-3 sm:grid-cols-3">
-            <Stat value={formatNumber(data.campaigns?.length ?? 0)} label={t("dash.statCampaigns")} />
-            <Stat value={formatNumber(data.applications.length)} label={t("dash.statApps")} />
-            <Stat value={formatCurrency((data.campaigns ?? []).reduce((s, c) => s + (c.budget || 0), 0))} label={t("dash.statBudget")} />
+            <Stat value={formatNumber(data.counts?.campaigns ?? data.campaigns?.length ?? 0)} label={t("dash.statCampaigns")} />
+            <Stat value={formatNumber(data.counts?.applications ?? data.applications.length)} label={t("dash.statApps")} />
+            <Stat value={formatCurrency(data.counts?.campaignBudgetTotal ?? (data.campaigns ?? []).reduce((s, c) => s + (c.budget || 0), 0))} label={t("dash.statBudget")} />
           </div>
+
+
+          <form onSubmit={applyBrandFilters} className="mt-6 grid gap-2 rounded-2xl border border-[#e9ddc3] bg-white p-3 card-shadow">
+            <div className="grid gap-2 md:grid-cols-[1fr_190px_190px]">
+              <label>
+                <span className="sr-only">{t("dash.yourCampaigns")}</span>
+                <input value={campaignDraft.q} onChange={(e) => setCampaignDraft((current) => ({ ...current, q: e.target.value }))} placeholder={t("camp.search")} className={inputClass} />
+              </label>
+              <label>
+                <span className="sr-only">{t("listing.filterStatus")}</span>
+                <select value={campaignDraft.status} onChange={(e) => setCampaignDraft((current) => ({ ...current, status: e.target.value }))} className={inputClass}>
+                  <option value="">{t("listing.allStatuses")}</option>
+                  {CAMPAIGN_REVIEW_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
+                </select>
+              </label>
+              <label>
+                <span className="sr-only">{t("listing.sort")}</span>
+                <select value={campaignDraft.sort} onChange={(e) => setCampaignDraft((current) => ({ ...current, sort: e.target.value }))} className={inputClass}>
+                  <option value="newest">{t("listing.sortNewest")}</option>
+                  <option value="oldest">{t("listing.sortOldest")}</option>
+                  <option value="title">{t("listing.sortTitle")}</option>
+                  <option value="budget_desc">{t("listing.sortBudgetDesc")}</option>
+                  <option value="budget_asc">{t("listing.sortBudgetAsc")}</option>
+                  <option value="status">{t("listing.sortStatus")}</option>
+                </select>
+              </label>
+            </div>
+            <div className="grid gap-2 md:grid-cols-[1fr_190px_190px]">
+              <label>
+                <span className="sr-only">{t("dash.applications")}</span>
+                <input value={applicationDraft.q} onChange={(e) => setApplicationDraft((current) => ({ ...current, q: e.target.value }))} placeholder={t("listing.searchItems")} className={inputClass} />
+              </label>
+              <label>
+                <span className="sr-only">{t("listing.filterStatus")}</span>
+                <select value={applicationDraft.status} onChange={(e) => setApplicationDraft((current) => ({ ...current, status: e.target.value }))} className={inputClass}>
+                  <option value="">{t("listing.allStatuses")}</option>
+                  {APPLICATION_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
+                </select>
+              </label>
+              <label>
+                <span className="sr-only">{t("listing.sort")}</span>
+                <select value={applicationDraft.sort} onChange={(e) => setApplicationDraft((current) => ({ ...current, sort: e.target.value }))} className={inputClass}>
+                  <option value="newest">{t("listing.sortNewest")}</option>
+                  <option value="oldest">{t("listing.sortOldest")}</option>
+                  <option value="updated">{t("listing.sortUpdated")}</option>
+                  <option value="status">{t("listing.sortStatus")}</option>
+                </select>
+              </label>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button type="submit" disabled={listBusyKey === "campaigns"} className="rounded-xl bg-[#1c1917] px-5 py-2.5 text-[13.5px] font-bold text-white disabled:opacity-50">
+                {listBusyKey === "campaigns" ? t("common.loading") : t("listing.searchLabel")}
+              </button>
+              {brandHasFilters && (
+                <button type="button" disabled={listBusyKey === "campaigns"} onClick={clearBrandFilters} className="rounded-xl border border-[#e9ddc3] px-5 py-2.5 text-[13.5px] font-bold disabled:opacity-50">
+                  {t("listing.clearFilters")}
+                </button>
+              )}
+            </div>
+          </form>
 
           <h2 className="mt-10 text-[19px] font-extrabold">{t("dash.yourCampaigns")}</h2>
           <div className="mt-3 grid gap-3">
             {(data.campaigns ?? []).length === 0 && (
-              <div className="rounded-2xl border border-dashed border-[#e9ddc3] bg-white p-8 text-center">
-                <p className="text-[15px] font-bold">{t("dash.noCampaigns")}</p>
-                <p className="mt-1 text-[14px] text-[#78716c]">{t("dash.noCampaignsSub")}</p>
-                <Link href="/brands" className="mt-4 inline-block rounded-xl bg-[#1c1917] px-5 py-2.5 text-[14px] font-bold text-white">{t("dash.create")}</Link>
-              </div>
+              brandHasFilters ? (
+                <div className="rounded-2xl border border-dashed border-[#e9ddc3] bg-white p-8 text-center">
+                  <p className="text-[15px] font-bold">{t("listing.noCampaignMatches")}</p>
+                  <button type="button" onClick={clearBrandFilters} className="mt-4 rounded-xl border border-[#1c1917] px-5 py-2.5 text-[14px] font-bold">
+                    {t("listing.clearFilters")}
+                  </button>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-[#e9ddc3] bg-white p-8 text-center">
+                  <p className="text-[15px] font-bold">{t("dash.noCampaigns")}</p>
+                  <p className="mt-1 text-[14px] text-[#78716c]">{t("dash.noCampaignsSub")}</p>
+                  <Link href="/brands" className="mt-4 inline-block rounded-xl bg-[#1c1917] px-5 py-2.5 text-[14px] font-bold text-white">{t("dash.create")}</Link>
+                </div>
+              )
             )}
             {(data.campaigns ?? []).map((c) => {
               const apps = data.applications.filter((a) => a.campaignId === c.id);
+              const campaignApplicationCount = data.applicationCountsByCampaign?.[c.id] ?? apps.length;
+              const campaignApplicationPagination = data.applicationPaginationByCampaign?.[c.id];
               const campaignBusy = busyKey.startsWith(`campaign:${c.id}:`);
               return (
                 <div key={c.id} className="rounded-2xl border border-[#e9ddc3] bg-white p-5 card-shadow">
@@ -893,27 +1204,45 @@ export default function DashboardPage() {
                   {renderCampaignEdit(c)}
 
                   <div className="mt-4 rounded-xl border border-[#f0e6cc] bg-[#fffbf1] p-3">
-                    <p className="text-[12px] font-bold uppercase tracking-widest text-[#a8a29e]">{formatNumber(apps.length)} {t("dash.applications")}</p>
+                    <p className="text-[12px] font-bold uppercase tracking-widest text-[#a8a29e]">{formatNumber(campaignApplicationCount)} {t("dash.applications")}</p>
                     {apps.length === 0 ? (
                       <p className="mt-1 text-[13.5px] text-[#78716c]">{t("dash.noApps")}</p>
                     ) : (
                       <div className="mt-2 grid gap-2">{apps.map(renderBrandApplication)}</div>
+                    )}
+                    {campaignApplicationPagination?.hasMore && (
+                      <ListingPagination
+                        loaded={apps.length}
+                        total={campaignApplicationCount}
+                        hasMore
+                        loading={listBusyKey === `applications:${c.id}`}
+                        onLoadMore={() => loadMoreBrandApplications(c.id)}
+                        className="mt-3 flex flex-col items-center gap-2"
+                        buttonClassName="rounded-xl border border-[#e9ddc3] bg-white px-5 py-2.5 text-[13px] font-bold disabled:cursor-not-allowed disabled:opacity-60"
+                      />
                     )}
                   </div>
                 </div>
               );
             })}
           </div>
+          <ListingPagination
+            loaded={(data.campaigns ?? []).length}
+            total={data.pagination?.campaigns?.total ?? (data.campaigns ?? []).length}
+            hasMore={Boolean(data.pagination?.campaigns?.hasMore)}
+            loading={listBusyKey === "campaigns"}
+            onLoadMore={loadMoreCampaigns}
+          />
         </>
       ) : (
         <>
           <div className="mt-6 grid gap-3 sm:grid-cols-3">
-            <Stat value={formatNumber(completedProfiles.length)} label={t("dash.statProfiles")} />
-            <Stat value={formatNumber(data.applications.length)} label={t("dash.statApplied")} />
-            <Stat value={formatNumber(data.openCampaigns?.length ?? 0)} label={t("dash.statOpen")} />
+            <Stat value={formatNumber(completedProfileCount)} label={t("dash.statProfiles")} />
+            <Stat value={formatNumber(data.counts?.applications ?? data.applications.length)} label={t("dash.statApplied")} />
+            <Stat value={formatNumber(data.counts?.openCampaigns ?? data.openCampaigns?.length ?? 0)} label={t("dash.statOpen")} />
           </div>
 
-          {completedProfiles.length === 0 && (
+          {completedProfileCount === 0 && (
             <div className="mt-6 flex flex-col items-start justify-between gap-3 rounded-2xl bg-[#ffc53d] p-5 sm:flex-row sm:items-center">
               <p className="text-[15px] font-bold">{t("dash.completeProfile")}</p>
               <Link href="/creators" className="rounded-xl bg-[#1c1917] px-5 py-2.5 text-[14px] font-bold text-white">{t("dash.completeBtn")}</Link>
@@ -992,23 +1321,91 @@ export default function DashboardPage() {
                   );
                 })}
               </div>
+              <ListingPagination
+                loaded={(data.profiles ?? []).length}
+                total={data.pagination?.profiles?.total ?? data.counts?.profiles ?? (data.profiles ?? []).length}
+                hasMore={Boolean(data.pagination?.profiles?.hasMore)}
+                loading={listBusyKey === "profiles"}
+                onLoadMore={loadMoreProfiles}
+              />
             </section>
           )}
 
           <div className="mt-10 grid gap-6 lg:grid-cols-2">
             <div>
               <h2 className="text-[19px] font-extrabold">{t("dash.yourApps")}</h2>
+              <form onSubmit={applyCreatorApplicationFilters} className="mt-3 grid gap-2 rounded-2xl border border-[#e9ddc3] bg-white p-3">
+                <label>
+                  <span className="sr-only">{t("listing.searchLabel")}</span>
+                  <input value={applicationDraft.q} onChange={(e) => setApplicationDraft((current) => ({ ...current, q: e.target.value }))} placeholder={t("listing.searchItems")} className={inputClass} />
+                </label>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <label>
+                    <span className="sr-only">{t("listing.filterStatus")}</span>
+                    <select value={applicationDraft.status} onChange={(e) => setApplicationDraft((current) => ({ ...current, status: e.target.value }))} className={inputClass}>
+                      <option value="">{t("listing.allStatuses")}</option>
+                      {APPLICATION_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    <span className="sr-only">{t("listing.sort")}</span>
+                    <select value={applicationDraft.sort} onChange={(e) => setApplicationDraft((current) => ({ ...current, sort: e.target.value }))} className={inputClass}>
+                      <option value="newest">{t("listing.sortNewest")}</option>
+                      <option value="oldest">{t("listing.sortOldest")}</option>
+                      <option value="updated">{t("listing.sortUpdated")}</option>
+                      <option value="status">{t("listing.sortStatus")}</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button type="submit" disabled={listBusyKey === "applications"} className="rounded-xl bg-[#1c1917] px-5 py-2.5 text-[13.5px] font-bold text-white disabled:opacity-50">
+                    {listBusyKey === "applications" ? t("common.loading") : t("listing.searchLabel")}
+                  </button>
+                  {creatorApplicationHasFilters && (
+                    <button type="button" disabled={listBusyKey === "applications"} onClick={clearCreatorApplicationFilters} className="rounded-xl border border-[#e9ddc3] px-5 py-2.5 text-[13.5px] font-bold disabled:opacity-50">
+                      {t("listing.clearFilters")}
+                    </button>
+                  )}
+                </div>
+              </form>
               <div className="mt-3 grid gap-3">
                 {data.applications.length === 0 && (
-                  <p className="rounded-2xl border border-dashed border-[#e9ddc3] bg-white p-6 text-[14px] text-[#78716c]">
-                    {t("dash.noAppsYet")} <Link href="/campaigns" className="font-bold text-[#e4572e]">{t("dash.browse")}</Link>
-                  </p>
+                  creatorApplicationHasFilters ? (
+                    <div className="rounded-2xl border border-dashed border-[#e9ddc3] bg-white p-6 text-center">
+                      <p className="text-[14px] font-bold text-[#78716c]">{t("listing.noMatches")}</p>
+                      <button type="button" onClick={clearCreatorApplicationFilters} className="mt-3 rounded-xl border border-[#1c1917] px-4 py-2 text-[13px] font-bold">
+                        {t("listing.clearFilters")}
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="rounded-2xl border border-dashed border-[#e9ddc3] bg-white p-6 text-[14px] text-[#78716c]">
+                      {t("dash.noAppsYet")} <Link href="/campaigns" className="font-bold text-[#e4572e]">{t("dash.browse")}</Link>
+                    </p>
+                  )
                 )}
                 {data.applications.map(renderCreatorApplication)}
               </div>
+              <ListingPagination
+                loaded={data.applications.length}
+                total={data.pagination?.applications?.total ?? data.applications.length}
+                hasMore={Boolean(data.pagination?.applications?.hasMore)}
+                loading={listBusyKey === "applications"}
+                onLoadMore={loadMoreCreatorApplications}
+              />
             </div>
             <div>
-              <h2 className="text-[19px] font-extrabold">{t("dash.fresh")}</h2>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-[19px] font-extrabold">{t("dash.fresh")}</h2>
+                <label>
+                  <span className="sr-only">{t("listing.sort")}</span>
+                  <select value={openSort} onChange={(e) => changeOpenSort(e.target.value)} className="rounded-xl border border-[#e9ddc3] bg-white px-3 py-2 text-[13px] font-bold outline-none">
+                    <option value="newest">{t("listing.sortNewest")}</option>
+                    <option value="oldest">{t("listing.sortOldest")}</option>
+                    <option value="title">{t("listing.sortTitle")}</option>
+                    <option value="business">{t("listing.sortBusiness")}</option>
+                  </select>
+                </label>
+              </div>
               <div className="mt-3 grid gap-3">
                 {(data.openCampaigns ?? []).map((c) => (
                   <Link key={c.id} href="/campaigns" className="rounded-2xl border border-[#e9ddc3] bg-white p-4 transition hover:-translate-y-0.5 hover:border-[#1c1917]">
@@ -1020,6 +1417,13 @@ export default function DashboardPage() {
                   <p className="rounded-2xl border border-dashed border-[#e9ddc3] bg-white p-6 text-[14px] text-[#78716c]">{t("dash.freshEmpty")}</p>
                 )}
               </div>
+              <ListingPagination
+                loaded={(data.openCampaigns ?? []).length}
+                total={data.pagination?.openCampaigns?.total ?? data.counts?.openCampaigns ?? (data.openCampaigns ?? []).length}
+                hasMore={Boolean(data.pagination?.openCampaigns?.hasMore)}
+                loading={listBusyKey === "openCampaigns"}
+                onLoadMore={loadMoreOpenCampaigns}
+              />
             </div>
           </div>
         </>

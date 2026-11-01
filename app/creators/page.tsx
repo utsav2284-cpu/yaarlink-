@@ -37,11 +37,11 @@ export default function CreatorsPage() {
   const [errKey, setErrKey] = useState("");
 
   const requestCampaigns = useCallback(
-    () => fetchJsonList<any>("/api/campaigns", "campaigns", { cache: "no-store" }),
+    () => fetchJsonList<any>("/api/campaigns?limit=6&sort=newest", "campaigns", { cache: "no-store" }),
     [],
   );
   const handleCampaignsSuccess = useCallback((rows: any[]) => {
-    setCampaigns(rows.slice(0, 6));
+    setCampaigns(rows);
     setCampaignsStatus("success");
   }, []);
   const handleCampaignsError = useCallback((error: unknown) => {

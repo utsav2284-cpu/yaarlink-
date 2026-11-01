@@ -3,12 +3,22 @@
 import { useLang } from "@/frontend/i18n";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
-import { ApiResponseError, fetchJsonList, fetchJsonObject } from "@/frontend/api-json";
-import { ListingError } from "@/frontend/components/ListingState";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ApiResponseError, appendUniqueById, fetchJsonObject, fetchJsonPage, type ListPagination } from "@/frontend/api-json";
+import { ListingError, ListingPagination } from "@/frontend/components/ListingState";
 import { LANGUAGES } from "@/shared/constants";
 import PrivacyNotice from "@/frontend/components/PrivacyNotice";
 import ReportButton from "@/frontend/components/ReportButton";
+
+const CAMPAIGN_PAGE_SIZE = 24;
+
+function campaignListUrl({ q, lang, sort, cursor }: { q: string; lang: string; sort: string; cursor?: string | null }) {
+  const params = new URLSearchParams({ limit: String(CAMPAIGN_PAGE_SIZE), sort });
+  if (q) params.set("q", q);
+  if (lang) params.set("language", lang);
+  if (cursor) params.set("cursor", cursor);
+  return `/api/campaigns?${params.toString()}`;
+}
 
 export default function CampaignsPage() {
   const { t, opt, promo, apiErrorKey: getApiErrorKey } = useLang();
@@ -16,7 +26,13 @@ export default function CampaignsPage() {
   const [campaignsStatus, setCampaignsStatus] = useState<"loading" | "success" | "error">("loading");
   const [campaignsErrorKey, setCampaignsErrorKey] = useState("listing.loadFailed");
   const [q, setQ] = useState("");
+  const [searchQ, setSearchQ] = useState("");
   const [lang, setLang] = useState("");
+  const [sort, setSort] = useState("newest");
+  const [campaignPagination, setCampaignPagination] = useState<ListPagination | null>(null);
+  const [loadingMoreCampaigns, setLoadingMoreCampaigns] = useState(false);
+  const campaignRequestRef = useRef(0);
+  const ownApplicationsRequestRef = useRef(0);
   const [applyId, setApplyId] = useState<string | null>(null);
   const [applyForm, setApplyForm] = useState({ contact: "", message: "" });
   const [applyConsent, setApplyConsent] = useState(false);
@@ -30,26 +46,36 @@ export default function CampaignsPage() {
   const [contactOptions, setContactOptions] = useState<string[]>([]);
   const [pageNotice, setPageNotice] = useState<"" | "duplicate" | "closed">("");
 
-  const requestOwnApplications = useCallback(
-    () => fetchJsonObject("/api/me/applications", { cache: "no-store" }),
+  const requestOwnApplications = useCallback((campaignIds?: string[]) => {
+    const ids = campaignIds ? [...new Set(campaignIds.filter(Boolean))] : undefined;
+    const params = new URLSearchParams({ limit: String(ids?.length || 1) });
+    if (ids?.length) params.set("campaignIds", ids.join(","));
+    return fetchJsonObject(`/api/me/applications?${params.toString()}`, { cache: "no-store" });
+  }, []);
+
+  const applyOwnApplications = useCallback(
+    (data: Record<string, unknown>, campaignIds?: string[]): Record<string, any> => {
+      const applications = Array.isArray(data.applications) ? data.applications : null;
+      const contactValues = Array.isArray(data.contactOptions) ? data.contactOptions : null;
+      if (!applications || !contactValues) throw new ApiResponseError(502, "load_failed");
+      const byCampaign = Object.fromEntries(
+        applications
+          .filter((application: any) => application?.campaignId)
+          .map((application: any) => [application.campaignId, application]),
+      ) as Record<string, any>;
+      setOwnApplications((current) => {
+        if (!campaignIds) return { ...current, ...byCampaign };
+        const next = { ...current };
+        for (const campaignId of campaignIds) delete next[campaignId];
+        return { ...next, ...byCampaign };
+      });
+      setCreatorProfile(data.creatorProfile ?? null);
+      setContactOptions(contactValues.filter((value: unknown): value is string => typeof value === "string"));
+      setOwnApplicationsStatus("ready");
+      return byCampaign;
+    },
     [],
   );
-
-  const applyOwnApplications = useCallback((data: Record<string, unknown>): Record<string, any> => {
-    const applications = Array.isArray(data.applications) ? data.applications : null;
-    const contactValues = Array.isArray(data.contactOptions) ? data.contactOptions : null;
-    if (!applications || !contactValues) throw new ApiResponseError(502, "load_failed");
-    const byCampaign = Object.fromEntries(
-      applications
-        .filter((application: any) => application?.campaignId)
-        .map((application: any) => [application.campaignId, application]),
-    ) as Record<string, any>;
-    setOwnApplications(byCampaign);
-    setCreatorProfile(data.creatorProfile ?? null);
-    setContactOptions(contactValues.filter((value: unknown): value is string => typeof value === "string"));
-    setOwnApplicationsStatus("ready");
-    return byCampaign;
-  }, []);
 
   const handleOwnApplicationsError = useCallback((error: unknown): null => {
     if (error instanceof ApiResponseError && error.status === 401) {
@@ -65,85 +91,93 @@ export default function CampaignsPage() {
     return null;
   }, []);
 
-  const fetchOwnApplications = useCallback(async (): Promise<Record<string, any> | null> => {
-    try {
-      return applyOwnApplications(await requestOwnApplications());
-    } catch (error) {
-      return handleOwnApplicationsError(error);
-    }
-  }, [applyOwnApplications, handleOwnApplicationsError, requestOwnApplications]);
-
-  const loadOwnApplications = useCallback(async (): Promise<Record<string, any> | null> => {
-    setOwnApplicationsStatus((current) => current === "guest" ? current : "loading");
-    return fetchOwnApplications();
-  }, [fetchOwnApplications]);
-
-  const requestCampaigns = useCallback(
-    () => fetchJsonList<any>("/api/campaigns", "campaigns", { cache: "no-store" }),
-    [],
+  const fetchOwnApplications = useCallback(
+    async (campaignIds?: string[]): Promise<Record<string, any> | null> => {
+      const requestId = ++ownApplicationsRequestRef.current;
+      try {
+        const data = await requestOwnApplications(campaignIds);
+        if (requestId !== ownApplicationsRequestRef.current) return null;
+        return applyOwnApplications(data, campaignIds);
+      } catch (error) {
+        if (requestId !== ownApplicationsRequestRef.current) return null;
+        return handleOwnApplicationsError(error);
+      }
+    },
+    [applyOwnApplications, handleOwnApplicationsError, requestOwnApplications],
   );
-  const handleCampaignsSuccess = useCallback((rows: any[]) => {
-    setCampaigns(rows);
-    setCampaignsStatus("success");
-  }, []);
-  const handleCampaignsError = useCallback((error: unknown) => {
-    setCampaignsErrorKey(
-      error instanceof ApiResponseError ? getApiErrorKey(error.status, error.code, "listing.loadFailed") : "api.network",
-    );
-    setCampaignsStatus("error");
-  }, [getApiErrorKey]);
 
-  const fetchCampaigns = useCallback(async () => {
-    try {
-      handleCampaignsSuccess(await requestCampaigns());
-    } catch (error) {
-      handleCampaignsError(error);
-    }
-  }, [handleCampaignsError, handleCampaignsSuccess, requestCampaigns]);
+  const loadOwnApplications = useCallback(
+    async (campaignIds?: string[]): Promise<Record<string, any> | null> => {
+      setOwnApplicationsStatus((current) => (current === "guest" ? current : "loading"));
+      return fetchOwnApplications(campaignIds);
+    },
+    [fetchOwnApplications],
+  );
+
+  const handleCampaignsError = useCallback(
+    (error: unknown) => {
+      setCampaignsErrorKey(
+        error instanceof ApiResponseError ? getApiErrorKey(error.status, error.code, "listing.loadFailed") : "api.network",
+      );
+      setCampaignsStatus("error");
+    },
+    [getApiErrorKey],
+  );
+
+  const fetchCampaignPage = useCallback(
+    async ({ append = false, cursor = null }: { append?: boolean; cursor?: string | null } = {}) => {
+      const requestId = ++campaignRequestRef.current;
+      if (append) setLoadingMoreCampaigns(true);
+      else setCampaignsStatus("loading");
+      try {
+        const page = await fetchJsonPage<any>(
+          campaignListUrl({ q: searchQ, lang, sort, cursor }),
+          "campaigns",
+          { cache: "no-store" },
+        );
+        if (requestId !== campaignRequestRef.current) return;
+        setCampaigns((current) => (append ? appendUniqueById(current, page.items) : page.items));
+        setCampaignPagination(page.pagination);
+        setCampaignsStatus("success");
+        if (page.items.length > 0) {
+          void loadOwnApplications(page.items.map((campaign) => campaign.id));
+        }
+      } catch (error) {
+        if (requestId === campaignRequestRef.current) handleCampaignsError(error);
+      } finally {
+        if (append && requestId === campaignRequestRef.current) setLoadingMoreCampaigns(false);
+      }
+    },
+    [handleCampaignsError, lang, loadOwnApplications, searchQ, sort],
+  );
 
   const loadCampaigns = useCallback(async () => {
-    setCampaignsStatus("loading");
-    await fetchCampaigns();
-  }, [fetchCampaigns]);
+    await fetchCampaignPage();
+  }, [fetchCampaignPage]);
+
+  const loadMoreCampaigns = useCallback(() => {
+    if (!campaignPagination?.nextCursor || loadingMoreCampaigns) return;
+    void fetchCampaignPage({ append: true, cursor: campaignPagination.nextCursor });
+  }, [campaignPagination, fetchCampaignPage, loadingMoreCampaigns]);
 
   const load = useCallback(() => {
     void loadCampaigns();
-    void loadOwnApplications();
-  }, [loadCampaigns, loadOwnApplications]);
+  }, [loadCampaigns]);
 
   useEffect(() => {
-    let alive = true;
-    requestCampaigns()
-      .then((rows) => {
-        if (alive) handleCampaignsSuccess(rows);
-      })
-      .catch((error: unknown) => {
-        if (alive) handleCampaignsError(error);
-      });
-    requestOwnApplications()
-      .then((data) => {
-        if (alive) applyOwnApplications(data);
-      })
-      .catch((error: unknown) => {
-        if (alive) handleOwnApplicationsError(error);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [
-    applyOwnApplications,
-    handleCampaignsError,
-    handleCampaignsSuccess,
-    handleOwnApplicationsError,
-    requestCampaigns,
-    requestOwnApplications,
-  ]);
+    const timeout = window.setTimeout(() => setSearchQ(q.trim()), 350);
+    return () => window.clearTimeout(timeout);
+  }, [q]);
 
-  const filtered = campaigns.filter((c) => {
-    if (lang && (c.language || "") !== lang) return false;
-    if (q && !(`${c.title} ${c.businessName} ${c.location} ${promo(c.promotionType)}`.toLowerCase().includes(q.toLowerCase()))) return false;
-    return true;
-  });
+  useEffect(() => {
+    void Promise.resolve().then(() => fetchCampaignPage());
+  }, [fetchCampaignPage]);
+
+  useEffect(() => {
+    void Promise.resolve().then(() => fetchOwnApplications());
+  }, [fetchOwnApplications]);
+
+  const hasActiveFilters = Boolean(searchQ || lang || sort !== "newest");
 
   const apply = async (campaignId: string) => {
     if (ownApplicationsStatus === "loading" || ownApplicationsStatus === "error") {
@@ -173,7 +207,7 @@ export default function CampaignsPage() {
       if (!res.ok) {
         const code = String(data?.code || "");
         if (code === "already_applied") {
-          const refreshed = await loadOwnApplications();
+          const refreshed = await loadOwnApplications([campaignId]);
           if (refreshed?.[campaignId] && refreshed[campaignId].status !== "withdrawn") {
             setApplyId(null);
             setPageNotice("duplicate");
@@ -200,7 +234,7 @@ export default function CampaignsPage() {
       if (data?.application?.campaignId) {
         setOwnApplications((current) => ({ ...current, [campaignId]: data.application }));
       } else {
-        await loadOwnApplications();
+        await loadOwnApplications([campaignId]);
       }
       setDone(true);
       setApplyId(null);
@@ -253,6 +287,16 @@ export default function CampaignsPage() {
           </select>
           <span aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[11px] text-[#78716c]">▼</span>
         </label>
+        <label className="relative block sm:w-48">
+          <span className="sr-only">{t("listing.sort")}</span>
+          <select value={sort} onChange={(e) => setSort(e.target.value)} className="w-full min-w-0 appearance-none truncate rounded-xl border border-[#f0e6cc] bg-[#fffbf1] py-3 pl-4 pr-9 text-[15px] font-semibold text-[#1c1917] outline-none focus:border-[#1c1917]">
+            <option value="newest">{t("listing.sortNewest")}</option>
+            <option value="oldest">{t("listing.sortOldest")}</option>
+            <option value="title">{t("listing.sortTitle")}</option>
+            <option value="business">{t("listing.sortBusiness")}</option>
+          </select>
+          <span aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[11px] text-[#78716c]">▼</span>
+        </label>
         <button onClick={load} className="rounded-xl bg-[#1c1917] px-5 py-3 text-[14px] font-bold text-white">{t("camp.refresh")}</button>
       </div>
 
@@ -266,7 +310,7 @@ export default function CampaignsPage() {
       )}
       {ownApplicationsStatus === "error" && (
         <div className="mt-4">
-          <ListingError errorKey="listing.ownApplicationsFailed" onRetry={() => void loadOwnApplications()} />
+          <ListingError errorKey="listing.ownApplicationsFailed" onRetry={() => void loadOwnApplications(campaigns.map((campaign) => campaign.id))} />
         </div>
       )}
 
@@ -279,18 +323,18 @@ export default function CampaignsPage() {
         <div className="mt-8">
           <ListingError errorKey={campaignsErrorKey} onRetry={() => void loadCampaigns()} />
         </div>
-      ) : filtered.length === 0 ? (
+      ) : campaigns.length === 0 ? (
         <div className="mt-8 rounded-[28px] border border-dashed border-[#e9ddc3] bg-white p-12 text-center">
           <p className="text-[40px]">📭</p>
           <h3 className="font-display mt-2 text-[24px] font-black">
-            {campaigns.length === 0 ? t("home.noCampaigns") : t("listing.noCampaignMatches")}
+            {hasActiveFilters ? t("listing.noCampaignMatches") : t("home.noCampaigns")}
           </h3>
           <p className="mt-1 text-[15px] text-[#78716c]">{t("camp.emptyBody")}</p>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
-            {campaigns.length > 0 && (
+            {hasActiveFilters && (
               <button
                 type="button"
-                onClick={() => { setQ(""); setLang(""); }}
+                onClick={() => { setQ(""); setSearchQ(""); setLang(""); setSort("newest"); }}
                 className="rounded-2xl border border-[#1c1917] px-6 py-3 text-[14.5px] font-bold"
               >
                 {t("listing.clearFilters")}
@@ -301,8 +345,9 @@ export default function CampaignsPage() {
           </div>
         </div>
       ) : (
+        <>
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((c) => {
+          {campaigns.map((c) => {
             const ownApplication = ownApplications[c.id];
             const hasActiveApplication = Boolean(ownApplication && ownApplication.status !== "withdrawn");
             const campaignIsOpen = c.status === "open" && c.verificationStatus === "verified";
@@ -345,7 +390,7 @@ export default function CampaignsPage() {
                       disabled={ownApplicationsStatus === "loading"}
                       onClick={() => {
                         if (ownApplicationsStatus === "error") {
-                          void loadOwnApplications();
+                          void loadOwnApplications([c.id]);
                           return;
                         }
                         setApplyError("");
@@ -429,6 +474,14 @@ export default function CampaignsPage() {
             );
           })}
         </div>
+        <ListingPagination
+          loaded={campaigns.length}
+          total={campaignPagination?.total ?? campaigns.length}
+          hasMore={Boolean(campaignPagination?.hasMore)}
+          loading={loadingMoreCampaigns}
+          onLoadMore={loadMoreCampaigns}
+        />
+        </>
       )}
     </div>
   );

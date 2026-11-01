@@ -49,3 +49,40 @@ export function ListingError({
     </div>
   );
 }
+
+type ListingPaginationProps = {
+  loaded: number;
+  total: number;
+  hasMore: boolean;
+  loading?: boolean;
+  onLoadMore: () => void;
+  className?: string;
+  textClassName?: string;
+  buttonClassName?: string;
+};
+
+export function ListingPagination({
+  loaded,
+  total,
+  hasMore,
+  loading = false,
+  onLoadMore,
+  className = "mt-5 flex flex-col items-center gap-2",
+  textClassName = "text-[13px] font-semibold text-[#78716c]",
+  buttonClassName = "rounded-2xl border border-[#1c1917] bg-white px-6 py-3 text-[14px] font-bold text-[#1c1917] hover:bg-[#fffbf1] disabled:cursor-not-allowed disabled:opacity-60",
+}: ListingPaginationProps) {
+  const { t, formatNumber } = useLang();
+  if (total <= 0 && !hasMore) return null;
+  return (
+    <div className={className}>
+      <p role="status" aria-live="polite" className={textClassName}>
+        {t("listing.showing").replace("{loaded}", formatNumber(loaded)).replace("{total}", formatNumber(total))}
+      </p>
+      {hasMore && (
+        <button type="button" disabled={loading} onClick={onLoadMore} className={buttonClassName}>
+          {loading ? t("listing.loadingMore") : t("listing.loadMore")}
+        </button>
+      )}
+    </div>
+  );
+}

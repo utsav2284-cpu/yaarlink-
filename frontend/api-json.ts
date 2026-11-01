@@ -50,3 +50,52 @@ export async function fetchJsonList<T>(url: string, key: string, init?: RequestI
   if (!Array.isArray(value)) throw new ApiResponseError(502, "load_failed");
   return value as T[];
 }
+
+export interface ListPagination {
+  limit: number;
+  total: number;
+  returned: number;
+  hasMore: boolean;
+  nextCursor: string | null;
+}
+
+export function isListPagination(value: unknown): value is ListPagination {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const pagination = value as Partial<ListPagination>;
+  return (
+    Number.isInteger(pagination.limit) &&
+    Number.isInteger(pagination.total) &&
+    Number.isInteger(pagination.returned) &&
+    typeof pagination.hasMore === "boolean" &&
+    (pagination.nextCursor === null || typeof pagination.nextCursor === "string")
+  );
+}
+
+export async function fetchJsonPage<T>(
+  url: string,
+  key: string,
+  init?: RequestInit,
+): Promise<{ items: T[]; pagination: ListPagination }> {
+  const data = await fetchJsonObject(url, init);
+  const value = data[key];
+  if (!Array.isArray(value) || !isListPagination(data.pagination)) {
+    throw new ApiResponseError(502, "load_failed");
+  }
+  return { items: value as T[], pagination: data.pagination };
+}
+
+export function appendUniqueById<T>(current: T[], next: T[]): T[] {
+  const seen = new Set(
+    current
+      .map((item) => (item && typeof item === "object" && "id" in item ? String((item as { id?: unknown }).id ?? "") : ""))
+      .filter(Boolean),
+  );
+  const merged = [...current];
+  for (const item of next) {
+    const id = item && typeof item === "object" && "id" in item ? String((item as { id?: unknown }).id ?? "") : "";
+    if (id && seen.has(id)) continue;
+    if (id) seen.add(id);
+    merged.push(item);
+  }
+  return merged;
+}
