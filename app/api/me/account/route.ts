@@ -29,6 +29,12 @@ import {
   sendEmailChangeVerificationEmail,
   sendExistingAccountEmailVerificationEmail,
 } from "@/backend/email";
+import {
+  PASSWORD_MAX_LENGTH,
+  PasswordBreachCheckUnavailableError,
+  passwordLength,
+  validateNewPassword,
+} from "@/backend/password-policy";
 import { getClientKey, hashKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -122,7 +128,7 @@ export async function PATCH(req: Request) {
       if (!newEmail || newEmail.length > 160 || !EMAIL_PATTERN.test(newEmail)) {
         return jsonError(400, "Please enter a valid email.", "invalid_email");
       }
-      if (!currentPassword || currentPassword.length > 256) {
+      if (!currentPassword || passwordLength(currentPassword) > PASSWORD_MAX_LENGTH) {
         return jsonError(400, "Current password is required.", "current_password_required");
       }
       if (newEmail === context.user.email) return jsonError(400, "Enter a different email address.", "email_unchanged");
@@ -172,7 +178,7 @@ export async function PATCH(req: Request) {
       const currentPassword = String(body?.currentPassword || "");
       const cleaned = cleanPhone(body?.phone);
       if (!cleaned.ok) return jsonError(400, "Please enter a valid phone number.", "invalid_phone");
-      if (!currentPassword || currentPassword.length > 256) {
+      if (!currentPassword || passwordLength(currentPassword) > PASSWORD_MAX_LENGTH) {
         return jsonError(400, "Current password is required.", "current_password_required");
       }
       const result = await changeUserPhone({ userId: context.user.id, currentPassword, phone: cleaned.phone });
@@ -184,13 +190,39 @@ export async function PATCH(req: Request) {
     if (action === "change_password") {
       const currentPassword = String(body?.currentPassword || "");
       const newPassword = String(body?.newPassword || "");
-      if (!currentPassword || currentPassword.length > 256) {
+      if (!currentPassword || passwordLength(currentPassword) > PASSWORD_MAX_LENGTH) {
         return jsonError(400, "Current password is required.", "current_password_required");
       }
-      if (newPassword.length < 10 || newPassword.length > 256) {
-        return jsonError(400, "Password must be between 10 and 256 characters.", "password_policy");
+
+      let passwordValidation;
+      try {
+        passwordValidation = await validateNewPassword(newPassword, {
+          email: context.user.email,
+          name: context.user.name,
+          phone: context.user.phone,
+        });
+      } catch (error) {
+        if (error instanceof PasswordBreachCheckUnavailableError) {
+          return jsonError(
+            503,
+            "Password security check is temporarily unavailable. Please try again later.",
+            "password_breach_check_unavailable",
+          );
+        }
+        throw error;
       }
-      if (sessionSecretProblem()) return jsonError(503, "Password change is temporarily unavailable.", "request_failed");
+      if (!passwordValidation.ok) {
+        return passwordValidation.problem === "breached"
+          ? jsonError(
+              400,
+              "That password has appeared in a known data breach. Choose a different one.",
+              "password_breached",
+            )
+          : jsonError(400, "Password must be between 10 and 256 characters.", "password_policy");
+      }
+      if (sessionSecretProblem()) {
+        return jsonError(503, "Password change is temporarily unavailable.", "service_unavailable");
+      }
 
       const result = await changeUserPasswordKeepingSession({
         userId: context.user.id,
@@ -200,6 +232,9 @@ export async function PATCH(req: Request) {
       });
       if (result.kind === "wrong_password") return jsonError(400, "Current password is incorrect.", "wrong_password");
       if (result.kind === "same_password") return jsonError(400, "Choose a different password.", "same_password");
+      if (result.kind === "invalid_password") {
+        return jsonError(400, "Choose a different password that meets the password policy.", "password_breached");
+      }
       if (result.kind !== "changed") return jsonError(401, "Please log in again", "unauthorized");
 
       await setExistingSessionCookie(context.user.id, result.tokenVersion, context.sessionId);
@@ -248,7 +283,7 @@ export async function DELETE(req: Request) {
     const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
     const currentPassword = String(body?.currentPassword || "");
     const confirmationEmail = cleanEmail(body?.confirmationEmail);
-    if (!currentPassword || currentPassword.length > 256) {
+    if (!currentPassword || passwordLength(currentPassword) > PASSWORD_MAX_LENGTH) {
       return jsonError(400, "Current password is required.", "current_password_required");
     }
 

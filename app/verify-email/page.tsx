@@ -28,7 +28,9 @@ export default function VerifyEmailPage() {
     }
   }, [token]);
 
-  const errorForStatus = (status: number) => {
+  const errorForStatus = (status: number, code?: string) => {
+    if (code === "password_breached") return t("auth.passwordBreached");
+    if (code === "password_breach_check_unavailable") return t("auth.passwordBreachCheckUnavailable");
     if (status === 400) return t("auth.verifyFailed");
     if (status === 429) return t("auth.tooManyRequests");
     if (status === 503) return t("auth.signupUnavailable");
@@ -45,9 +47,9 @@ export default function VerifyEmailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, password }),
       });
-      const data = (await res.json().catch(() => null)) as { user?: { id?: string } } | null;
+      const data = (await res.json().catch(() => null)) as { user?: { id?: string }; code?: string } | null;
       if (!res.ok || !data?.user?.id) {
-        setErr(errorForStatus(res.status));
+        setErr(errorForStatus(res.status, data?.code));
         return;
       }
 
@@ -94,6 +96,7 @@ export default function VerifyEmailPage() {
                 required
                 type="password"
                 minLength={10}
+                maxLength={256}
                 autoComplete="current-password"
                 placeholder={t("auth.password")}
                 className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]"

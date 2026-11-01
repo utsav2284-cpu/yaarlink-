@@ -1,4 +1,5 @@
 import { hashKey, rateLimit } from "@/backend/rate-limit";
+import { botChallengeSecretProblem, getBotChallengeSecret } from "@/backend/secret-config";
 
 export const BOT_CHALLENGE_PURPOSES = ["contact", "report"] as const;
 export type BotChallengePurpose = (typeof BOT_CHALLENGE_PURPOSES)[number];
@@ -28,16 +29,19 @@ export type BotChallenge = {
 };
 
 function challengeSecret(): string {
-  return (
-    process.env.BOT_CHALLENGE_SECRET?.trim() ||
-    process.env.SESSION_SECRET?.trim() ||
-    process.env.ADMIN_SESSION_SECRET?.trim() ||
-    ""
-  );
+  return getBotChallengeSecret();
 }
 
 export function botChallengeProblem(): string | null {
-  return challengeSecret() ? null : "BOT_CHALLENGE_SECRET or SESSION_SECRET is not configured";
+  const problem = botChallengeSecretProblem();
+  if (!problem) return null;
+  if (problem.name === "BOT_CHALLENGE_SECRET" && problem.reason === "shared") {
+    return "BOT_CHALLENGE_SECRET must differ from the session secrets";
+  }
+  if (problem.name === "BOT_CHALLENGE_SECRET" && problem.reason === "weak") {
+    return "BOT_CHALLENGE_SECRET is too weak";
+  }
+  return "BOT_CHALLENGE_SECRET or a strong SESSION_SECRET is not configured";
 }
 
 function base64UrlEncode(bytes: Uint8Array): string {

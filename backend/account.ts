@@ -1,6 +1,7 @@
 import { and, desc, eq, gt, inArray, isNull, ne } from "drizzle-orm";
-import { hashPassword, verifyPassword } from "@/backend/auth";
+import { hashPassword, verifyLoginPassword, verifyPassword } from "@/backend/auth";
 import { db } from "@/backend/db";
+import { localPasswordPolicyProblem } from "@/backend/password-policy";
 import {
   accountTokens,
   applications,
@@ -96,14 +97,14 @@ export async function getPendingEmailChange(userId: string) {
 
 export async function verifyUserPassword(userId: string, password: string) {
   const [user] = await db.select({ passwordHash: users.passwordHash }).from(users).where(eq(users.id, userId)).limit(1);
-  if (!user) return false;
-  return (await verifyPassword(password, user.passwordHash)).ok;
+  return (await verifyLoginPassword(password, user?.passwordHash)).ok;
 }
 
 export type PasswordChangeResult =
   | { kind: "changed"; tokenVersion: number; user: { id: string; name: string; email: string; role: string } }
   | { kind: "wrong_password" }
   | { kind: "same_password" }
+  | { kind: "invalid_password" }
   | { kind: "invalid_session" };
 
 export async function changeUserPasswordKeepingSession({
@@ -132,6 +133,12 @@ export async function changeUserPasswordKeepingSession({
       return { kind: "invalid_session" } as const;
     }
 
+    // Defense in depth: the API route performs the full breach-corpus check,
+    // while this transaction still refuses a locally invalid new password if
+    // it is ever called from another server-side path.
+    if (localPasswordPolicyProblem(newPassword, { email: user.email, name: user.name, phone: user.phone })) {
+      return { kind: "invalid_password" } as const;
+    }
     if (!(await verifyPassword(currentPassword, user.passwordHash)).ok) return { kind: "wrong_password" } as const;
     if ((await verifyPassword(newPassword, user.passwordHash)).ok) return { kind: "same_password" } as const;
 

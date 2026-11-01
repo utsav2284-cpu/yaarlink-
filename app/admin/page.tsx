@@ -255,6 +255,7 @@ export default function AdminPage() {
           <p className="mt-1 text-[14px] text-[#78716c]">{t("admin.loginSub")}</p>
           <input
             type="password"
+            maxLength={256}
             value={key}
             onChange={(e) => setKey(e.target.value)}
             placeholder={t("admin.passwordPlaceholder")}

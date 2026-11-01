@@ -40,7 +40,7 @@ type LegalCommon = {
 const COMMON: Record<Lang, LegalCommon> = {
   en: {
     eyebrow: "Legal & privacy",
-    updated: "Last updated: 31 October 2026",
+    updated: "Last updated: 1 November 2026",
     contents: "On this page",
     contactTitle: "Questions or a privacy request?",
     contactBody: "Contact YaarLink support. For an account request, use the email address on your account where possible so we can verify that the request is yours. Never send your password, a one-time link, or payment credentials.",
@@ -51,7 +51,7 @@ const COMMON: Record<Lang, LegalCommon> = {
   },
   hi: {
     eyebrow: "कानूनी और प्राइवेसी",
-    updated: "आख़िरी अपडेट: 31 अक्टूबर 2026",
+    updated: "आख़िरी अपडेट: 1 नवंबर 2026",
     contents: "इस पेज पर",
     contactTitle: "प्रश्न या प्राइवेसी अनुरोध?",
     contactBody: "YaarLink सपोर्ट से संपर्क करें। अकाउंट अनुरोध के लिए, जहाँ संभव हो अपने अकाउंट वाले ईमेल से लिखें ताकि हम सत्यापित कर सकें कि अनुरोध आपका है। अपना पासवर्ड, एक-बार का लिंक या पेमेंट जानकारी कभी न भेजें।",
@@ -62,7 +62,7 @@ const COMMON: Record<Lang, LegalCommon> = {
   },
   pa: {
     eyebrow: "ਕਾਨੂੰਨੀ ਅਤੇ ਪਰਾਈਵੇਸੀ",
-    updated: "ਆਖਰੀ ਅਪਡੇਟ: 31 ਅਕਤੂਬਰ 2026",
+    updated: "ਆਖਰੀ ਅਪਡੇਟ: 1 ਨਵੰਬਰ 2026",
     contents: "ਇਸ ਪੇਜ 'ਤੇ",
     contactTitle: "ਸਵਾਲ ਜਾਂ ਪਰਾਈਵੇਸੀ ਬੇਨਤੀ?",
     contactBody: "YaarLink ਸਪੋਰਟ ਨਾਲ ਸੰਪਰਕ ਕਰੋ। ਅਕਾਊਂਟ ਬੇਨਤੀ ਲਈ, ਜਿੱਥੇ ਸੰਭਵ ਹੋਵੇ ਆਪਣੇ ਅਕਾਊਂਟ ਵਾਲੀ ਈਮੇਲ ਤੋਂ ਲਿਖੋ ਤਾਂ ਜੋ ਅਸੀਂ ਪੁਸ਼ਟੀ ਕਰ ਸਕੀਏ ਕਿ ਬੇਨਤੀ ਤੁਹਾਡੀ ਹੈ। ਆਪਣਾ ਪਾਸਵਰਡ, ਇੱਕ-ਵਾਰੀ ਲਿੰਕ ਜਾਂ ਪੇਮੈਂਟ ਜਾਣਕਾਰੀ ਕਦੇ ਨਾ ਭੇਜੋ।",
@@ -135,6 +135,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
             "Brands are instructed to use an applicant's contact only for that campaign application and related work, not for unrelated marketing, sale, sharing or spam.",
             "Withdrawing an application stops its active use on YaarLink, but it cannot recall screenshots, notes or messages that a recipient already copied outside YaarLink.",
             "We use service providers for hosting, database storage, transactional email and security. They process information only as needed to provide those services.",
+            "When you create or change a password, our server checks whether it appears in known breach data using Have I Been Pwned's k-anonymity range service. Only the first five characters of a SHA-1 hash of the password are sent; your password and its full hash are not sent.",
             "We may disclose information when required by law, to protect people or the service, to investigate fraud or abuse, or as part of a business transfer subject to appropriate safeguards.",
             "We do not sell or rent personal information.",
           ],
@@ -499,6 +500,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
             "ब्रांड को आवेदक का संपर्क सिर्फ़ उस कैंपेन आवेदन और संबंधित काम के लिए उपयोग करना है—असंबंधित मार्केटिंग, बिक्री, शेयरिंग या स्पैम के लिए नहीं।",
             "आवेदन वापस लेने से YaarLink पर उसका सक्रिय उपयोग रुकता है, लेकिन प्राप्तकर्ता द्वारा पहले कॉपी किए स्क्रीनशॉट, नोट या संदेश वापस नहीं लिए जा सकते।",
             "हम होस्टिंग, डेटाबेस, लेन-देन ईमेल और सुरक्षा के लिए सेवा प्रदाताओं का उपयोग करते हैं। वे जानकारी सिर्फ़ उन सेवाओं के लिए आवश्यक सीमा तक प्रोसेस करते हैं।",
+            "जब आप पासवर्ड बनाते या बदलते हैं, तो हमारा सर्वर Have I Been Pwned की k-anonymity रेंज सेवा से जाँच करता है कि वह ज्ञात ब्रीच डेटा में है या नहीं। पासवर्ड के SHA-1 हैश के केवल पहले पाँच अक्षर भेजे जाते हैं; आपका पासवर्ड या उसका पूरा हैश नहीं भेजा जाता।",
             "कानून की आवश्यकता, लोगों या सेवा की सुरक्षा, धोखाधड़ी/दुरुपयोग की जाँच, या उचित सुरक्षा के साथ बिज़नेस ट्रांसफर में जानकारी खोली जा सकती है।",
             "हम व्यक्तिगत जानकारी बेचते या किराए पर नहीं देते।",
           ],
@@ -863,6 +865,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
             "ਬ੍ਰਾਂਡ ਨੂੰ ਬਿਨੈਕਾਰ ਦਾ ਸੰਪਰਕ ਸਿਰਫ਼ ਉਸ ਕੈਂਪੇਨ ਅਰਜ਼ੀ ਅਤੇ ਸੰਬੰਧਿਤ ਕੰਮ ਲਈ ਵਰਤਣਾ ਹੈ—ਅਸੰਬੰਧਿਤ ਮਾਰਕੀਟਿੰਗ, ਵੇਚਣ, ਸਾਂਝ ਜਾਂ ਸਪੈਮ ਲਈ ਨਹੀਂ।",
             "ਅਰਜ਼ੀ ਵਾਪਸ ਲੈਣ ਨਾਲ YaarLink 'ਤੇ ਉਸ ਦੀ ਸਰਗਰਮ ਵਰਤੋਂ ਰੁਕਦੀ ਹੈ, ਪਰ ਪ੍ਰਾਪਤਕਰਤਾ ਵੱਲੋਂ ਪਹਿਲਾਂ ਕਾਪੀ ਕੀਤੇ ਸਕ੍ਰੀਨਸ਼ਾਟ, ਨੋਟ ਜਾਂ ਸੁਨੇਹੇ ਵਾਪਸ ਨਹੀਂ ਲਏ ਜਾ ਸਕਦੇ।",
             "ਅਸੀਂ ਹੋਸਟਿੰਗ, ਡੇਟਾਬੇਸ, ਲੈਣ-ਦੇਣ ਈਮੇਲ ਅਤੇ ਸੁਰੱਖਿਆ ਲਈ ਸੇਵਾ ਪ੍ਰਦਾਤਿਆਂ ਨੂੰ ਵਰਤਦੇ ਹਾਂ। ਉਹ ਜਾਣਕਾਰੀ ਸਿਰਫ਼ ਉਹਨਾਂ ਸੇਵਾਵਾਂ ਲਈ ਲੋੜੀਂਦੀ ਸੀਮਾ ਤੱਕ ਪ੍ਰੋਸੈਸ ਕਰਦੇ ਹਨ।",
+            "ਜਦੋਂ ਤੁਸੀਂ ਪਾਸਵਰਡ ਬਣਾਉਂਦੇ ਜਾਂ ਬਦਲਦੇ ਹੋ, ਤਾਂ ਸਾਡਾ ਸਰਵਰ Have I Been Pwned ਦੀ k-anonymity ਰੇਂਜ ਸੇਵਾ ਨਾਲ ਜਾਂਚ ਕਰਦਾ ਹੈ ਕਿ ਇਹ ਜਾਣੇ-ਪਛਾਣੇ ਬ੍ਰੀਚ ਡੇਟਾ ਵਿੱਚ ਹੈ ਜਾਂ ਨਹੀਂ। ਪਾਸਵਰਡ ਦੇ SHA-1 ਹੈਸ਼ ਦੇ ਸਿਰਫ਼ ਪਹਿਲੇ ਪੰਜ ਅੱਖਰ ਭੇਜੇ ਜਾਂਦੇ ਹਨ; ਤੁਹਾਡਾ ਪਾਸਵਰਡ ਜਾਂ ਇਸ ਦਾ ਪੂਰਾ ਹੈਸ਼ ਨਹੀਂ ਭੇਜਿਆ ਜਾਂਦਾ।",
             "ਕਾਨੂੰਨ ਦੀ ਲੋੜ, ਲੋਕਾਂ ਜਾਂ ਸੇਵਾ ਦੀ ਸੁਰੱਖਿਆ, ਧੋਖਾਧੜੀ/ਦੁਰਵਰਤੋਂ ਦੀ ਜਾਂਚ, ਜਾਂ ਉਚਿਤ ਸੁਰੱਖਿਆ ਨਾਲ ਕਾਰੋਬਾਰੀ ਟ੍ਰਾਂਸਫਰ ਵਿੱਚ ਜਾਣਕਾਰੀ ਖੋਲ੍ਹੀ ਜਾ ਸਕਦੀ ਹੈ।",
             "ਅਸੀਂ ਨਿੱਜੀ ਜਾਣਕਾਰੀ ਵੇਚਦੇ ਜਾਂ ਕਿਰਾਏ 'ਤੇ ਨਹੀਂ ਦਿੰਦੇ।",
           ],

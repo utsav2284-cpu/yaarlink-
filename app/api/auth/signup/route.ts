@@ -6,6 +6,7 @@ import {
   isPendingSignupUniqueViolation,
   markPendingSignupEmailSent,
 } from "@/backend/email-verification";
+import { PasswordBreachCheckUnavailableError, validateNewPassword } from "@/backend/password-policy";
 import { getClientKey, hashKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -48,9 +49,33 @@ export async function POST(req: Request) {
     if (email.length > 160 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return Response.json({ error: "Please enter a valid email.", code: "invalid_email" }, { status: 400, headers: NO_STORE });
     }
-    if (password.length < 10 || password.length > 256) {
+    let passwordValidation;
+    try {
+      passwordValidation = await validateNewPassword(password, {
+        email,
+        name,
+        phone: body.phone ? String(body.phone) : null,
+      });
+    } catch (error) {
+      if (error instanceof PasswordBreachCheckUnavailableError) {
+        return Response.json(
+          {
+            error: "Password security check is temporarily unavailable. Please try again later.",
+            code: "password_breach_check_unavailable",
+          },
+          { status: 503, headers: NO_STORE },
+        );
+      }
+      throw error;
+    }
+    if (!passwordValidation.ok) {
       return Response.json(
-        { error: "Password must be between 10 and 256 characters.", code: "password_policy" },
+        passwordValidation.problem === "breached"
+          ? {
+              error: "That password has appeared in a known data breach. Choose a different one.",
+              code: "password_breached",
+            }
+          : { error: "Password must be between 10 and 256 characters.", code: "password_policy" },
         { status: 400, headers: NO_STORE },
       );
     }

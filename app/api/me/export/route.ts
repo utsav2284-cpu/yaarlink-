@@ -1,5 +1,6 @@
 import { buildAccountExport, verifyUserPassword } from "@/backend/account";
 import { getSessionContext } from "@/backend/auth";
+import { PASSWORD_MAX_LENGTH, passwordLength } from "@/backend/password-policy";
 import { hashKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +21,7 @@ export async function POST(req: Request) {
 
     const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
     const currentPassword = String(body?.currentPassword || "");
-    if (!currentPassword || currentPassword.length > 256) {
+    if (!currentPassword || passwordLength(currentPassword) > PASSWORD_MAX_LENGTH) {
       return jsonError(400, "Current password is required.", "current_password_required");
     }
     if (!(await verifyUserPassword(context.user.id, currentPassword))) {

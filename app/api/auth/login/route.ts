@@ -1,38 +1,97 @@
+import { eq } from "drizzle-orm";
+import { hashPassword, sessionSecretProblem, setSessionCookie, verifyLoginPassword } from "@/backend/auth";
 import { db } from "@/backend/db";
 import { users } from "@/backend/db/schema";
-import { hashPassword, setSessionCookie, verifyPassword } from "@/backend/auth";
-import { eq } from "drizzle-orm";
-import { getClientKey, hashKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
+import {
+  authLockoutSeconds,
+  clearAuthFailures,
+  getClientKey,
+  hashKey,
+  limitedResponse,
+  rateLimit,
+  registerAuthFailure,
+} from "@/backend/rate-limit";
 
 export const dynamic = "force-dynamic";
 
+const NO_STORE = { "Cache-Control": "no-store" } as const;
+
+function wrongCredentialsResponse() {
+  return Response.json(
+    { error: "Wrong email or password.", code: "wrong_credentials" },
+    { status: 401, headers: NO_STORE },
+  );
+}
+
+function serviceUnavailableResponse() {
+  return Response.json(
+    { error: "Login is temporarily unavailable.", code: "service_unavailable" },
+    { status: 503, headers: NO_STORE },
+  );
+}
+
 export async function POST(req: Request) {
-  const rl = await rateLimit(getClientKey(req, "login"), 10, 5 * 60_000);
-  if (!rl.ok) return limitedResponse(rl.retryAfter);
   try {
-    const b = await req.json();
-    const email = String(b.email || "").toLowerCase().trim();
-    const password = String(b.password || "");
-    const accountRl = await rateLimit(`login-account:${await hashKey(email)}`, 12, 15 * 60_000);
-    if (!accountRl.ok) return limitedResponse(accountRl.retryAfter);
-    if (!email || !password) return Response.json({ error: "Email and password required", code: "invalid_request" }, { status: 400 });
+    const clientKey = getClientKey(req, "login");
+    const rl = await rateLimit(clientKey, 10, 5 * 60_000);
+    if (!rl.ok) return limitedResponse(rl.retryAfter);
 
-    const rows = await db.select().from(users).where(eq(users.email, email)).limit(1);
-    // Same message for unknown email and wrong password, so emails can't be probed.
-    const fail = () => Response.json({ error: "Wrong email or password.", code: "wrong_credentials" }, { status: 400 });
-    if (!rows.length) return fail();
-
-    const u = rows[0];
-    const { ok, needsRehash } = await verifyPassword(password, u.passwordHash);
-    if (!ok) return fail();
-    if (needsRehash) {
-      await db.update(users).set({ passwordHash: await hashPassword(password) }).where(eq(users.id, u.id));
+    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!body || Array.isArray(body)) {
+      return Response.json(
+        { error: "Email and password required", code: "invalid_request" },
+        { status: 400, headers: NO_STORE },
+      );
     }
 
-    await setSessionCookie(u.id, u.tokenVersion, req);
-    return Response.json({ user: { id: u.id, name: u.name, email: u.email, role: u.role } }, { headers: { "Cache-Control": "no-store" } });
-  } catch (e) {
-    console.error(e);
-    return Response.json({ error: "Could not log in", code: "request_failed" }, { status: 500 });
+    const email = typeof body.email === "string" ? body.email.toLowerCase().trim() : "";
+    const password = typeof body.password === "string" ? body.password : "";
+    if (!email || !password) {
+      return Response.json(
+        { error: "Email and password required", code: "invalid_request" },
+        { status: 400, headers: NO_STORE },
+      );
+    }
+
+    // Startup validation should prevent this, but keep the request path
+    // fail-closed if a platform does not run instrumentation. Do this before
+    // account lookup/session signing so bad configuration is a clear 503,
+    // not a generic failure discovered only when a token is signed.
+    if (sessionSecretProblem()) return serviceUnavailableResponse();
+
+    // Failure lockouts are keyed by the submitted, normalized email whether
+    // or not an account exists for it. The IP key is tracked separately.
+    const accountKey = `login-account:${await hashKey(email)}`;
+    const lockedFor = Math.max(await authLockoutSeconds(clientKey), await authLockoutSeconds(accountKey));
+    if (lockedFor > 0) return limitedResponse(lockedFor);
+
+    const rows = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    const user = rows[0];
+
+    // Unknown emails run the same PBKDF2-shaped dummy verification as a real
+    // wrong-password attempt, so account existence is not exposed by skipping
+    // password work.
+    const verification = await verifyLoginPassword(password, user?.passwordHash);
+    if (!user || !verification.ok) {
+      await registerAuthFailure(accountKey);
+      await registerAuthFailure(clientKey);
+      return wrongCredentialsResponse();
+    }
+
+    await clearAuthFailures(accountKey);
+    await clearAuthFailures(clientKey);
+
+    if (verification.needsRehash) {
+      await db.update(users).set({ passwordHash: await hashPassword(password) }).where(eq(users.id, user.id));
+    }
+
+    await setSessionCookie(user.id, user.tokenVersion, req);
+    return Response.json(
+      { user: { id: user.id, name: user.name, email: user.email, role: user.role } },
+      { headers: NO_STORE },
+    );
+  } catch (error) {
+    console.error(error);
+    return serviceUnavailableResponse();
   }
 }

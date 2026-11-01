@@ -25,24 +25,34 @@ Verify the `EMAIL_FROM` sending domain in Resend before deployment. Signup verif
 closed with HTTP 503 when either email setting is missing; it never falls back to creating an
 unverified account. `APP_URL` may optionally pin the public origin used in verification links.
 
-Generate the two signing secrets with:
+Generate each signing secret independently with:
 
 ```bash
 openssl rand -hex 32
 ```
 
-Use different values for `SESSION_SECRET` and `ADMIN_SESSION_SECRET`. `ADMIN_SESSION_SECRET` is
-mandatory: if it is missing or equal to `SESSION_SECRET`, `/api/admin/login` and `/api/admin/logout`
-return HTTP 503 instead of sharing a signing key.
+Use different values for `SESSION_SECRET` and `ADMIN_SESSION_SECRET`, and use a unique
+`ADMIN_PASSWORD` of at least 16 characters stored in a password manager. At server startup the
+app validates these values and refuses to start when a required value is missing, weak, copied
+from `.env.example`, or shared with another signing secret. Request-level fail-closed checks are
+also present: for example, a missing/weak/shared admin signing secret makes `/api/admin/login`
+and `/api/admin/logout` return HTTP 503 instead of sharing a signing key. Human passphrases are
+not accepted as signing secrets—use generated key material such as the OpenSSL output above.
 
 Optional admin MFA: set `ADMIN_TOTP_SECRET` to a valid Base32 TOTP secret (at least 16 Base32
 characters) after enrolling that secret in the owner's authenticator app. When set, `/admin`
 requires the current six-digit code in addition to `ADMIN_PASSWORD`. If the value is invalid or
-too short, admin login returns HTTP 503; it does not fall back to password-only access.
+too short, startup/admin login fail closed; it does not fall back to password-only access.
 
-Optional public-form challenge secret: set `BOT_CHALLENGE_SECRET` to a long random value
-different from the session secrets. If unset, `SESSION_SECRET` signs those short-lived,
-one-time challenges.
+Optional public-form challenge secret: generate `BOT_CHALLENGE_SECRET` separately and make it
+different from both session secrets. If unset, a validated `SESSION_SECRET` signs those
+short-lived, one-time challenges.
+
+When a user creates or changes a password, the server checks it against known breached
+passwords through Have I Been Pwned's k-anonymity range API. Only the first five characters of
+the password's SHA-1 hash leave the server. If that check is unavailable, the password-setting
+request returns HTTP 503 instead of accepting an unchecked password. `PWNED_PASSWORDS_RANGE_URL`
+may point to a compatible HTTPS mirror; leave it unset for the public endpoint.
 
 Client-IP proxy trust: Cloudflare Workers, Vercel (`VERCEL=1`), and Netlify are detected
 automatically. For any other host, do not set `TRUST_CLOUDFLARE_HEADERS=true` or
@@ -57,8 +67,15 @@ headers, and the origin cannot be reached directly. With `TRUST_PROXY_HEADERS`, 
 - Campaign applications require an authenticated **creator** account.
 - Dashboard ownership is based only on the authenticated user ID, never an email match.
 - Admin access uses an HttpOnly signed session cookie; the admin password is never stored in browser storage.
-- Login/signup/admin/public-write endpoints have request throttling. `admin-login` also has a hard
-  client lockout with exponential backoff after repeated failures (per Worker isolate).
+- Login/signup/admin/public-write endpoints have request throttling. User and admin login also
+  have database-backed failed-attempt lockouts with exponential backoff. A user-login lockout is
+  keyed by the submitted normalized email whether or not an account exists, plus the client key.
+- Wrong user credentials return HTTP 401 with the same body for an unknown email and a wrong
+  password; unknown emails still run a dummy PBKDF2 verification so password work is not skipped.
+- New passwords must be 10–256 Unicode characters and pass local predictable-password rules plus
+  the breached-password check. An authenticated password change keeps only the current device
+  session (reissued at the new token version), revokes other sessions, and invalidates account
+  action tokens.
 - Signup returns one generic verification-required response for new, pending, and already
   registered addresses and sets no session cookie. User/profile rows are created only after the
   emailed one-time link and the signup password are verified.
