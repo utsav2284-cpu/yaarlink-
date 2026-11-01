@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import type { ReactNode } from "react";
 import "./globals.css";
 import Navbar from "@/frontend/components/Navbar";
@@ -27,7 +28,12 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  // The enforcing CSP uses a fresh nonce for every document request. Waiting
+  // for the request makes every page render dynamically so Next can apply
+  // that nonce to its inline bootstrap/RSC scripts.
+  await connection();
+
   return (
     <html lang="en">
       <head>
