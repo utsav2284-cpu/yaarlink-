@@ -1,4 +1,5 @@
 import { sql, type SQL, type SQLWrapper } from "drizzle-orm";
+import { parseUuid } from "@/backend/validation";
 
 export const MAX_LIST_LIMIT = 100;
 export const MAX_SEARCH_LENGTH = 100;
@@ -156,8 +157,8 @@ export function parseUuidParam(
 ): string | null {
   const raw = paramValue(params, options.prefix ?? "", name, options.aliases);
   if (raw == null || raw.trim() === "") return null;
-  const value = raw.trim();
-  if (!isUuidValue(value)) throw new ListingQueryError("invalid_filter", "Please choose a valid filter.");
+  const value = parseUuid(raw);
+  if (!value) throw new ListingQueryError("invalid_filter", "Please choose a valid filter.");
   return value;
 }
 

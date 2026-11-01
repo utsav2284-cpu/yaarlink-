@@ -236,9 +236,19 @@ function notificationSortKeys(sort: string): Array<SortKey<NotificationSortRow>>
   }
 }
 
-function canonicalCampaign<T extends { promotionType: string; category: string | null; language: string; format: string }>(row: T) {
+function canonicalCampaign<
+  T extends {
+    promotionType: string;
+    category: string | null;
+    language: string;
+    format: string;
+    submissionId?: string | null;
+    submissionFingerprint?: string | null;
+  },
+>(row: T) {
+  const { submissionId: _submissionId, submissionFingerprint: _submissionFingerprint, ...publicRow } = row;
   return {
-    ...row,
+    ...publicRow,
     promotionType: normalizePromotionType(row.promotionType) ?? row.promotionType,
     category: normalizeCategory(row.category) ?? row.category,
     language: normalizeLanguage(row.language) ?? row.language,

@@ -7,7 +7,14 @@ import { db } from "@/backend/db";
 import { applications, campaigns, creators, users } from "@/backend/db/schema";
 import { adminSessionUnavailableResponse, isAdmin, isAdminSessionUnavailableError, logAdminSessionUnavailable } from "@/backend/admin";
 import { getSessionUser, isSessionUnavailableError, logSessionUnavailable, sessionUnavailableResponse } from "@/backend/auth";
-import { isUuid } from "@/backend/moderation";
+import { findDisallowedContent, hasSuspiciousUrl } from "@/backend/content-moderation";
+import {
+  hasField,
+  parseOptionalText,
+  parseUuid,
+  readJsonObject,
+  type ValidationResult,
+} from "@/backend/validation";
 import { createApplicationNotification, sendApplicationNotificationEmailBestEffort } from "@/backend/notifications";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { getClientKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
@@ -32,20 +39,58 @@ export const dynamic = "force-dynamic";
 
 const NO_STORE = { "Cache-Control": "private, no-store" };
 
-function bodyRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+function validationErrorResponse(result: { error: string; code: string; field?: string }, status = 400) {
+  return Response.json(
+    { error: result.error, code: result.code, ...(result.field ? { field: result.field } : {}) },
+    { status, headers: NO_STORE },
+  );
 }
 
-function hasField(body: Record<string, unknown>, field: string) {
-  return Object.prototype.hasOwnProperty.call(body, field);
+function parseApplicationText(
+  value: unknown,
+  options: {
+    field: "message" | "decisionNote";
+    invalidCode: string;
+    invalidMessage: string;
+    allowUrls: boolean;
+    allowContactDetails: boolean;
+  },
+): ValidationResult<string | null> {
+  const parsed = parseOptionalText(value, {
+    field: options.field,
+    maxLength: 1000,
+    multiline: true,
+    invalidCode: options.invalidCode,
+    invalidMessage: options.invalidMessage,
+  });
+  if (!parsed.ok) return parsed;
+  if (
+    parsed.value &&
+    findDisallowedContent(parsed.value, {
+      allowUrls: options.allowUrls,
+      allowContactDetails: options.allowContactDetails,
+    })
+  ) {
+    return {
+      ok: false,
+      error: "Please remove links, contact details, or prohibited content and try again.",
+      code: "content_not_allowed",
+      field: options.field,
+    };
+  }
+  return parsed;
 }
 
-function cleanText(value: unknown, maxLength: number): string | null | undefined {
-  if (value === undefined) return undefined;
-  if (value === null) return null;
-  if (typeof value !== "string") return undefined;
-  const cleaned = value.trim();
-  return cleaned ? cleaned.slice(0, maxLength) : null;
+function cleanCreatorName(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function contentNotAllowedResponse(field: string) {
+  return validationErrorResponse({
+    error: "Please remove links, contact details, or prohibited content and try again.",
+    code: "content_not_allowed",
+    field,
+  });
 }
 
 function isOpenCampaign(campaign: { status: string; verificationStatus: string }) {
@@ -199,9 +244,23 @@ export async function POST(req: Request) {
   const rl = await rateLimit(getClientKey(req, "application-create"), 20, 60 * 60_000);
   if (!rl.ok) return limitedResponse(rl.retryAfter);
   try {
-    const body = bodyRecord(await req.json().catch(() => null));
-    if (!body || !isUuid(body.campaignId)) return Response.json({ error: "Invalid campaign", code: "invalid_target" }, { status: 400, headers: NO_STORE });
-    const campaignId = body.campaignId;
+    const parsedBody = await readJsonObject(req, { headers: NO_STORE });
+    if (!parsedBody.ok) return parsedBody.response;
+    const body = parsedBody.body;
+    const campaignId = parseUuid(body.campaignId);
+    if (!campaignId) return Response.json({ error: "Invalid campaign", code: "invalid_target" }, { status: 400, headers: NO_STORE });
+
+    const parsedMessage = hasField(body, "message")
+      ? parseApplicationText(body.message, {
+          field: "message",
+          invalidCode: "invalid_application_message",
+          invalidMessage: "Please enter a valid application message.",
+          allowUrls: false,
+          allowContactDetails: false,
+        })
+      : ({ ok: true, value: null } as ValidationResult<string | null>);
+    if (!parsedMessage.ok) return validationErrorResponse(parsedMessage);
+    const message = parsedMessage.value;
 
     const camp = await db
       .select({ id: campaigns.id, status: campaigns.status, verificationStatus: campaigns.verificationStatus })
@@ -210,7 +269,7 @@ export async function POST(req: Request) {
       .limit(1);
     if (!camp.length) return Response.json({ error: "Campaign not found", code: "campaign_not_found" }, { status: 404, headers: NO_STORE });
     if (!isOpenCampaign(camp[0])) {
-      return Response.json({ error: "This campaign is no longer accepting applications.", code: "campaign_closed" }, { status: 400, headers: NO_STORE });
+      return Response.json({ error: "This campaign is no longer accepting applications.", code: "campaign_closed" }, { status: 409, headers: NO_STORE });
     }
 
     const user = await getSessionUser();
@@ -223,24 +282,35 @@ export async function POST(req: Request) {
       .where(eq(creators.userId, user.id))
       .limit(1);
     if (!isCompletedCreatorProfile(initialCreatorProfile)) {
-      return Response.json({ error: "Please complete your creator profile before applying.", code: "creator_profile_incomplete" }, { status: 400, headers: NO_STORE });
+      return Response.json({ error: "Please complete your creator profile before applying.", code: "creator_profile_incomplete" }, { status: 409, headers: NO_STORE });
     }
 
     // The brand-facing applicant name is always the completed creator
     // profile's name. Request-body names are deliberately ignored so an
     // applicant cannot apply under someone else's name/page name.
-    let creatorName = initialCreatorProfile.name.trim();
+    let creatorName = cleanCreatorName(initialCreatorProfile.name);
+    if (!creatorName || findDisallowedContent(creatorName)) return contentNotAllowedResponse("creatorName");
 
     // The creator chooses which already-saved account/profile contact to
     // share and explicitly confirms that choice. Formatting variations are
     // normalized to the saved canonical contact; arbitrary contacts are not
     // accepted, and account details are never substituted silently.
-    const contactInput = typeof body.creatorContact === "string" ? body.creatorContact.trim() : "";
+    if (hasField(body, "creatorContact") && body.creatorContact != null && typeof body.creatorContact !== "string") {
+      return validationErrorResponse({
+        error: "Please enter a valid contact for the brand.",
+        code: "invalid_application_contact",
+        field: "creatorContact",
+      });
+    }
+    const contactInput = typeof body.creatorContact === "string" ? body.creatorContact.trim().replace(/\s+/g, " ") : "";
     if (contactInput.length < 3) {
       return Response.json(
         { error: "Please enter the contact you want this brand to use.", code: "contact_required" },
         { status: 400, headers: NO_STORE },
       );
+    }
+    if (contactInput.length > 240 || findDisallowedContent(contactInput, { allowUrls: true, allowContactDetails: true })) {
+      return contentNotAllowedResponse("creatorContact");
     }
     if (body.contactSharingConsent !== true) {
       return Response.json(
@@ -255,12 +325,13 @@ export async function POST(req: Request) {
         { status: 400, headers: NO_STORE },
       );
     }
+    if (hasSuspiciousUrl(initialContact.value)) return contentNotAllowedResponse("creatorContact");
     let contact = initialContact.value;
-    const message = cleanText(body.message, 1000) ?? null;
 
     type PostOutcome =
       | { kind: "created" | "reactivated"; application: typeof applications.$inferSelect; email: EmailNotice }
-      | { kind: "duplicate" | "closed" | "profile_incomplete" | "contact_not_owned" | "campaign_missing" };
+      | { kind: "replay"; application: typeof applications.$inferSelect }
+      | { kind: "duplicate" | "closed" | "profile_incomplete" | "contact_not_owned" | "campaign_missing" | "content_not_allowed" };
 
     const outcome: PostOutcome = await db.transaction(async (tx) => {
       // Locking the campaign makes pause/close and apply/reactivate decisions
@@ -279,7 +350,10 @@ export async function POST(req: Request) {
 
       const lockedContact = resolveApplicationContact(contactInput, user, creatorProfile);
       if (!lockedContact) return { kind: "contact_not_owned" } as const;
-      creatorName = creatorProfile.name.trim();
+      creatorName = cleanCreatorName(creatorProfile.name);
+      if (!creatorName || findDisallowedContent(creatorName) || hasSuspiciousUrl(lockedContact.value)) {
+        return { kind: "content_not_allowed" } as const;
+      }
       contact = lockedContact.value;
 
       const [brandUser] = await tx
@@ -299,7 +373,14 @@ export async function POST(req: Request) {
         .where(and(eq(applications.campaignId, campaignId), eq(applications.userId, user.id)))
         .limit(1)
         .for("update");
-      if (existing && existing.status !== "withdrawn") return { kind: "duplicate" } as const;
+      if (existing && existing.status !== "withdrawn") {
+        const isExactReplay =
+          existing.creatorId === creatorProfile.id &&
+          existing.creatorName === creatorName &&
+          existing.creatorContact === contact &&
+          existing.message === message;
+        return isExactReplay ? { kind: "replay", application: existing } as const : { kind: "duplicate" } as const;
+      }
 
       const now = new Date();
       if (existing) {
@@ -386,11 +467,18 @@ export async function POST(req: Request) {
 
     if (outcome.kind === "created" || outcome.kind === "reactivated") {
       await sendApplicationNotificationEmailBestEffort({ req, ...outcome.email });
-      return Response.json({ application: outcome.application, reactivated: outcome.kind === "reactivated" }, { headers: NO_STORE });
+      return Response.json(
+        { application: outcome.application, reactivated: outcome.kind === "reactivated" },
+        { status: outcome.kind === "created" ? 201 : 200, headers: NO_STORE },
+      );
     }
-    if (outcome.kind === "duplicate") return Response.json({ error: "You have already applied to this campaign.", code: "already_applied" }, { status: 400, headers: NO_STORE });
-    if (outcome.kind === "closed") return Response.json({ error: "This campaign is no longer accepting applications.", code: "campaign_closed" }, { status: 400, headers: NO_STORE });
-    if (outcome.kind === "profile_incomplete") return Response.json({ error: "Please complete your creator profile before applying.", code: "creator_profile_incomplete" }, { status: 400, headers: NO_STORE });
+    if (outcome.kind === "replay") {
+      return Response.json({ application: outcome.application, reactivated: false, idempotentReplay: true }, { headers: NO_STORE });
+    }
+    if (outcome.kind === "content_not_allowed") return contentNotAllowedResponse("creatorContact");
+    if (outcome.kind === "duplicate") return Response.json({ error: "You have already applied to this campaign.", code: "already_applied" }, { status: 409, headers: NO_STORE });
+    if (outcome.kind === "closed") return Response.json({ error: "This campaign is no longer accepting applications.", code: "campaign_closed" }, { status: 409, headers: NO_STORE });
+    if (outcome.kind === "profile_incomplete") return Response.json({ error: "Please complete your creator profile before applying.", code: "creator_profile_incomplete" }, { status: 409, headers: NO_STORE });
     if (outcome.kind === "contact_not_owned") {
       return Response.json(
         { error: "Use a phone, email, or social profile saved on your account or completed creator profile.", code: "application_contact_not_owned" },
@@ -420,31 +508,62 @@ export async function PATCH(req: Request) {
   const rl = await rateLimit(getClientKey(req, "application-manage"), 60, 60 * 60_000);
   if (!rl.ok) return limitedResponse(rl.retryAfter);
   try {
-    const body = bodyRecord(await req.json().catch(() => null));
-    if (!body || !isUuid(body.id)) return Response.json({ error: "Invalid application", code: "invalid_target" }, { status: 400, headers: NO_STORE });
-    const id = body.id;
+    const parsedBody = await readJsonObject(req, { headers: NO_STORE });
+    if (!parsedBody.ok) return parsedBody.response;
+    const body = parsedBody.body;
+    const id = parseUuid(body.id);
+    if (!id) return Response.json({ error: "Invalid application", code: "invalid_target" }, { status: 400, headers: NO_STORE });
     const action = typeof body.action === "string" ? body.action.trim().toLowerCase() : "";
     if (!CREATOR_ACTIONS.has(action) && !(action in BRAND_ACTIONS)) {
       return Response.json({ error: "Invalid application action", code: "invalid_action" }, { status: 400, headers: NO_STORE });
     }
 
-    if (hasField(body, "message") && body.message !== null && typeof body.message !== "string") {
-      return Response.json({ error: "Please enter a valid application message.", code: "invalid_application_message" }, { status: 400, headers: NO_STORE });
-    }
-    if (hasField(body, "creatorContact") && typeof body.creatorContact !== "string") {
-      return Response.json({ error: "Please enter a valid contact for the brand.", code: "invalid_application_contact" }, { status: 400, headers: NO_STORE });
-    }
-    if (hasField(body, "decisionNote") && body.decisionNote !== null && typeof body.decisionNote !== "string") {
-      return Response.json({ error: "Please enter a valid decision note.", code: "invalid_decision_note" }, { status: 400, headers: NO_STORE });
+    const parsedMessage = hasField(body, "message")
+      ? parseApplicationText(body.message, {
+          field: "message",
+          invalidCode: "invalid_application_message",
+          invalidMessage: "Please enter a valid application message.",
+          allowUrls: false,
+          allowContactDetails: false,
+        })
+      : null;
+    if (parsedMessage && !parsedMessage.ok) return validationErrorResponse(parsedMessage);
+    const nextMessage = parsedMessage ? parsedMessage.value : undefined;
+
+    let nextContact: string | undefined;
+    if (hasField(body, "creatorContact")) {
+      if (typeof body.creatorContact !== "string") {
+        return validationErrorResponse({
+          error: "Please enter a valid contact for the brand.",
+          code: "invalid_application_contact",
+          field: "creatorContact",
+        });
+      }
+      nextContact = body.creatorContact.trim().replace(/\s+/g, " ");
+      if (nextContact.length < 3 || nextContact.length > 240) {
+        return validationErrorResponse({
+          error: "Please enter a valid contact for the brand.",
+          code: "invalid_application_contact",
+          field: "creatorContact",
+        });
+      }
+      if (findDisallowedContent(nextContact, { allowUrls: true, allowContactDetails: true })) {
+        return contentNotAllowedResponse("creatorContact");
+      }
     }
 
-    const nextMessage = hasField(body, "message") ? cleanText(body.message, 1000) ?? null : undefined;
-    const nextContact = hasField(body, "creatorContact") ? String(body.creatorContact).trim() : undefined;
-    if (nextContact !== undefined && nextContact.length < 3) {
-      return Response.json({ error: "Please enter a valid contact for the brand.", code: "invalid_application_contact" }, { status: 400, headers: NO_STORE });
-    }
+    const parsedDecisionNote = hasField(body, "decisionNote")
+      ? parseApplicationText(body.decisionNote, {
+          field: "decisionNote",
+          invalidCode: "invalid_decision_note",
+          invalidMessage: "Please enter a valid decision note.",
+          allowUrls: true,
+          allowContactDetails: true,
+        })
+      : null;
+    if (parsedDecisionNote && !parsedDecisionNote.ok) return validationErrorResponse(parsedDecisionNote);
     const contactSharingConsent = body.contactSharingConsent === true;
-    const decisionNote = hasField(body, "decisionNote") ? cleanText(body.decisionNote, 1000) ?? null : null;
+    const decisionNote = parsedDecisionNote ? parsedDecisionNote.value : null;
 
     const user = await getSessionUser();
     if (!user) return Response.json({ error: "Please log in to manage this application.", code: "unauthorized" }, { status: 401, headers: NO_STORE });
@@ -464,7 +583,8 @@ export async function PATCH(req: Request) {
             | "profile_incomplete"
             | "contact_not_owned"
             | "contact_required"
-            | "consent_required";
+            | "consent_required"
+            | "content_not_allowed";
           currentStatus?: string;
         };
 
@@ -512,12 +632,15 @@ export async function PATCH(req: Request) {
             if (!resolvedContact) return { kind: "contact_not_owned" } as const;
             editedContact = resolvedContact.value;
           }
+          if (hasSuspiciousUrl(editedContact)) return { kind: "content_not_allowed" } as const;
         }
+        const editedCreatorName = creatorProfile?.name ? cleanCreatorName(creatorProfile.name) : "";
+        if (editedCreatorName && findDisallowedContent(editedCreatorName)) return { kind: "content_not_allowed" } as const;
 
         const [updated] = await tx
           .update(applications)
           .set({
-            ...(creatorProfile?.name?.trim() ? { creatorName: creatorProfile.name.trim() } : {}),
+            ...(editedCreatorName ? { creatorName: editedCreatorName } : {}),
             ...(nextMessage !== undefined ? { message: nextMessage } : {}),
             ...(nextContact !== undefined ? { creatorContact: editedContact } : {}),
             updatedAt: now,
@@ -586,6 +709,10 @@ export async function PATCH(req: Request) {
         if (!isCompletedCreatorProfile(creatorProfile)) return { kind: "profile_incomplete" } as const;
         const resolvedContact = resolveApplicationContact(effectiveContact, user, creatorProfile);
         if (!resolvedContact) return { kind: "contact_not_owned" } as const;
+        const reactivatedCreatorName = cleanCreatorName(creatorProfile.name);
+        if (!reactivatedCreatorName || findDisallowedContent(reactivatedCreatorName) || hasSuspiciousUrl(resolvedContact.value)) {
+          return { kind: "content_not_allowed" } as const;
+        }
 
         const [brandUser] = await tx
           .select({ id: users.id, name: users.name, email: users.email })
@@ -597,7 +724,7 @@ export async function PATCH(req: Request) {
           .update(applications)
           .set({
             creatorId: creatorProfile.id,
-            creatorName: creatorProfile.name.trim(),
+            creatorName: reactivatedCreatorName,
             creatorContact: resolvedContact.value,
             ...(nextMessage !== undefined ? { message: nextMessage } : {}),
             status: "applied",
@@ -686,8 +813,9 @@ export async function PATCH(req: Request) {
     if (outcome.kind === "forbidden") return Response.json({ error: "You cannot manage this application.", code: "forbidden" }, { status: 403, headers: NO_STORE });
     if (outcome.kind === "not_found") return Response.json({ error: "Application not found.", code: "application_not_found" }, { status: 404, headers: NO_STORE });
     if (outcome.kind === "invalid_input") return Response.json({ error: "No application changes were provided.", code: "no_changes" }, { status: 400, headers: NO_STORE });
+    if (outcome.kind === "content_not_allowed") return contentNotAllowedResponse("creatorContact");
     if (outcome.kind === "profile_incomplete") {
-      return Response.json({ error: "Please complete your creator profile before applying.", code: "creator_profile_incomplete" }, { status: 400, headers: NO_STORE });
+      return Response.json({ error: "Please complete your creator profile before applying.", code: "creator_profile_incomplete" }, { status: 409, headers: NO_STORE });
     }
     if (outcome.kind === "contact_not_owned") {
       return Response.json(

@@ -1,7 +1,7 @@
 import { db } from "@/backend/db";
 import { notifications } from "@/backend/db/schema";
 import { getSessionUser, isSessionUnavailableError, logSessionUnavailable, sessionUnavailableResponse } from "@/backend/auth";
-import { isUuid } from "@/backend/moderation";
+import { parseUuid, readJsonObject } from "@/backend/validation";
 import { and, eq, isNull, sql } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
@@ -21,8 +21,9 @@ export async function PATCH(req: Request) {
     const user = await getSessionUser();
     if (!user) return Response.json({ error: "Please log in", code: "unauthorized" }, { status: 401, headers: NO_STORE });
 
-    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!body) return Response.json({ error: "Invalid notification request", code: "invalid_request" }, { status: 400, headers: NO_STORE });
+    const parsedBody = await readJsonObject(req, { headers: NO_STORE });
+    if (!parsedBody.ok) return parsedBody.response;
+    const body = parsedBody.body;
     const now = new Date();
 
     if (body.all === true) {
@@ -33,11 +34,12 @@ export async function PATCH(req: Request) {
       return Response.json({ ok: true, unreadNotificationCount: 0 }, { headers: NO_STORE });
     }
 
-    if (!isUuid(body.id)) return Response.json({ error: "Invalid notification", code: "invalid_target" }, { status: 400, headers: NO_STORE });
+    const notificationId = parseUuid(body.id);
+    if (!notificationId) return Response.json({ error: "Invalid notification", code: "invalid_target" }, { status: 400, headers: NO_STORE });
     const [existing] = await db
       .select({ id: notifications.id, readAt: notifications.readAt })
       .from(notifications)
-      .where(and(eq(notifications.id, body.id), eq(notifications.userId, user.id)))
+      .where(and(eq(notifications.id, notificationId), eq(notifications.userId, user.id)))
       .limit(1);
     if (!existing) return Response.json({ error: "Notification not found.", code: "notification_not_found" }, { status: 404, headers: NO_STORE });
 
@@ -45,7 +47,7 @@ export async function PATCH(req: Request) {
       await db
         .update(notifications)
         .set({ readAt: now })
-        .where(and(eq(notifications.id, body.id), eq(notifications.userId, user.id), isNull(notifications.readAt)));
+        .where(and(eq(notifications.id, notificationId), eq(notifications.userId, user.id), isNull(notifications.readAt)));
     }
     return Response.json({ ok: true, unreadNotificationCount: await unreadCount(user.id) }, { headers: NO_STORE });
   } catch (e) {

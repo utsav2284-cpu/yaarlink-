@@ -260,15 +260,15 @@ export function normalizeContentTypeList(value: unknown, keepUnknown = false): s
   return normalizeList(value, normalizeContentType, keepUnknown);
 }
 
-export const BUDGETS = ["Under ₹2,000", "₹2,000 – ₹5,000", "₹5,000 – ₹15,000", "₹15,000 – ₹50,000", "₹50,000+"];
+/** One canonical campaign-budget range for the API, DB check and every form. */
+export const CAMPAIGN_BUDGET_MIN = 500;
+export const CAMPAIGN_BUDGET_MAX = 10_000_000;
 
-export function parseBudget(b: string): number {
-  if (b.includes("2,000") && b.includes("Under")) return 2000;
-  if (b.includes("5,000") && b.includes("2,000")) return 5000;
-  if (b.includes("15,000")) return 15000;
-  if (b.includes("50,000") && b.includes("15")) return 50000;
-  return 60000;
-}
+/** Creator list bounds; joined lengths are the exact all-values maxima. */
+export const MAX_CREATOR_LANGUAGES = LANGUAGES.length;
+export const MAX_CREATOR_CONTENT_TYPES = CONTENT_TYPES.length;
+export const MAX_CREATOR_LANGUAGES_JOINED_LENGTH = LANGUAGES.join(", ").length;
+export const MAX_CREATOR_CONTENT_TYPES_JOINED_LENGTH = CONTENT_TYPES.join(", ").length;
 
 export function formatINR(n: number, locale = "en-IN") {
   return new Intl.NumberFormat(locale, {

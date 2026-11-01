@@ -8,10 +8,17 @@ import {
 } from "@/backend/email-verification";
 import { PasswordBreachCheckUnavailableError, validateNewPassword } from "@/backend/password-policy";
 import { getClientKey, hashKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
+import {
+  hasField,
+  parseEmailField,
+  parsePhoneField,
+  parseRequiredText,
+  readJsonObject,
+} from "@/backend/validation";
 
 export const dynamic = "force-dynamic";
 
-const NO_STORE = { "Cache-Control": "no-store" } as const;
+const NO_STORE = { "Cache-Control": "private, no-store" } as const;
 
 function verificationRequiredResponse() {
   // New, pending, throttled, and already-registered addresses intentionally
@@ -28,33 +35,66 @@ export async function POST(req: Request) {
   if (!rl.ok) return limitedResponse(rl.retryAfter);
 
   try {
-    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!body) {
-      return Response.json({ error: "Name, email and password required", code: "invalid_request" }, { status: 400, headers: NO_STORE });
+    const parsedBody = await readJsonObject(req, { headers: NO_STORE });
+    if (!parsedBody.ok) return parsedBody.response;
+    const body = parsedBody.body;
+
+    const parsedName = parseRequiredText(body.name, {
+      field: "name",
+      maxLength: 100,
+      requiredCode: "invalid_request",
+      requiredMessage: "Name, email and password required",
+    });
+    if (!parsedName.ok) {
+      return Response.json(
+        { error: parsedName.error, code: parsedName.code, field: parsedName.field },
+        { status: 400, headers: NO_STORE },
+      );
     }
 
-    const name = String(body.name || "").trim();
-    const email = String(body.email || "").toLowerCase().trim();
-    const password = String(body.password || "");
-
-    if (!name || !email || !password) {
-      return Response.json({ error: "Name, email and password required", code: "invalid_request" }, { status: 400, headers: NO_STORE });
+    const parsedEmail = parseEmailField(body.email, { field: "email", required: true });
+    if (!parsedEmail.ok || !parsedEmail.value) {
+      return Response.json({ error: "Please enter a valid email.", code: "invalid_email", field: "email" }, { status: 400, headers: NO_STORE });
     }
+
+    const parsedPhone = parsePhoneField(body.phone, { field: "phone" });
+    if (!parsedPhone.ok) {
+      return Response.json(
+        { error: parsedPhone.error, code: parsedPhone.code, field: parsedPhone.field },
+        { status: 400, headers: NO_STORE },
+      );
+    }
+
+    const password = body.password;
+    if (typeof password !== "string" || !password) {
+      return Response.json({ error: "Name, email and password required", code: "invalid_request", field: "password" }, { status: 400, headers: NO_STORE });
+    }
+
+    let role: "brand" | "creator" = "brand";
+    if (hasField(body, "role") && body.role != null) {
+      const requestedRole = typeof body.role === "string" ? body.role.trim().toLowerCase() : "";
+      if (requestedRole !== "brand" && requestedRole !== "creator") {
+        return Response.json({ error: "Please choose a valid account type.", code: "invalid_request", field: "role" }, { status: 400, headers: NO_STORE });
+      }
+      role = requestedRole;
+    }
+
+    const name = parsedName.value;
+    const email = parsedEmail.value;
+    const cleanPhone = parsedPhone.value;
+
     if (body.legalConsent !== true) {
       return Response.json(
         { error: "Please agree to the Terms of Service and Privacy Policy.", code: "legal_consent_required" },
         { status: 400, headers: NO_STORE },
       );
     }
-    if (email.length > 160 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return Response.json({ error: "Please enter a valid email.", code: "invalid_email" }, { status: 400, headers: NO_STORE });
-    }
     let passwordValidation;
     try {
       passwordValidation = await validateNewPassword(password, {
         email,
         name,
-        phone: body.phone ? String(body.phone) : null,
+        phone: cleanPhone,
       });
     } catch (error) {
       if (error instanceof PasswordBreachCheckUnavailableError) {
@@ -90,9 +130,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const cleanName = name.slice(0, 100);
-    const cleanPhone = body.phone ? String(body.phone).trim().slice(0, 20) || null : null;
-    const role = body.role === "creator" ? "creator" : "brand";
+    const cleanName = name;
 
     // Hash before the account/pending branch so a known address does not get
     // an obviously cheaper code path than a new one.

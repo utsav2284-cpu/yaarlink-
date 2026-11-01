@@ -23,10 +23,11 @@ import {
   validateNewPassword,
 } from "@/backend/password-policy";
 import { getClientKey, hashKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
+import { readJsonObject } from "@/backend/validation";
 
 export const dynamic = "force-dynamic";
 
-const NO_STORE = { "Cache-Control": "no-store" } as const;
+const NO_STORE = { "Cache-Control": "private, no-store" } as const;
 
 function invalidResponse() {
   return Response.json(
@@ -40,9 +41,10 @@ export async function POST(req: Request) {
   if (!rl.ok) return limitedResponse(rl.retryAfter);
 
   try {
-    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-    const token = body?.token;
-    const password = String(body?.password || "");
+    const parsedBody = await readJsonObject(req, { headers: NO_STORE });
+    if (!parsedBody.ok) return parsedBody.response;
+    const token = parsedBody.body.token;
+    const password = typeof parsedBody.body.password === "string" ? parsedBody.body.password : "";
 
     const submittedPasswordLength = passwordLength(password);
     if (
@@ -118,7 +120,7 @@ export async function POST(req: Request) {
     const sessionToken = await createSessionToken(userId, 0, session.id, session.createdAt.getTime());
     const response = NextResponse.json(
       { user: { id: userId, name: pending.name, email: pending.email, role: pending.role } },
-      { headers: NO_STORE },
+      { status: 201, headers: NO_STORE },
     );
     response.cookies.set(SESSION_COOKIE, sessionToken, SESSION_COOKIE_OPTIONS);
 

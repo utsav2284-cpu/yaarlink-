@@ -2,6 +2,7 @@ import { buildAccountExport, verifyUserPassword } from "@/backend/account";
 import { getSessionContext, isSessionUnavailableError, logSessionUnavailable, sessionUnavailableResponse } from "@/backend/auth";
 import { PASSWORD_MAX_LENGTH, passwordLength } from "@/backend/password-policy";
 import { hashKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
+import { readJsonObject } from "@/backend/validation";
 
 export const dynamic = "force-dynamic";
 
@@ -19,8 +20,9 @@ export async function POST(req: Request) {
     const rl = await rateLimit(`account-export:${await hashKey(context.user.id)}`, 5, 15 * 60_000);
     if (!rl.ok) return limitedResponse(rl.retryAfter);
 
-    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-    const currentPassword = String(body?.currentPassword || "");
+    const parsedBody = await readJsonObject(req, { headers: NO_STORE });
+    if (!parsedBody.ok) return parsedBody.response;
+    const currentPassword = typeof parsedBody.body.currentPassword === "string" ? parsedBody.body.currentPassword : "";
     if (!currentPassword || passwordLength(currentPassword) > PASSWORD_MAX_LENGTH) {
       return jsonError(400, "Current password is required.", "current_password_required");
     }

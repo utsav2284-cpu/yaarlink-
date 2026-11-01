@@ -1,10 +1,11 @@
 import { buildAccountActionUrl, claimPasswordResetByEmail, markAccountTokenEmailSent } from "@/backend/account-tokens";
 import { emailDeliveryProblem, sendPasswordResetEmail } from "@/backend/email";
 import { getClientKey, hashKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
+import { normalizeEmail, readJsonObject } from "@/backend/validation";
 
 export const dynamic = "force-dynamic";
 
-const NO_STORE = { "Cache-Control": "no-store" } as const;
+const NO_STORE = { "Cache-Control": "private, no-store" } as const;
 
 function acceptedResponse() {
   // Existing, missing, cooled-down and send-limited accounts intentionally
@@ -17,9 +18,10 @@ export async function POST(req: Request) {
   if (!rl.ok) return limitedResponse(rl.retryAfter);
 
   try {
-    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-    const email = String(body?.email || "").toLowerCase().trim();
-    if (!email || email.length > 160 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    const parsedBody = await readJsonObject(req, { headers: NO_STORE });
+    if (!parsedBody.ok) return parsedBody.response;
+    const email = normalizeEmail(parsedBody.body.email) ?? "";
+    if (!email) {
       return Response.json(
         { error: "Please enter a valid email.", code: "invalid_email" },
         { status: 400, headers: NO_STORE },

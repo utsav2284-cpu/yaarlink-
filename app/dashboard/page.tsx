@@ -30,6 +30,7 @@ type Campaign = {
   verificationCode?: string | null;
   verificationStatus?: string | null;
   moderationNote?: string | null;
+  updatedAt?: string | null;
 };
 type Application = {
   id: string;
@@ -66,6 +67,7 @@ type Profile = {
   verificationStatus?: string | null;
   verifiedFollowers?: number | null;
   moderationNote?: string | null;
+  updatedAt?: string | null;
 };
 type Notification = {
   id: string;
@@ -665,7 +667,7 @@ export default function DashboardPage() {
           e.preventDefault();
           runAction(
             `campaign:${c.id}:edit`,
-            () => jsonRequest("/api/campaigns", "PATCH", { id: c.id, ...campaignForm, budget: Number(campaignForm.budget || 0) }),
+            () => jsonRequest("/api/campaigns", "PATCH", { id: c.id, ...campaignForm, expectedUpdatedAt: c.updatedAt ?? undefined }),
             () => {
               setEditingCampaignId("");
               setCampaignForm(null);
@@ -693,7 +695,7 @@ export default function DashboardPage() {
           <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-website`}>{t("brand.website")}<input id={`dashboard-campaign-${c.id}-website`} value={campaignForm.website} onChange={(e) => set("website", e.target.value)} placeholder={t("brand.phWebsite")} className={inputClass} /></label>
           <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-target-audience`}>{t("brand.audience")}<input id={`dashboard-campaign-${c.id}-target-audience`} value={campaignForm.targetAudience} onChange={(e) => set("targetAudience", e.target.value)} placeholder={t("brand.phAudience")} className={inputClass} /></label>
           <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-location`}>{t("brand.location")}<input id={`dashboard-campaign-${c.id}-location`} value={campaignForm.location} onChange={(e) => set("location", e.target.value)} placeholder={t("brand.phLocation")} className={inputClass} /></label>
-          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-budget`}>{t("brand.budget")}<input id={`dashboard-campaign-${c.id}-budget`} inputMode="numeric" value={campaignForm.budget} onChange={(e) => set("budget", e.target.value.replace(/[^0-9]/g, ""))} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-budget`}>{t("brand.budget")}<input id={`dashboard-campaign-${c.id}-budget`} inputMode="numeric" value={campaignForm.budget} onChange={(e) => set("budget", e.target.value)} placeholder={t("brand.budgetPlaceholder")} className={inputClass} /></label>
           <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-language`}>{t("brand.language")}
             <select id={`dashboard-campaign-${c.id}-language`} value={campaignForm.language} onChange={(e) => set("language", e.target.value)} className={inputClass}>
               {LANGUAGES.map((language) => <option key={language} value={language}>{opt(language)}</option>)}
@@ -799,7 +801,7 @@ export default function DashboardPage() {
             setActionErrorKey("cr.err");
             return;
           }
-          runAction(`profile:${profile.id}:edit`, () => jsonRequest("/api/creators", "PATCH", { ...profileForm }), () => {
+          runAction(`profile:${profile.id}:edit`, () => jsonRequest("/api/creators", "PATCH", { ...profileForm, expectedUpdatedAt: profile.updatedAt ?? undefined }), () => {
             setEditingProfileId("");
             setProfileForm(null);
           });
@@ -809,7 +811,7 @@ export default function DashboardPage() {
         <p className="mt-1 text-[13px] leading-relaxed text-[#6f6862]">{t("dash.editReviewWarning")}</p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-name`}>{t("cr.name")}<input autoFocus id={`dashboard-profile-${profile.id}-name`} value={profileForm.name} onChange={(e) => set("name", e.target.value)} placeholder={t("cr.phName")} className={inputClass} /></label>
-          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-phone`}>{t("cr.phone")}<input id={`dashboard-profile-${profile.id}-phone`} value={profileForm.phone} onChange={(e) => set("phone", e.target.value)} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-phone`}>{t("cr.phone")}<input id={`dashboard-profile-${profile.id}-phone`} value={profileForm.phone} onChange={(e) => set("phone", e.target.value)} placeholder={t("brand.phPhone")} className={inputClass} /></label>
           <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-email`}>{t("cr.email")}<input id={`dashboard-profile-${profile.id}-email`} value={profileForm.email} onChange={(e) => set("email", e.target.value)} placeholder={t("cr.phEmail")} className={inputClass} /></label>
           <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-location`}>{t("cr.city")}<input id={`dashboard-profile-${profile.id}-location`} value={profileForm.location} onChange={(e) => set("location", e.target.value)} placeholder={t("cr.phCity")} className={inputClass} /></label>
           <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-platform`}>{t("cr.platform")}
@@ -820,7 +822,7 @@ export default function DashboardPage() {
           <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-profile-url`}>{t("cr.profileLink")}<input id={`dashboard-profile-${profile.id}-profile-url`} value={profileForm.profileUrl} onChange={(e) => set("profileUrl", e.target.value)} placeholder={t("cr.phProfile")} className={inputClass} /></label>
           <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-instagram`}>{t("cr.instagram")}<input id={`dashboard-profile-${profile.id}-instagram`} value={profileForm.instagram} onChange={(e) => set("instagram", e.target.value)} placeholder={t("cr.phIg")} className={inputClass} /></label>
           <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-youtube`}>{t("cr.youtube")}<input id={`dashboard-profile-${profile.id}-youtube`} value={profileForm.youtube} onChange={(e) => set("youtube", e.target.value)} placeholder={t("cr.phYt")} className={inputClass} /></label>
-          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-followers`}>{t("cr.followers")}<input id={`dashboard-profile-${profile.id}-followers`} inputMode="numeric" value={profileForm.followers} onChange={(e) => set("followers", e.target.value.replace(/[^0-9]/g, ""))} placeholder={t("cr.phFollowers")} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-followers`}>{t("cr.followers")}<input id={`dashboard-profile-${profile.id}-followers`} value={profileForm.followers} onChange={(e) => set("followers", e.target.value)} placeholder={t("cr.phFollowers")} className={inputClass} /></label>
           <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-category`}>{t("cr.category")}
             <select id={`dashboard-profile-${profile.id}-category`} value={profileForm.category} onChange={(e) => set("category", e.target.value)} className={inputClass}>
               <option value="">—</option>
