@@ -6,7 +6,7 @@ Next.js 16 · Tailwind CSS · PostgreSQL · Drizzle ORM · deployed on **Vercel*
 Layout: `app/` (routes) · `frontend/` (UI) · `backend/` (data + auth) · `shared/` (domain constants) · `config/` (site settings) · `docs/`.
 See [`docs/STRUCTURE.md`](docs/STRUCTURE.md) for the full map and [`docs/DEPLOY_PUBLIC.md`](docs/DEPLOY_PUBLIC.md) for the production checklist.
 
-> **Single deployment path:** Vercel is the only supported production host for this repository. Do not deploy this codebase from a second hosting configuration; keeping one path avoids divergent environment variables, client-IP trust, and security-header behavior.
+> **Single deployment path:** Vercel is the only supported production host for this repository, and theyaar.com must use only the canonical `yaarlink-` Vercel project. Do not import the repository into a second Vercel project or deploy it from another hosting configuration; use the canonical project's Preview deployments for branches/PRs. Keeping one project avoids divergent environment variables, database integrations, client-IP trust, and security-header behavior.
 
 ---
 
@@ -78,7 +78,7 @@ Never use `sslmode=no-verify`, `disable`, `prefer`, `require`, or `verify-ca` fo
 
 Optional variables are documented in `.env.example`: `APP_URL`, `ADMIN_TOTP_SECRET`, `BOT_CHALLENGE_SECRET`, and `PWNED_PASSWORDS_RANGE_URL`.
 
-The server refuses to start when a required auth secret is missing, weak, copied from `.env.example`, or shared. Signup also fails closed until the two email settings are present and the sending domain is verified in Resend.
+The server refuses to start when a required auth secret is missing, weak, copied from `.env.example`, or shared. The app needs no project-defined `NEXT_PUBLIC_*` variables, and the build fails if an unapproved or secret-like public variable name is configured. Signup also fails closed until the two email settings are present and the sending domain is verified in Resend.
 
 5. Deploy. After this initial setup, every merge/push to `main` creates the next production deployment automatically. Pull requests get Vercel Preview deployments; do not point a Preview at the production database unless you intentionally want it to read/write production data.
 

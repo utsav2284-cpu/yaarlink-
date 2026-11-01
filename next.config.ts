@@ -1,4 +1,9 @@
 import type { NextConfig } from "next";
+import { assertPublicEnvironmentNamesSafe } from "./backend/public-env";
+
+// Fail the build before bundling if deployment configuration puts a secret-like
+// or unreviewed value under NEXT_PUBLIC_*. The check inspects names only.
+assertPublicEnvironmentNamesSafe();
 
 // API responses are data, not documents. If a browser navigates directly to
 // one, this deny-all policy prevents it from becoming an active document.
