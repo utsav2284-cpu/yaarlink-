@@ -1,4 +1,10 @@
-import { normalizeInstagramUrl, normalizeProfileUrl, normalizeYouTubeUrl } from "@/backend/social-url";
+import {
+  isInstagramHostname,
+  isYouTubeHostname,
+  normalizeInstagramUrl,
+  normalizeProfileUrl,
+  normalizeYouTubeUrl,
+} from "@/backend/social-url";
 import { normalizeEmail, normalizePhoneNumber } from "@/backend/validation";
 
 export type ApplicationContactKind = "email" | "phone" | "instagram" | "youtube" | "profile";
@@ -128,7 +134,7 @@ function candidateHost(value: string): string | null {
 function instagramIdentity(value: unknown): { key: string; value: string } | null {
   const cleaned = cleanContactInput(value);
   const host = candidateHost(cleaned);
-  if (host && host !== "instagram.com" && host !== "www.instagram.com") return null;
+  if (host && !isInstagramHostname(host)) return null;
   const canonical = normalizeInstagramUrl(cleaned);
   if (!canonical) return null;
   try {
@@ -146,7 +152,7 @@ function instagramIdentity(value: unknown): { key: string; value: string } | nul
 function youtubeIdentity(value: unknown): { key: string; value: string } | null {
   const cleaned = cleanContactInput(value);
   const host = candidateHost(cleaned);
-  if (host && !["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"].includes(host)) return null;
+  if (host && !isYouTubeHostname(host)) return null;
   const canonical = normalizeYouTubeUrl(cleaned);
   if (!canonical) return null;
   const cleanedUrl = cleanUrl(canonical);
@@ -180,8 +186,8 @@ function profileIdentity(value: unknown, platform?: string | null): { key: strin
   if (!canonical) return null;
 
   const host = candidateHost(canonical);
-  if (host === "instagram.com" || host === "www.instagram.com") return instagramIdentity(canonical);
-  if (host && ["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"].includes(host)) return youtubeIdentity(canonical);
+  if (host && isInstagramHostname(host)) return instagramIdentity(canonical);
+  if (host && isYouTubeHostname(host)) return youtubeIdentity(canonical);
 
   const instagram = instagramIdentity(canonical);
   if (instagram) return instagram;

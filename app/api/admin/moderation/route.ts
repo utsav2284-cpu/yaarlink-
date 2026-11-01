@@ -4,6 +4,7 @@ import { adminSessionUnavailableResponse, isAdmin, isAdminSessionUnavailableErro
 import { logAdminAudit } from "@/backend/admin-audit";
 import { createVerificationCode, normalizeReviewStatus } from "@/backend/moderation";
 import { MAX_FOLLOWERS, hasField, parseIntegerField, parseOptionalText, parseUuid, readJsonObject } from "@/backend/validation";
+import { normalizeInstagramUrl, normalizeProfileUrl, normalizeYouTubeUrl } from "@/backend/social-url";
 import { and, eq } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
@@ -81,7 +82,12 @@ export async function POST(req: Request) {
         if (!existing.verificationCode) {
           return Response.json({ error: "Send this creator back to review first so a verification code is issued.", code: "creator_review_required" }, { status: 409, headers: NO_STORE });
         }
-        if (!existing.profileUrl && !existing.instagram && !existing.youtube) {
+        const hasLinkedProfile = Boolean(
+          normalizeProfileUrl(existing.profileUrl, existing.platform) ??
+            normalizeInstagramUrl(existing.instagram) ??
+            normalizeYouTubeUrl(existing.youtube),
+        );
+        if (!hasLinkedProfile) {
           return Response.json({ error: "This creator has no linked social profile to verify.", code: "creator_no_linked_profile" }, { status: 409, headers: NO_STORE });
         }
 

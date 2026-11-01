@@ -17,7 +17,7 @@ import {
   type ValidationResult,
 } from "@/backend/validation";
 import { hasSuspiciousUrl } from "@/backend/content-moderation";
-import { normalizeProfileUrl } from "@/backend/social-url";
+import { MAX_WEBSITE_URL_LENGTH, normalizeProfileUrl } from "@/backend/social-url";
 import { normalizeCategory, normalizeContentType, normalizeLanguage, normalizePromotionType } from "@/shared/constants";
 import {
   allConditions,
@@ -125,7 +125,7 @@ function parseCampaign(body: Record<string, unknown>, user: SessionUser, current
       return { ok: false, error: "Please enter a valid website or Instagram URL.", code: "invalid_website", field: "website" };
     } else {
       website = normalizeProfileUrl(rawWebsite, "Instagram");
-      if (!website || website.length > 200) {
+      if (!website || website.length > MAX_WEBSITE_URL_LENGTH) {
         return { ok: false, error: "Please enter a valid website or Instagram URL.", code: "invalid_website", field: "website" };
       }
       if (hasSuspiciousUrl(website)) {
@@ -411,6 +411,9 @@ export async function GET(req: Request) {
     });
     const canonicalRows = items.map((row) => ({
       ...row,
+      // Apply the write-time public-host/profile rules again on read so a
+      // legacy private or non-profile destination is not republished.
+      website: normalizeProfileUrl(row.website, "Instagram"),
       promotionType: normalizePromotionType(row.promotionType) ?? row.promotionType,
       category: normalizeCategory(row.category) ?? row.category,
       language: normalizeLanguage(row.language) ?? row.language,

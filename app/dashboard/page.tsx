@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { APPLICATION_STATUSES, CAMPAIGN_REVIEW_STATUSES, CATEGORIES, CONTENT_TYPES, LANGUAGES, PLATFORMS, PROMOTION_TYPES } from "@/shared/constants";
+import { normalizeInstagramUrl, normalizeProfileUrl, normalizeYouTubeUrl } from "@/shared/social-url";
 import PrivacyNotice from "@/frontend/components/PrivacyNotice";
 import { ListingError, ListingPagination } from "@/frontend/components/ListingState";
 import { appendUniqueById } from "@/frontend/api-json";
@@ -1304,7 +1305,11 @@ export default function DashboardPage() {
               <h2 className="text-[19px] font-extrabold">{t("dash.profileStatus")}</h2>
               <div className="mt-3 grid gap-3">
                 {completedProfiles.map((profile) => {
-                  const profileLink = profile.profileUrl || profile.instagram || profile.youtube;
+                  const profileLink = [
+                    normalizeProfileUrl(profile.profileUrl, profile.platform ?? undefined),
+                    normalizeInstagramUrl(profile.instagram),
+                    normalizeYouTubeUrl(profile.youtube),
+                  ].find((link): link is string => Boolean(link));
                   const followerCount = profile.verifiedFollowers ?? profile.followers ?? 0;
                   return (
                     <div key={profile.id} className="rounded-2xl border border-[#e9ddc3] bg-white p-5 card-shadow">

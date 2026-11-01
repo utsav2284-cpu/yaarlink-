@@ -4,7 +4,14 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { getSessionUser, isSessionUnavailableError, logSessionUnavailable, sessionUnavailableResponse, type SessionUser } from "@/backend/auth";
 import { createVerificationCode } from "@/backend/moderation";
 import { getClientKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
-import { normalizeInstagramUrl, normalizeProfileUrl, normalizeYouTubeUrl } from "@/backend/social-url";
+import {
+  MAX_INSTAGRAM_URL_LENGTH,
+  MAX_PROFILE_URL_LENGTH,
+  MAX_YOUTUBE_URL_LENGTH,
+  normalizeInstagramUrl,
+  normalizeProfileUrl,
+  normalizeYouTubeUrl,
+} from "@/backend/social-url";
 import { findDisallowedContent, hasSuspiciousUrl } from "@/backend/content-moderation";
 import {
   hasField,
@@ -207,7 +214,7 @@ function parseCreatorProfile(body: Record<string, unknown>, user: SessionUser, c
   const instagram = parseSocial(
     "instagram",
     (value) => normalizeInstagramUrl(value),
-    160,
+    MAX_INSTAGRAM_URL_LENGTH,
     "invalid_instagram",
     "Please enter a valid Instagram handle or profile URL.",
   );
@@ -215,7 +222,7 @@ function parseCreatorProfile(body: Record<string, unknown>, user: SessionUser, c
   const youtube = parseSocial(
     "youtube",
     (value) => normalizeYouTubeUrl(value),
-    160,
+    MAX_YOUTUBE_URL_LENGTH,
     "invalid_youtube",
     "Please enter a valid YouTube channel handle or URL.",
   );
@@ -223,7 +230,7 @@ function parseCreatorProfile(body: Record<string, unknown>, user: SessionUser, c
   const parsedProfileUrl = parseSocial(
     "profileUrl",
     (value) => normalizeProfileUrl(value, platform),
-    200,
+    MAX_PROFILE_URL_LENGTH,
     "invalid_profile_url",
     "Please enter a valid profile URL.",
   );
@@ -242,7 +249,10 @@ function parseCreatorProfile(body: Record<string, unknown>, user: SessionUser, c
   }
   const resolvedInstagram = instagram.value ?? normalizeInstagramUrl(profileUrl);
   const resolvedYouTube = youtube.value ?? normalizeYouTubeUrl(profileUrl);
-  if ((resolvedInstagram && resolvedInstagram.length > 160) || (resolvedYouTube && resolvedYouTube.length > 160)) {
+  if (
+    (resolvedInstagram && resolvedInstagram.length > MAX_INSTAGRAM_URL_LENGTH) ||
+    (resolvedYouTube && resolvedYouTube.length > MAX_YOUTUBE_URL_LENGTH)
+  ) {
     return { ok: false, error: "Please enter a valid profile URL.", code: "invalid_profile_url", field: "profileUrl" };
   }
   if (
@@ -458,15 +468,24 @@ export async function GET(req: Request) {
       scope,
       keys,
     });
-    const canonicalRows = items.map((row) => ({
-      ...row,
-      // Public cards show the count checked during review, not the raw claim.
-      followers: row.verifiedFollowers ?? row.followers,
-      platform: normalizePlatform(row.platform) ?? "Instagram",
-      category: normalizeCategory(row.category) ?? row.category,
-      languages: row.languages ? (normalizeLanguageList(row.languages, true) ?? []).join(", ") : row.languages,
-      contentTypes: row.contentTypes ? (normalizeContentTypeList(row.contentTypes, true) ?? []).join(", ") : row.contentTypes,
-    }));
+    const canonicalRows = items.map((row) => {
+      const canonicalPlatform = normalizePlatform(row.platform) ?? "Instagram";
+      return {
+        ...row,
+        // Public cards show the count checked during review, not the raw claim.
+        followers: row.verifiedFollowers ?? row.followers,
+        // Re-run stored links through the same profile/public-host rules used
+        // on write, so legacy non-profile or private destinations are not
+        // republished as creator profile links.
+        instagram: normalizeInstagramUrl(row.instagram),
+        youtube: normalizeYouTubeUrl(row.youtube),
+        profileUrl: normalizeProfileUrl(row.profileUrl, canonicalPlatform),
+        platform: canonicalPlatform,
+        category: normalizeCategory(row.category) ?? row.category,
+        languages: row.languages ? (normalizeLanguageList(row.languages, true) ?? []).join(", ") : row.languages,
+        contentTypes: row.contentTypes ? (normalizeContentTypeList(row.contentTypes, true) ?? []).join(", ") : row.contentTypes,
+      };
+    });
     return Response.json({ creators: canonicalRows, pagination }, { headers: NO_STORE });
   } catch (e) {
     if (isListingQueryError(e)) {
