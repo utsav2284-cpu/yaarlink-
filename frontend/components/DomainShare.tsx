@@ -8,7 +8,7 @@ import { SITE } from "@/config/site";
 export default function DomainShare() {
   const { t } = useLang();
   const [copied, setCopied] = useState(false);
-  const [name, tld] = [SITE.domain.replace(/\.[^.]+$/, ""), SITE.domain.match(/\.[^.]+$/)?.[0] ?? ""];
+  const tld = SITE.domain.match(/\.[^.]+$/)?.[0] ?? "";
   const shareText = t("dom.shareText").replace("{url}", SITE.url);
 
   const copy = async () => {
@@ -53,7 +53,7 @@ export default function DomainShare() {
             onClick={copy}
             className="rounded-2xl bg-white px-6 py-3.5 text-[15px] font-extrabold text-[#1c1917] hover:bg-[#ffc53d]"
           >
-            {copied ? t("dom.copied") : `🔗 ${t("dom.copy")} ${name}${tld}`}
+            {copied ? t("dom.copied") : `🔗 ${t("dom.copy")} ${SITE.host}`}
           </button>
           <a
             href={`https://wa.me/?text=${encodeURIComponent(shareText)}`}
