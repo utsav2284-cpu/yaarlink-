@@ -1,7 +1,7 @@
 import { db } from "@/backend/db";
 import { creators, type Creator } from "@/backend/db/schema";
 import { and, desc, eq, sql } from "drizzle-orm";
-import { getSessionUser, type SessionUser } from "@/backend/auth";
+import { getSessionUser, isSessionUnavailableError, logSessionUnavailable, sessionUnavailableResponse, type SessionUser } from "@/backend/auth";
 import { createVerificationCode } from "@/backend/moderation";
 import { getClientKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
 import { normalizeInstagramUrl, normalizeProfileUrl, normalizeYouTubeUrl } from "@/backend/social-url";
@@ -328,7 +328,7 @@ export async function POST(req: Request) {
   try {
     const body = bodyRecord(await req.json().catch(() => null));
     if (!body) return Response.json({ error: "Invalid creator profile", code: "invalid_request" }, { status: 400, headers: NO_STORE });
-    const user = await getSessionUser().catch(() => null);
+    const user = await getSessionUser();
     if (!user) return Response.json({ error: "Please log in as a creator before creating your profile.", code: "unauthorized" }, { status: 401, headers: NO_STORE });
     if (user.role !== "creator") return Response.json({ error: "Only creator accounts can create creator profiles.", code: "forbidden" }, { status: 403, headers: NO_STORE });
 
@@ -362,6 +362,10 @@ export async function POST(req: Request) {
     const [row] = await db.insert(creators).values(values).returning(returningProfile);
     return Response.json({ creator: row }, { headers: NO_STORE });
   } catch (e) {
+    if (isSessionUnavailableError(e)) {
+      logSessionUnavailable(e);
+      return sessionUnavailableResponse(NO_STORE);
+    }
     console.error(e);
     return Response.json({ error: "Could not save creator", code: "request_failed" }, { status: 500, headers: NO_STORE });
   }
@@ -381,7 +385,7 @@ export async function PATCH(req: Request) {
       return Response.json({ error: "No creator profile changes were provided.", code: "no_changes" }, { status: 400, headers: NO_STORE });
     }
 
-    const user = await getSessionUser().catch(() => null);
+    const user = await getSessionUser();
     if (!user) return Response.json({ error: "Please log in as a creator to edit your profile.", code: "unauthorized" }, { status: 401, headers: NO_STORE });
     if (user.role !== "creator") return Response.json({ error: "Only creator accounts can edit creator profiles.", code: "forbidden" }, { status: 403, headers: NO_STORE });
 
@@ -454,6 +458,10 @@ export async function PATCH(req: Request) {
     if (!row) return Response.json({ error: "Creator profile not found.", code: "creator_profile_not_found" }, { status: 404, headers: NO_STORE });
     return Response.json({ creator: row, reviewRequired: materialChanged }, { headers: NO_STORE });
   } catch (e) {
+    if (isSessionUnavailableError(e)) {
+      logSessionUnavailable(e);
+      return sessionUnavailableResponse(NO_STORE);
+    }
     console.error(e);
     return Response.json({ error: "Could not update creator profile", code: "request_failed" }, { status: 500, headers: NO_STORE });
   }
@@ -463,7 +471,7 @@ export async function DELETE(req: Request) {
   const rl = await rateLimit(getClientKey(req, "creator-manage"), 30, 60 * 60_000);
   if (!rl.ok) return limitedResponse(rl.retryAfter);
   try {
-    const user = await getSessionUser().catch(() => null);
+    const user = await getSessionUser();
     if (!user) return Response.json({ error: "Please log in as a creator to delete your profile.", code: "unauthorized" }, { status: 401, headers: NO_STORE });
     if (user.role !== "creator") return Response.json({ error: "Only creator accounts can delete creator profiles.", code: "forbidden" }, { status: 403, headers: NO_STORE });
 
@@ -471,6 +479,10 @@ export async function DELETE(req: Request) {
     if (!row) return Response.json({ error: "Creator profile not found.", code: "creator_profile_not_found" }, { status: 404, headers: NO_STORE });
     return Response.json({ ok: true, deleted: true }, { headers: NO_STORE });
   } catch (e) {
+    if (isSessionUnavailableError(e)) {
+      logSessionUnavailable(e);
+      return sessionUnavailableResponse(NO_STORE);
+    }
     console.error(e);
     return Response.json({ error: "Could not delete creator profile", code: "request_failed" }, { status: 500, headers: NO_STORE });
   }

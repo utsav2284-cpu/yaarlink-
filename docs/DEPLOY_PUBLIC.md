@@ -91,7 +91,7 @@ Install with `npm ci` so builds use the exact versions recorded in the tracked `
 
 After deployment, check:
 
-1. `/api/health` returns `{"ok":true}`.
+1. `/api/health` returns HTTP 200 with `{"ok":true,...}`. HTTP 503/`"status":"degraded"` means the database connection or required schema check failed.
 2. A document response has `Content-Security-Policy` and `Reporting-Endpoints`, and does **not** rely on `Content-Security-Policy-Report-Only`.
 3. Pages hydrate and forms work with no CSP errors in the browser console.
 4. Vercel logs show no database TLS/configuration errors. Sanitized CSP violations, if any, appear with the `[csp-report]` prefix.

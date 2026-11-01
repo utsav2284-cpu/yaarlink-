@@ -5,8 +5,8 @@ import {
 } from "@/backend/application-contact";
 import { db } from "@/backend/db";
 import { applications, campaigns, creators, users } from "@/backend/db/schema";
-import { isAdmin } from "@/backend/admin";
-import { getSessionUser } from "@/backend/auth";
+import { adminSessionUnavailableResponse, isAdmin, isAdminSessionUnavailableError, logAdminSessionUnavailable } from "@/backend/admin";
+import { getSessionUser, isSessionUnavailableError, logSessionUnavailable, sessionUnavailableResponse } from "@/backend/auth";
 import { isUuid } from "@/backend/moderation";
 import { createApplicationNotification, sendApplicationNotificationEmailBestEffort } from "@/backend/notifications";
 import { and, desc, eq, sql } from "drizzle-orm";
@@ -183,6 +183,10 @@ export async function GET(req: Request) {
       { headers: NO_STORE },
     );
   } catch (e) {
+    if (isAdminSessionUnavailableError(e)) {
+      logAdminSessionUnavailable(e);
+      return adminSessionUnavailableResponse(NO_STORE);
+    }
     if (isListingQueryError(e)) {
       return Response.json({ error: e.message, code: e.code }, { status: e.status, headers: NO_STORE });
     }
@@ -209,7 +213,7 @@ export async function POST(req: Request) {
       return Response.json({ error: "This campaign is no longer accepting applications.", code: "campaign_closed" }, { status: 400, headers: NO_STORE });
     }
 
-    const user = await getSessionUser().catch(() => null);
+    const user = await getSessionUser();
     if (!user) return Response.json({ error: "Please log in as a creator before applying.", code: "unauthorized" }, { status: 401, headers: NO_STORE });
     if (user.role !== "creator") return Response.json({ error: "Only creator accounts can apply to campaigns.", code: "forbidden" }, { status: 403, headers: NO_STORE });
 
@@ -395,6 +399,10 @@ export async function POST(req: Request) {
     }
     return Response.json({ error: "Campaign not found", code: "campaign_not_found" }, { status: 404, headers: NO_STORE });
   } catch (e) {
+    if (isSessionUnavailableError(e)) {
+      logSessionUnavailable(e);
+      return sessionUnavailableResponse(NO_STORE);
+    }
     console.error(e);
     return Response.json({ error: "Could not apply", code: "request_failed" }, { status: 500, headers: NO_STORE });
   }
@@ -438,7 +446,7 @@ export async function PATCH(req: Request) {
     const contactSharingConsent = body.contactSharingConsent === true;
     const decisionNote = hasField(body, "decisionNote") ? cleanText(body.decisionNote, 1000) ?? null : null;
 
-    const user = await getSessionUser().catch(() => null);
+    const user = await getSessionUser();
     if (!user) return Response.json({ error: "Please log in to manage this application.", code: "unauthorized" }, { status: 401, headers: NO_STORE });
 
     const [peek] = await db.select({ campaignId: applications.campaignId }).from(applications).where(eq(applications.id, id)).limit(1);
@@ -705,6 +713,10 @@ export async function PATCH(req: Request) {
       { status: 409, headers: NO_STORE },
     );
   } catch (e) {
+    if (isSessionUnavailableError(e)) {
+      logSessionUnavailable(e);
+      return sessionUnavailableResponse(NO_STORE);
+    }
     console.error(e);
     return Response.json({ error: "Could not update application", code: "request_failed" }, { status: 500, headers: NO_STORE });
   }

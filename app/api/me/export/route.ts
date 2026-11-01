@@ -1,5 +1,5 @@
 import { buildAccountExport, verifyUserPassword } from "@/backend/account";
-import { getSessionContext } from "@/backend/auth";
+import { getSessionContext, isSessionUnavailableError, logSessionUnavailable, sessionUnavailableResponse } from "@/backend/auth";
 import { PASSWORD_MAX_LENGTH, passwordLength } from "@/backend/password-policy";
 import { hashKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
 
@@ -40,6 +40,10 @@ export async function POST(req: Request) {
       },
     });
   } catch (error) {
+    if (isSessionUnavailableError(error)) {
+      logSessionUnavailable(error);
+      return sessionUnavailableResponse(NO_STORE);
+    }
     console.error(error);
     return jsonError(500, "Could not export account data.", "request_failed");
   }

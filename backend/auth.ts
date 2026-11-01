@@ -156,6 +156,58 @@ export function sessionSecretProblem(): "missing" | "weak" | null {
   return signingSecretProblemForName("SESSION_SECRET");
 }
 
+/**
+ * The session store could not be checked. This is deliberately distinct from
+ * a missing, invalid, expired, or revoked session: an outage must never be
+ * reported to a visitor or an authorization check as "logged out".
+ */
+export class SessionUnavailableError extends Error {
+  readonly code = "service_unavailable" as const;
+
+  constructor(cause?: unknown) {
+    super("Session service is temporarily unavailable", cause === undefined ? undefined : { cause });
+    this.name = "SessionUnavailableError";
+  }
+}
+
+export function isSessionUnavailableError(error: unknown): error is SessionUnavailableError {
+  return error instanceof SessionUnavailableError;
+}
+
+/**
+ * Log only the root error name/code for a session-store failure. The full
+ * Drizzle cause can contain the SQL text and bound user/session identifiers,
+ * neither of which belongs in routine operational logs.
+ */
+export function logSessionUnavailable(error: SessionUnavailableError, operation = "lookup"): void {
+  let current: unknown = error.cause ?? error;
+  const seen = new Set<unknown>();
+  while (current instanceof Error && !seen.has(current)) {
+    seen.add(current);
+    const cause = (current as Error & { cause?: unknown }).cause;
+    if (!(cause instanceof Error)) break;
+    current = cause;
+  }
+
+  const root = current instanceof Error ? current : null;
+  const code = (root as (Error & { code?: unknown }) | null)?.code;
+  console.error(`[session] ${operation} failed`, {
+    name: root?.name || "UnknownError",
+    code: typeof code === "string" || typeof code === "number" ? String(code) : "unknown",
+  });
+}
+
+/** Standard controlled-degraded response for a failed session lookup. */
+export function sessionUnavailableResponse(headersInit?: HeadersInit): Response {
+  const headers = new Headers(headersInit);
+  if (!headers.has("Cache-Control")) headers.set("Cache-Control", "private, no-store");
+  headers.set("Retry-After", "30");
+  return Response.json(
+    { error: "Session service is temporarily unavailable", code: "service_unavailable" },
+    { status: 503, headers },
+  );
+}
+
 async function hmac(data: string) {
   const key = await crypto.subtle.importKey(
     "raw",
@@ -213,7 +265,7 @@ async function readToken(token: string | undefined): Promise<Payload | null> {
     if (!safeEqual(await hmac(SESSION_SIGN_PREFIX + body), fromB64url(sig))) return null;
     const payload = JSON.parse(new TextDecoder().decode(fromB64url(body))) as Payload;
     const now = Date.now();
-    if (!payload.uid || !isSessionId(payload.sid) || typeof payload.ver !== "number") return null;
+    if (!isSessionId(payload.uid) || !isSessionId(payload.sid) || !Number.isSafeInteger(payload.ver) || payload.ver < 0) return null;
     if (typeof payload.exp !== "number" || payload.exp < now) return null;
     if (typeof payload.iat !== "number" || payload.iat > now + MAX_CLOCK_SKEW_MS) return null;
     return payload;
@@ -295,7 +347,13 @@ export type SessionContext = {
  */
 export async function getSessionContext(): Promise<SessionContext | null> {
   const jar = await cookies();
-  const payload = await readToken(jar.get(SESSION_COOKIE)?.value);
+  const token = jar.get(SESSION_COOKIE)?.value;
+  if (token) {
+    const problem = sessionSecretProblem();
+    if (problem) throw new SessionUnavailableError(new Error(`SESSION_SECRET is ${problem}`));
+  }
+
+  const payload = await readToken(token);
   if (!payload) return null;
 
   const now = new Date();
@@ -319,7 +377,11 @@ export async function getSessionContext(): Promise<SessionContext | null> {
     .from(users)
     .innerJoin(userSessions, and(eq(userSessions.userId, users.id), eq(userSessions.id, payload.sid)))
     .where(eq(users.id, payload.uid))
-    .limit(1);
+    .limit(1)
+    .catch((error: unknown) => {
+      // A database failure is unknown session state, not a logged-out user.
+      throw new SessionUnavailableError(error);
+    });
 
   const row = rows[0];
   if (
@@ -344,7 +406,10 @@ export async function getSessionContext(): Promise<SessionContext | null> {
           gt(userSessions.expiresAt, now),
         ),
       )
-      .returning({ id: userSessions.id });
+      .returning({ id: userSessions.id })
+      .catch((error: unknown) => {
+        throw new SessionUnavailableError(error);
+      });
     if (!touched.length) return null;
   }
 

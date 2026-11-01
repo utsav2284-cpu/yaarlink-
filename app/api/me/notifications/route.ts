@@ -1,6 +1,6 @@
 import { db } from "@/backend/db";
 import { notifications } from "@/backend/db/schema";
-import { getSessionUser } from "@/backend/auth";
+import { getSessionUser, isSessionUnavailableError, logSessionUnavailable, sessionUnavailableResponse } from "@/backend/auth";
 import { isUuid } from "@/backend/moderation";
 import { and, eq, isNull, sql } from "drizzle-orm";
 
@@ -49,6 +49,10 @@ export async function PATCH(req: Request) {
     }
     return Response.json({ ok: true, unreadNotificationCount: await unreadCount(user.id) }, { headers: NO_STORE });
   } catch (e) {
+    if (isSessionUnavailableError(e)) {
+      logSessionUnavailable(e);
+      return sessionUnavailableResponse(NO_STORE);
+    }
     console.error(e);
     return Response.json({ error: "Could not update notifications", code: "request_failed" }, { status: 500, headers: NO_STORE });
   }
