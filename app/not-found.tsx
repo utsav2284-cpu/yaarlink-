@@ -8,7 +8,7 @@ export default function NotFound() {
   return (
     <div className="mx-auto grid min-h-[60vh] max-w-xl place-items-center px-4 py-16 text-center">
       <div>
-        <p className="font-display text-[96px] font-black leading-none text-[#e4572e]">404</p>
+        <p className="font-display text-[96px] font-black leading-none text-[#c7431f]">404</p>
         <h1 className="font-display mt-3 text-[30px] font-black">{t("nf.title")}</h1>
         <p className="mt-2 text-[16px] text-[#57534e]">{t("nf.body")}</p>
         <div className="mt-6 flex flex-col justify-center gap-2 sm:flex-row">

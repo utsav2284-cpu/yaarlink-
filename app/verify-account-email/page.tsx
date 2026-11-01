@@ -126,13 +126,13 @@ export default function VerifyAccountEmailPage() {
               <h2 className="text-[18px] font-black text-red-800">{t("auth.linkInvalidTitle")}</h2>
               <p className="mt-2 text-[14px] leading-relaxed text-red-700">{t("auth.linkInvalidBody")}</p>
             </div>
-            <Link href="/account" className="mt-5 block rounded-2xl bg-[#e4572e] py-3.5 text-center text-[15.5px] font-extrabold text-white hover:bg-[#c7431f]">
+            <Link href="/account" className="mt-5 block rounded-2xl bg-[#c7431f] py-3.5 text-center text-[15.5px] font-extrabold text-white hover:bg-[#a93618]">
               {t("auth.requestNewLink")}
             </Link>
           </div>
         ) : (
           <>
-            <p className="mt-1 text-[14.5px] leading-relaxed text-[#78716c]">{t(isChange ? "auth.emailChangeSub" : "auth.verifyAccountSub")}</p>
+            <p className="mt-1 text-[14.5px] leading-relaxed text-[#6f6862]">{t(isChange ? "auth.emailChangeSub" : "auth.verifyAccountSub")}</p>
             {err && <p className="mt-4 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-[13.5px] font-bold text-red-700">{err}</p>}
             <button onClick={confirm} disabled={!mounted || saving} className="mt-5 w-full rounded-2xl bg-[#1c1917] py-3.5 text-[16px] font-extrabold text-white hover:bg-black disabled:opacity-60">
               {saving ? t("auth.confirming") : t(isChange ? "auth.emailChangeBtn" : "auth.verifyAccountBtn")}
@@ -142,7 +142,7 @@ export default function VerifyAccountEmailPage() {
 
         {!success && (
           <p className="mt-5 text-center text-[14px]">
-            <Link href="/login" className="font-bold text-[#e4572e]">{t("auth.backToLogin")}</Link>
+            <Link href="/login" className="font-bold text-[#c7431f]">{t("auth.backToLogin")}</Link>
           </p>
         )}
       </div>

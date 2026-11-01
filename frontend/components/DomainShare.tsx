@@ -43,7 +43,7 @@ export default function DomainShare() {
         <p className="text-[12.5px] font-bold uppercase tracking-[0.2em] text-[#ffc53d]">{t("dom.kicker")}</p>
         <p className="font-display mt-3 whitespace-nowrap text-[clamp(30px,10vw,44px)] font-black leading-none tracking-tight sm:text-[76px]">
           the<span className="text-[#ffc53d]">yaar</span>
-          <span className="text-[#e4572e]">{tld}</span>
+          <span className="text-[#ff8a5c]">{tld}</span>
         </p>
         <p className="mx-auto mt-4 max-w-md text-[15.5px] text-white/70">
           {t("dom.sub")}
@@ -53,13 +53,13 @@ export default function DomainShare() {
             onClick={copy}
             className="rounded-2xl bg-white px-6 py-3.5 text-[15px] font-extrabold text-[#1c1917] hover:bg-[#ffc53d]"
           >
-            {copied ? t("dom.copied") : `🔗 ${t("dom.copy")} ${SITE.host}`}
+            {copied ? t("dom.copied") : <><span aria-hidden="true">🔗</span> {t("dom.copy")} {SITE.host}</>}
           </button>
           <a
             href={`https://wa.me/?text=${encodeURIComponent(shareText)}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="rounded-2xl bg-[#25D366] px-6 py-3.5 text-[15px] font-extrabold text-white hover:brightness-95"
+            className="rounded-2xl bg-[#0f7a3f] px-6 py-3.5 text-[15px] font-extrabold text-white hover:brightness-95"
           >
             {t("dom.share")}
           </a>

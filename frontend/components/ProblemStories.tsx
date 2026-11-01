@@ -79,9 +79,9 @@ const STORIES: Story[] = [
     paras: ["about.s1.p1", "about.s1.p2", "about.s1.p3"],
     take: "about.s1.take",
     icon: StoreIcon,
-    numClass: "text-[#e4572e]",
+    numClass: "text-[#c7431f]",
     chipClass: "bg-[#ffe8d6] text-[#c7431f]",
-    barClass: "border-[#e4572e]",
+    barClass: "border-[#c7431f]",
   },
   {
     num: "02",
@@ -114,7 +114,7 @@ export default function ProblemStories() {
 
   return (
     <section className="mx-auto max-w-5xl px-4 pb-12 sm:px-6" aria-labelledby="problem-stories-title">
-      <p className="text-[12.5px] font-bold uppercase tracking-widest text-[#e4572e]">
+      <p className="text-[12.5px] font-bold uppercase tracking-widest text-[#c7431f]">
         {t("about.stories.eyebrow")}
       </p>
       <h2
@@ -140,7 +140,7 @@ export default function ProblemStories() {
                   {s.icon}
                 </span>
               </div>
-              <p className="mt-5 text-[11.5px] font-bold uppercase tracking-widest text-[#a8a29e]">{t(s.cat)}</p>
+              <p className="mt-5 text-[11.5px] font-bold uppercase tracking-widest text-[#6f6862]">{t(s.cat)}</p>
               <h3 className="font-display mt-1.5 text-[23px] font-black leading-snug">{t(s.title)}</h3>
               <div className="mt-3 space-y-3 text-[15px] leading-relaxed text-[#57534e]">
                 {s.paras.map((k) => (
@@ -159,7 +159,7 @@ export default function ProblemStories() {
         ))}
       </div>
 
-      <p className="mt-5 text-center text-[13px] text-[#a8a29e]">{t("about.stories.note")}</p>
+      <p className="mt-5 text-center text-[13px] text-[#6f6862]">{t("about.stories.note")}</p>
 
       <Reveal>
         <div className="relative mt-6 overflow-hidden rounded-[28px] bg-[#1c1917] p-8 text-center sm:p-12">

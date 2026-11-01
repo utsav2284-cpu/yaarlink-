@@ -80,7 +80,7 @@ export default function SignupPage() {
     <div className="mx-auto max-w-md px-4 py-14">
       <div className="rounded-[28px] border border-[#e9ddc3] bg-white p-8 card-shadow">
         <h1 className="font-display text-[30px] font-black">{t("auth.signupTitle")}</h1>
-        <p className="mt-1 text-[14.5px] text-[#78716c]">{t("auth.signupSub")}</p>
+        <p className="mt-1 text-[14.5px] text-[#6f6862]">{t("auth.signupSub")}</p>
 
         {sent ? (
           <div className="mt-6">
@@ -100,7 +100,7 @@ export default function SignupPage() {
                 type="button"
                 disabled={saving || resendSeconds > 0}
                 onClick={requestVerification}
-                className="rounded-2xl bg-[#e4572e] py-3.5 text-[15.5px] font-extrabold text-white hover:bg-[#c7431f] disabled:opacity-60"
+                className="rounded-2xl bg-[#c7431f] py-3.5 text-[15.5px] font-extrabold text-white hover:bg-[#a93618] disabled:opacity-60"
               >
                 {saving
                   ? t("auth.creating")
@@ -128,19 +128,24 @@ export default function SignupPage() {
                   key={r}
                   type="button"
                   onClick={() => set("role", r)}
-                  className={`rounded-2xl border-2 p-4 text-left ${form.role === r ? "border-[#e4572e] bg-[#fff4de]" : "border-[#f0e6cc] bg-[#fffbf1]"}`}
+                  aria-pressed={form.role === r}
+                  className={`rounded-2xl border-2 p-4 text-left ${form.role === r ? "border-[#c7431f] bg-[#fff4de]" : "border-[#f0e6cc] bg-[#fffbf1]"}`}
                 >
-                  <p className="text-[22px]">{r === "brand" ? "🏪" : "🎥"}</p>
+                  <p aria-hidden="true" className="text-[22px]">{r === "brand" ? "🏪" : "🎥"}</p>
                   <p className="mt-1 text-[15px] font-extrabold capitalize">{t(r === "brand" ? "auth.brand" : "auth.creator")}</p>
-                  <p className="text-[12.5px] text-[#78716c]">{r === "brand" ? t("auth.brandHint") : t("auth.creatorHint")}</p>
+                  <p className="text-[12.5px] text-[#6f6862]">{r === "brand" ? t("auth.brandHint") : t("auth.creatorHint")}</p>
                 </button>
               ))}
             </div>
             <form onSubmit={submit} className="mt-5 grid gap-3">
-              <input value={form.name} onChange={(e) => set("name", e.target.value)} required autoComplete="name" placeholder={form.role === "brand" ? t("auth.nameBrand") : t("auth.nameCreator")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
-              <input value={form.email} onChange={(e) => set("email", e.target.value)} required type="email" autoComplete="email" placeholder={t("auth.email")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
-              <input value={form.phone} onChange={(e) => set("phone", e.target.value)} autoComplete="tel" placeholder={t("auth.phone")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
-              <input value={form.password} onChange={(e) => set("password", e.target.value)} required type="password" minLength={10} maxLength={256} autoComplete="new-password" placeholder={t("auth.pwHint")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+              <label htmlFor="signup-name" className="sr-only">{form.role === "brand" ? t("auth.nameBrand") : t("auth.nameCreator")}</label>
+              <input id="signup-name" value={form.name} onChange={(e) => set("name", e.target.value)} required autoComplete="name" placeholder={form.role === "brand" ? t("auth.nameBrand") : t("auth.nameCreator")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+              <label htmlFor="signup-email" className="sr-only">{t("auth.email")}</label>
+              <input id="signup-email" value={form.email} onChange={(e) => set("email", e.target.value)} required type="email" autoComplete="email" placeholder={t("auth.email")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+              <label htmlFor="signup-phone" className="sr-only">{t("auth.phone")}</label>
+              <input id="signup-phone" value={form.phone} onChange={(e) => set("phone", e.target.value)} autoComplete="tel" placeholder={t("auth.phone")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+              <label htmlFor="signup-password" className="sr-only">{t("auth.password")}</label>
+              <input id="signup-password" value={form.password} onChange={(e) => set("password", e.target.value)} required type="password" minLength={10} maxLength={256} autoComplete="new-password" placeholder={t("auth.pwHint")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
               <label htmlFor="signup-legal-consent" className="flex w-full min-w-0 cursor-pointer items-start gap-3 rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 text-[13.5px] font-semibold leading-relaxed text-[#57534e]">
                 <input
                   id="signup-legal-consent"
@@ -148,27 +153,27 @@ export default function SignupPage() {
                   checked={acceptedLegal}
                   onChange={(e) => setAcceptedLegal(e.target.checked)}
                   required
-                  className="mt-1 h-4 w-4 flex-none accent-[#e4572e]"
+                  className="mt-1 h-4 w-4 flex-none accent-[#c7431f]"
                 />
                 <span className="min-w-0 flex-1">
                   {t("auth.legalConsentStart")}{" "}
-                  <Link href="/terms" target="_blank" rel="noreferrer" className="font-extrabold text-[#e4572e] underline-offset-2 hover:underline">
+                  <Link href="/terms" target="_blank" rel="noreferrer" className="font-extrabold text-[#c7431f] underline-offset-2 hover:underline">
                     {t("legal.terms")}
                   </Link>{" "}
                   {t("auth.legalConsentAnd")}{" "}
-                  <Link href="/privacy" target="_blank" rel="noreferrer" className="font-extrabold text-[#e4572e] underline-offset-2 hover:underline">
+                  <Link href="/privacy" target="_blank" rel="noreferrer" className="font-extrabold text-[#c7431f] underline-offset-2 hover:underline">
                     {t("legal.privacy")}
                   </Link>{" "}
                   {t("auth.legalConsentEnd")}
                 </span>
               </label>
               {err && <p className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-[13.5px] font-bold text-red-700">{err}</p>}
-              <button disabled={saving} className="rounded-2xl bg-[#e4572e] py-3.5 text-[16px] font-extrabold text-white hover:bg-[#c7431f] disabled:opacity-60">{saving ? t("auth.creating") : t("auth.signupBtn")}</button>
+              <button disabled={saving} className="rounded-2xl bg-[#c7431f] py-3.5 text-[16px] font-extrabold text-white hover:bg-[#a93618] disabled:opacity-60">{saving ? t("auth.creating") : t("auth.signupBtn")}</button>
             </form>
           </>
         )}
 
-        <p className="mt-4 text-center text-[14px] text-[#78716c]">{t("auth.haveAccount")} <Link href="/login" className="font-bold text-[#e4572e]">{t("auth.login")}</Link></p>
+        <p className="mt-4 text-center text-[14px] text-[#6f6862]">{t("auth.haveAccount")} <Link href="/login" className="font-bold text-[#c7431f]">{t("auth.login")}</Link></p>
       </div>
     </div>
   );

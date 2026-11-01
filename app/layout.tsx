@@ -41,7 +41,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body className="bg-[#fffbf1] text-[#1c1917] antialiased">
         <LanguageProvider>
           <Navbar />
-          <main className="min-h-[70vh]">{children}</main>
+          <main id="main-content" tabIndex={-1} className="min-h-[70vh]">{children}</main>
           <Footer />
         </LanguageProvider>
       </body>

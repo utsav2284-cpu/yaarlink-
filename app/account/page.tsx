@@ -52,7 +52,7 @@ function Section({ title, help, children, danger = false }: { title: string; hel
   return (
     <section className={`rounded-[24px] border bg-white p-6 card-shadow ${danger ? "border-red-200" : "border-[#e9ddc3]"}`}>
       <h2 className={`text-[20px] font-black ${danger ? "text-red-800" : "text-[#1c1917]"}`}>{title}</h2>
-      {help && <p className="mt-1 text-[14px] leading-relaxed text-[#78716c]">{help}</p>}
+      {help && <p className="mt-1 text-[14px] leading-relaxed text-[#6f6862]">{help}</p>}
       <div className="mt-5">{children}</div>
     </section>
   );
@@ -182,7 +182,7 @@ export default function AccountPage() {
               <button onClick={() => window.location.reload()} className={`${primaryButtonClass} mt-5`}>{t("account.retry")}</button>
             </>
           ) : (
-            <p className="text-[16px] font-bold text-[#78716c]">{t("account.loading")}</p>
+            <p className="text-[16px] font-bold text-[#6f6862]">{t("account.loading")}</p>
           )}
         </div>
       </div>
@@ -319,10 +319,10 @@ export default function AccountPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-      <Link href="/dashboard" className="text-[14px] font-bold text-[#e4572e]">{t("account.backDashboard")}</Link>
+      <Link href="/dashboard" className="text-[14px] font-bold text-[#c7431f]">{t("account.backDashboard")}</Link>
       <div className="mt-3">
         <h1 className="font-display text-[34px] font-black sm:text-[42px]">{t("account.title")}</h1>
-        <p className="mt-1 max-w-2xl text-[15px] leading-relaxed text-[#78716c]">{t("account.subtitle")}</p>
+        <p className="mt-1 max-w-2xl text-[15px] leading-relaxed text-[#6f6862]">{t("account.subtitle")}</p>
       </div>
 
       <nav aria-label={t("legal.navLabel")} className="mt-4 flex flex-wrap gap-2 text-[13.5px] font-extrabold">
@@ -339,23 +339,23 @@ export default function AccountPage() {
         <Section title={t("account.overview")}>
           <dl className="grid gap-3 text-[14.5px]">
             <div className="flex justify-between gap-4 border-b border-[#f0e6cc] pb-3">
-              <dt className="font-bold text-[#78716c]">{t("account.name")}</dt>
+              <dt className="font-bold text-[#6f6862]">{t("account.name")}</dt>
               <dd className="text-right font-extrabold">{user.name}</dd>
             </div>
             <div className="flex justify-between gap-4 border-b border-[#f0e6cc] pb-3">
-              <dt className="font-bold text-[#78716c]">{t("account.role")}</dt>
+              <dt className="font-bold text-[#6f6862]">{t("account.role")}</dt>
               <dd className="text-right font-extrabold">{roleLabel}</dd>
             </div>
             <div className="flex justify-between gap-4 border-b border-[#f0e6cc] pb-3">
-              <dt className="font-bold text-[#78716c]">{t("brand.email")}</dt>
+              <dt className="font-bold text-[#6f6862]">{t("brand.email")}</dt>
               <dd className="break-all text-right font-extrabold">{user.email}</dd>
             </div>
             <div className="flex justify-between gap-4 border-b border-[#f0e6cc] pb-3">
-              <dt className="font-bold text-[#78716c]">{t("auth.phone")}</dt>
+              <dt className="font-bold text-[#6f6862]">{t("auth.phone")}</dt>
               <dd className="text-right font-extrabold">{user.phone || t("account.notSet")}</dd>
             </div>
             <div className="flex justify-between gap-4">
-              <dt className="font-bold text-[#78716c]">{t("account.memberSince")}</dt>
+              <dt className="font-bold text-[#6f6862]">{t("account.memberSince")}</dt>
               <dd className="text-right font-extrabold">{formatDate(user.createdAt)}</dd>
             </div>
           </dl>
@@ -389,13 +389,13 @@ export default function AccountPage() {
             </div>
           )}
           <form onSubmit={submitEmailChange} className="grid gap-3">
-            <label className={labelClass}>
+            <label className={labelClass} htmlFor="account-new-email">
               {t("account.newEmail")}
-              <input value={emailForm.newEmail} onChange={(e) => setEmailForm((f) => ({ ...f, newEmail: e.target.value }))} required type="email" autoComplete="email" className={inputClass} />
+              <input id="account-new-email" value={emailForm.newEmail} onChange={(e) => setEmailForm((f) => ({ ...f, newEmail: e.target.value }))} required type="email" autoComplete="email" className={inputClass} />
             </label>
-            <label className={labelClass}>
+            <label className={labelClass} htmlFor="account-email-current-password">
               {t("account.currentPassword")}
-              <input value={emailForm.currentPassword} onChange={(e) => setEmailForm((f) => ({ ...f, currentPassword: e.target.value }))} required type="password" maxLength={256} autoComplete="current-password" className={inputClass} />
+              <input id="account-email-current-password" value={emailForm.currentPassword} onChange={(e) => setEmailForm((f) => ({ ...f, currentPassword: e.target.value }))} required type="password" maxLength={256} autoComplete="current-password" className={inputClass} />
             </label>
             <button disabled={busyKey === "change-email"} className={primaryButtonClass}>{t("account.sendChangeLink")}</button>
           </form>
@@ -403,13 +403,13 @@ export default function AccountPage() {
 
         <Section title={t("account.changePhone")} help={t("account.changePhoneHelp")}>
           <form onSubmit={submitPhone} className="grid gap-3">
-            <label className={labelClass}>
+            <label className={labelClass} htmlFor="account-phone">
               {t("auth.phone")}
-              <input value={phoneForm.phone} onChange={(e) => setPhoneForm((f) => ({ ...f, phone: e.target.value }))} type="tel" autoComplete="tel" className={inputClass} />
+              <input id="account-phone" value={phoneForm.phone} onChange={(e) => setPhoneForm((f) => ({ ...f, phone: e.target.value }))} type="tel" autoComplete="tel" className={inputClass} />
             </label>
-            <label className={labelClass}>
+            <label className={labelClass} htmlFor="account-phone-current-password">
               {t("account.currentPassword")}
-              <input value={phoneForm.currentPassword} onChange={(e) => setPhoneForm((f) => ({ ...f, currentPassword: e.target.value }))} required type="password" maxLength={256} autoComplete="current-password" className={inputClass} />
+              <input id="account-phone-current-password" value={phoneForm.currentPassword} onChange={(e) => setPhoneForm((f) => ({ ...f, currentPassword: e.target.value }))} required type="password" maxLength={256} autoComplete="current-password" className={inputClass} />
             </label>
             <button disabled={busyKey === "change-phone"} className={primaryButtonClass}>{t("account.savePhone")}</button>
           </form>
@@ -417,19 +417,19 @@ export default function AccountPage() {
 
         <Section title={t("account.changePassword")} help={t("account.changePasswordHelp")}>
           <form onSubmit={submitPassword} className="grid gap-3">
-            <label className={labelClass}>
+            <label className={labelClass} htmlFor="account-current-password">
               {t("account.currentPassword")}
-              <input value={passwordForm.currentPassword} onChange={(e) => setPasswordForm((f) => ({ ...f, currentPassword: e.target.value }))} required type="password" maxLength={256} autoComplete="current-password" className={inputClass} />
+              <input id="account-current-password" value={passwordForm.currentPassword} onChange={(e) => setPasswordForm((f) => ({ ...f, currentPassword: e.target.value }))} required type="password" maxLength={256} autoComplete="current-password" className={inputClass} />
             </label>
-            <label className={labelClass}>
+            <label className={labelClass} htmlFor="account-new-password">
               {t("auth.newPassword")}
-              <input value={passwordForm.newPassword} onChange={(e) => setPasswordForm((f) => ({ ...f, newPassword: e.target.value }))} required type="password" minLength={10} maxLength={256} autoComplete="new-password" className={inputClass} />
+              <input id="account-new-password" aria-describedby="account-password-policy" value={passwordForm.newPassword} onChange={(e) => setPasswordForm((f) => ({ ...f, newPassword: e.target.value }))} required type="password" minLength={10} maxLength={256} autoComplete="new-password" className={inputClass} />
             </label>
-            <label className={labelClass}>
+            <label className={labelClass} htmlFor="account-confirm-password">
               {t("auth.confirmPassword")}
-              <input value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm((f) => ({ ...f, confirmPassword: e.target.value }))} required type="password" minLength={10} maxLength={256} autoComplete="new-password" className={inputClass} />
+              <input id="account-confirm-password" aria-describedby="account-password-policy" value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm((f) => ({ ...f, confirmPassword: e.target.value }))} required type="password" minLength={10} maxLength={256} autoComplete="new-password" className={inputClass} />
             </label>
-            <p className="text-[13px] text-[#78716c]">{t("auth.passwordPolicy")}</p>
+            <p id="account-password-policy" className="text-[13px] text-[#6f6862]">{t("auth.passwordPolicy")}</p>
             <button disabled={busyKey === "change-password"} className={primaryButtonClass}>{t("account.changePassword")}</button>
           </form>
         </Section>
@@ -445,7 +445,7 @@ export default function AccountPage() {
                     {deviceLabel(session)}{" "}
                     {session.current && <span className="ml-1 rounded-full bg-[#17452e] px-2.5 py-1 text-[11.5px] font-bold text-white">{t("account.currentDevice")}</span>}
                   </p>
-                  <p className="mt-1 text-[13px] leading-relaxed text-[#78716c]">
+                  <p className="mt-1 text-[13px] leading-relaxed text-[#6f6862]">
                     {t("account.signedIn")}: {formatDate(session.createdAt)} · {t("account.lastActive")}: {formatDate(session.lastSeenAt)} · {t("account.expires")}: {formatDate(session.expiresAt)}
                   </p>
                 </div>
@@ -461,7 +461,7 @@ export default function AccountPage() {
             <button onClick={revokeOthers} disabled={!otherSessions.length || busyKey === "revoke-others"} className={secondaryButtonClass}>
               {t("account.revokeOthers")}
             </button>
-            {!otherSessions.length && <p className="text-[13.5px] font-bold text-[#78716c]">{t("account.noOtherSessions")}</p>}
+            {!otherSessions.length && <p className="text-[13.5px] font-bold text-[#6f6862]">{t("account.noOtherSessions")}</p>}
           </div>
         </Section>
       </div>
@@ -470,9 +470,9 @@ export default function AccountPage() {
         <div id="export-data" className="scroll-mt-24">
         <Section title={t("account.exportTitle")} help={t("account.exportHelp")}>
           <form onSubmit={exportData} className="grid gap-3">
-            <label className={labelClass}>
+            <label className={labelClass} htmlFor="account-export-password">
               {t("account.currentPassword")}
-              <input value={exportPassword} onChange={(e) => setExportPassword(e.target.value)} required type="password" maxLength={256} autoComplete="current-password" className={inputClass} />
+              <input id="account-export-password" value={exportPassword} onChange={(e) => setExportPassword(e.target.value)} required type="password" maxLength={256} autoComplete="current-password" className={inputClass} />
             </label>
             <button disabled={busyKey === "export"} className={primaryButtonClass}>
               {busyKey === "export" ? t("account.exporting") : t("account.exportBtn")}
@@ -485,13 +485,13 @@ export default function AccountPage() {
         <Section title={t("account.deleteTitle")} help={t("account.deleteHelp")} danger>
           <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13.5px] font-bold text-amber-900">{t("account.deleteWarning")}</p>
           <form onSubmit={deleteAccount} className="mt-4 grid gap-3">
-            <label className={labelClass}>
+            <label className={labelClass} htmlFor="account-delete-password">
               {t("account.currentPassword")}
-              <input value={deleteForm.currentPassword} onChange={(e) => setDeleteForm((f) => ({ ...f, currentPassword: e.target.value }))} required type="password" maxLength={256} autoComplete="current-password" className={inputClass} />
+              <input id="account-delete-password" value={deleteForm.currentPassword} onChange={(e) => setDeleteForm((f) => ({ ...f, currentPassword: e.target.value }))} required type="password" maxLength={256} autoComplete="current-password" className={inputClass} />
             </label>
-            <label className={labelClass}>
+            <label className={labelClass} htmlFor="account-delete-email">
               {t("account.confirmEmailLabel")}
-              <input value={deleteForm.confirmationEmail} onChange={(e) => setDeleteForm((f) => ({ ...f, confirmationEmail: e.target.value }))} required type="email" autoComplete="off" placeholder={user.email} className={inputClass} />
+              <input id="account-delete-email" value={deleteForm.confirmationEmail} onChange={(e) => setDeleteForm((f) => ({ ...f, confirmationEmail: e.target.value }))} required type="email" autoComplete="off" placeholder={user.email} className={inputClass} />
             </label>
             <button disabled={busyKey === "delete-account"} className="rounded-2xl bg-red-700 px-5 py-3 text-[14.5px] font-extrabold text-white hover:bg-red-800 disabled:opacity-60">
               {busyKey === "delete-account" ? t("account.deleting") : t("account.deleteBtn")}
