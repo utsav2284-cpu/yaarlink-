@@ -87,10 +87,10 @@ HTTPS is automatic.
 
 ## 5 · Check everything works
 
-- `https://theyaar.com/api/health` → `{"ok":true}` (if `false`, `DATABASE_URL` is wrong)
+- `https://www.theyaar.com/api/health` → `{"ok":true}` (if `false`, `DATABASE_URL` is wrong)
 - Sign up as a brand → verify the emailed link → create a campaign → it appears on your dashboard with the budget 🔒
 - Sign up as a creator (another email) → verify the emailed link → apply to the campaign → the brand sees it on their dashboard
-- `https://theyaar.com/admin` → your `ADMIN_PASSWORD` → all data, budgets and contacts
+- `https://www.theyaar.com/admin` → your `ADMIN_PASSWORD` → all data, budgets and contacts
 - Contact page → WhatsApp / Call / Email / Instagram all open on your phone
 
 Logs: Cloudflare → Workers & Pages → `yaarlink` → **Logs**.

@@ -4,22 +4,24 @@ import "./globals.css";
 import Navbar from "@/frontend/components/Navbar";
 import Footer from "@/frontend/components/Footer";
 import { LanguageProvider } from "@/frontend/i18n";
+import { SITE } from "@/config/site";
 
 const description =
   "Connect brands, local businesses, creators, meme pages and communities. Simple marketing in English, Hindi & Punjabi.";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://theyaar.com"),
+  metadataBase: new URL(SITE.url),
   title: {
-    default: "YaarLink · theyaar.com — Simple marketing for everyone",
-    template: "%s · theyaar.com",
+    default: `YaarLink · ${SITE.domain} — Simple marketing for everyone`,
+    template: `%s · ${SITE.domain}`,
   },
   description,
+  alternates: { canonical: "/" },
   openGraph: {
-    title: "YaarLink · theyaar.com",
+    title: `YaarLink · ${SITE.domain}`,
     description,
-    url: "https://theyaar.com",
-    siteName: "theyaar.com",
+    url: "/",
+    siteName: SITE.domain,
     locale: "en_IN",
     type: "website",
   },

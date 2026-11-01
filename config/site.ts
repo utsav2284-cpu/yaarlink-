@@ -5,9 +5,11 @@
 export const SITE = {
   name: "YaarLink",
 
-  // Your website address (shown across the site and used in share links).
+  // Brand domain shown in copy. The apex redirects to the canonical www host,
+  // so absolute links and metadata must use `url` below, not the apex.
   domain: "theyaar.com",
-  url: "https://theyaar.com",
+  host: "www.theyaar.com",
+  url: "https://www.theyaar.com",
 
   // WhatsApp / phone in international format, digits only (91 = India).
   whatsappNumber: "919153907403",
