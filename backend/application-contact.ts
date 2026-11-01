@@ -1,4 +1,5 @@
 import { normalizeInstagramUrl, normalizeProfileUrl, normalizeYouTubeUrl } from "@/backend/social-url";
+import { normalizeEmail, normalizePhoneNumber } from "@/backend/validation";
 
 export type ApplicationContactKind = "email" | "phone" | "instagram" | "youtube" | "profile";
 
@@ -24,7 +25,6 @@ type CreatorProfileContactSource = AccountContactSource & {
   platform?: string | null;
 };
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const COMPLETED_CREATOR_STATUSES = new Set(["pending", "approved", "rejected", "suspended"]);
 
 function cleanContactInput(value: unknown): string {
@@ -36,9 +36,8 @@ function unique(values: Array<string | null | undefined>): string[] {
 }
 
 function emailIdentity(value: unknown): { key: string; value: string } | null {
-  const email = cleanContactInput(value).toLowerCase();
-  if (!EMAIL_PATTERN.test(email)) return null;
-  return { key: `email:${email}`, value: email };
+  const email = normalizeEmail(cleanContactInput(value));
+  return email ? { key: `email:${email}`, value: email } : null;
 }
 
 function phoneDigitsFromUrl(value: string): string | null {
@@ -60,21 +59,26 @@ function phoneIdentity(value: unknown): { value: string; keys: string[] } | null
   const cleaned = cleanContactInput(value);
   if (!cleaned) return null;
 
-  let digits = phoneDigitsFromUrl(cleaned);
-  if (!digits) {
+  const urlDigits = phoneDigitsFromUrl(cleaned);
+  let normalized: string | null;
+  if (urlDigits) {
+    // WhatsApp links normally carry the full international number. Preserve
+    // the bare/trunk Indian forms accepted everywhere else in the app.
+    const candidate =
+      urlDigits.startsWith("00") || urlDigits.startsWith("0") || urlDigits.length === 10
+        ? urlDigits
+        : `+${urlDigits}`;
+    normalized = normalizePhoneNumber(candidate);
+  } else {
     const phoneText = cleaned.toLowerCase().startsWith("tel:") ? cleaned.slice(4) : cleaned;
     // Do not extract a phone number from arbitrary prose: the complete input
     // must look like a phone number (or be a WhatsApp link handled above).
     if (!/^[+()\-.\s\d]+$/.test(phoneText)) return null;
-    digits = phoneText.replace(/\D/g, "");
+    normalized = normalizePhoneNumber(phoneText);
   }
-  if (digits.startsWith("00")) digits = digits.slice(2);
-  if (digits.length < 7 || digits.length > 15) return null;
-
-  let national = "";
-  if (digits.length === 12 && digits.startsWith("91")) national = digits.slice(2);
-  else if (digits.length === 11 && digits.startsWith("0")) national = digits.slice(1);
-  else if (digits.length === 10) national = digits;
+  if (!normalized) return null;
+  const digits = normalized.slice(1);
+  const national = digits.length === 12 && digits.startsWith("91") ? digits.slice(2) : "";
 
   if (national) {
     return {

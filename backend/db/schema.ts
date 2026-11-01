@@ -236,6 +236,11 @@ export const campaigns = pgTable(
     ownerId: uuid("owner_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    // Client-generated retry key + canonical payload hash. The pair lets a
+    // submission whose response was lost return the original campaign rather
+    // than creating a duplicate; legacy rows keep both null.
+    submissionId: uuid("submission_id"),
+    submissionFingerprint: text("submission_fingerprint"),
     businessName: text("business_name").notNull(),
     contactName: text("contact_name"),
     email: text("email"),
@@ -259,9 +264,14 @@ export const campaigns = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
+    uniqueIndex("campaigns_owner_submission_unique").on(table.ownerId, table.submissionId),
     index("campaigns_public_review_idx").on(table.status, table.verificationStatus, table.createdAt.desc()),
     index("campaigns_owner_created_idx").on(table.ownerId, table.createdAt.desc()),
     index("campaigns_created_at_idx").on(table.createdAt.desc()),
+    check(
+      "campaigns_submission_pair_check",
+      sql`(${table.submissionId} is null and ${table.submissionFingerprint} is null) or (${table.submissionId} is not null and ${table.submissionFingerprint} ~ '^[0-9a-f]{64}$')`,
+    ),
     check(
       "campaigns_promotion_type_check",
       sql`${table.promotionType} in ('Local Business', 'App', 'Website', 'Product', 'Creator / UGC', 'Event')`,

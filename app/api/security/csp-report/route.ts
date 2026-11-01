@@ -140,7 +140,7 @@ async function readBodyWithLimit(req: Request): Promise<string | null> {
 }
 
 function errorResponse(code: string, status: number) {
-  return Response.json({ error: code, code }, { status, headers: { "Cache-Control": "no-store" } });
+  return Response.json({ error: code, code }, { status, headers: { "Cache-Control": "private, no-store" } });
 }
 
 export async function POST(req: Request) {
@@ -172,5 +172,5 @@ export async function POST(req: Request) {
     console.warn("[csp-report]", report);
   }
 
-  return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
+  return new Response(null, { status: 204, headers: { "Cache-Control": "private, no-store" } });
 }

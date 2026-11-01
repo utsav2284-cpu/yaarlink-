@@ -5,7 +5,31 @@ import { getSessionUser, isSessionUnavailableError, logSessionUnavailable, sessi
 import { createVerificationCode } from "@/backend/moderation";
 import { getClientKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
 import { normalizeInstagramUrl, normalizeProfileUrl, normalizeYouTubeUrl } from "@/backend/social-url";
-import { normalizeCategory, normalizeContentType, normalizeContentTypeList, normalizeLanguage, normalizeLanguageList, normalizePlatform } from "@/shared/constants";
+import { findDisallowedContent, hasSuspiciousUrl } from "@/backend/content-moderation";
+import {
+  hasField,
+  parseCanonicalList,
+  parseEmailField,
+  parseExpectedUpdatedAt,
+  parseFollowersField,
+  parseOptionalText,
+  parsePhoneField,
+  parseRequiredText,
+  readJsonObject,
+  type ValidationResult,
+} from "@/backend/validation";
+import {
+  MAX_CREATOR_CONTENT_TYPES,
+  MAX_CREATOR_CONTENT_TYPES_JOINED_LENGTH,
+  MAX_CREATOR_LANGUAGES,
+  MAX_CREATOR_LANGUAGES_JOINED_LENGTH,
+  normalizeCategory,
+  normalizeContentType,
+  normalizeContentTypeList,
+  normalizeLanguage,
+  normalizeLanguageList,
+  normalizePlatform,
+} from "@/shared/constants";
 import {
   allConditions,
   cursorCondition,
@@ -57,95 +81,229 @@ type CreatorProfileValues = {
   bio: string | null;
 };
 
-type ParseResult = { ok: true; values: CreatorProfileValues } | { ok: false; error: string; code: string };
+type ParseResult =
+  | { ok: true; values: CreatorProfileValues }
+  | { ok: false; error: string; code: string; field?: string };
 
-function bodyRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
-}
-
-function hasField(body: Record<string, unknown>, field: string) {
-  return Object.prototype.hasOwnProperty.call(body, field);
-}
-
-function optionalText(value: unknown, maxLength: number): string | null {
-  if (value == null) return null;
-  const cleaned = String(value).trim();
-  return cleaned ? cleaned.slice(0, maxLength) : null;
+function validationErrorResponse(result: { error: string; code: string; field?: string }, status = 400) {
+  return Response.json(
+    { error: result.error, code: result.code, ...(result.field ? { field: result.field } : {}) },
+    { status, headers: NO_STORE },
+  );
 }
 
 function parseCreatorProfile(body: Record<string, unknown>, user: SessionUser, current?: Creator): ParseResult {
-  const rawName = hasField(body, "name") ? body.name : current?.name;
-  const name = optionalText(rawName, 100);
-  if (!name) return { ok: false, error: "Name is required", code: "name_required" };
+  const supplied = (field: string) => hasField(body, field);
 
-  const rawEmail = hasField(body, "email") ? body.email : current?.email;
-  const emailInput = rawEmail == null ? "" : String(rawEmail).toLowerCase().trim();
-  const email = emailInput || (current && hasField(body, "email") ? null : user.email);
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: "Please enter a valid email.", code: "invalid_email" };
+  const name = current && !supplied("name")
+    ? { ok: true, value: current.name } as ValidationResult<string>
+    : parseRequiredText(body.name, {
+        field: "name",
+        maxLength: 100,
+        requiredCode: "name_required",
+        requiredMessage: "Name is required",
+      });
+  if (!name.ok) return name;
+  if (supplied("name") || !current) {
+    if (!/[\p{L}\p{N}]/u.test(name.value) || findDisallowedContent(name.value)) {
+      return { ok: false, error: "Please enter a name without links, contact details, or prohibited content.", code: "content_not_allowed", field: "name" };
+    }
+  }
 
-  const rawPlatform = hasField(body, "platform") ? body.platform : current?.platform;
-  const hasPlatform = !(rawPlatform == null || (typeof rawPlatform === "string" && !rawPlatform.trim()));
-  const platform = hasPlatform ? normalizePlatform(rawPlatform) : "Instagram";
-  if (!platform) return { ok: false, error: "Please choose a valid platform.", code: "invalid_platform" };
+  let email: string | null;
+  if (supplied("email")) {
+    const parsedEmail = parseEmailField(body.email, { field: "email" });
+    if (!parsedEmail.ok) return parsedEmail;
+    email = parsedEmail.value ?? (current ? null : user.email);
+  } else {
+    email = current?.email ?? user.email;
+  }
 
-  const rawCategory = hasField(body, "category") ? body.category : current?.category;
-  const hasCategory = !(rawCategory == null || (typeof rawCategory === "string" && !rawCategory.trim()));
-  const category = hasCategory ? normalizeCategory(rawCategory) : null;
-  if (hasCategory && !category) return { ok: false, error: "Please choose a valid category.", code: "invalid_category" };
+  let phone: string | null;
+  if (supplied("phone")) {
+    const parsedPhone = parsePhoneField(body.phone, { field: "phone" });
+    if (!parsedPhone.ok) return parsedPhone;
+    phone = parsedPhone.value;
+  } else {
+    phone = current?.phone ?? null;
+  }
 
-  const rawLanguages = hasField(body, "languages") ? body.languages : current?.languages;
-  const languages = rawLanguages == null || rawLanguages === "" ? ["English"] : normalizeLanguageList(rawLanguages);
-  if (!languages || languages.length === 0) return { ok: false, error: "Please select at least one valid language.", code: "invalid_languages" };
+  let platform: string;
+  if (current && !supplied("platform")) {
+    platform = current.platform;
+  } else if (!supplied("platform")) {
+    platform = "Instagram";
+  } else {
+    const normalized = normalizePlatform(body.platform);
+    if (!normalized) return { ok: false, error: "Please choose a valid platform.", code: "invalid_platform", field: "platform" };
+    platform = normalized;
+  }
 
-  const rawContentTypes = hasField(body, "contentTypes") ? body.contentTypes : current?.contentTypes;
-  const contentTypes = rawContentTypes == null || rawContentTypes === "" ? ["Story"] : normalizeContentTypeList(rawContentTypes);
-  if (!contentTypes || contentTypes.length === 0) return { ok: false, error: "Please select valid content types.", code: "invalid_content_types" };
+  let category: string | null;
+  if (!supplied("category")) {
+    category = current?.category ?? null;
+  } else if (body.category == null || (typeof body.category === "string" && !body.category.trim())) {
+    category = null;
+  } else {
+    const normalized = normalizeCategory(body.category);
+    if (!normalized) return { ok: false, error: "Please choose a valid category.", code: "invalid_category", field: "category" };
+    category = normalized;
+  }
 
-  const rawInstagram = hasField(body, "instagram") ? body.instagram : current?.instagram;
-  const instagram = rawInstagram ? normalizeInstagramUrl(rawInstagram) : null;
-  if (rawInstagram && !instagram) return { ok: false, error: "Please enter a valid Instagram handle or profile URL.", code: "invalid_instagram" };
+  let languages: string;
+  if (current && !supplied("languages")) {
+    languages = current.languages;
+  } else if (!supplied("languages")) {
+    languages = "English";
+  } else {
+    const parsedLanguages = parseCanonicalList(body.languages, normalizeLanguage, {
+      field: "languages",
+      code: "invalid_languages",
+      error: "Please select at least one valid language.",
+      maxItems: MAX_CREATOR_LANGUAGES,
+      maxJoinedLength: MAX_CREATOR_LANGUAGES_JOINED_LENGTH,
+    });
+    if (!parsedLanguages.ok) return parsedLanguages;
+    languages = parsedLanguages.value.join(", ");
+  }
 
-  const rawYoutube = hasField(body, "youtube") ? body.youtube : current?.youtube;
-  const youtube = rawYoutube ? normalizeYouTubeUrl(rawYoutube) : null;
-  if (rawYoutube && !youtube) return { ok: false, error: "Please enter a valid YouTube channel handle or URL.", code: "invalid_youtube" };
+  let contentTypes: string;
+  if (current && !supplied("contentTypes")) {
+    contentTypes = current.contentTypes;
+  } else if (!supplied("contentTypes")) {
+    contentTypes = "Story";
+  } else {
+    const parsedContentTypes = parseCanonicalList(body.contentTypes, normalizeContentType, {
+      field: "contentTypes",
+      code: "invalid_content_types",
+      error: "Please select valid content types.",
+      maxItems: MAX_CREATOR_CONTENT_TYPES,
+      maxJoinedLength: MAX_CREATOR_CONTENT_TYPES_JOINED_LENGTH,
+    });
+    if (!parsedContentTypes.ok) return parsedContentTypes;
+    contentTypes = parsedContentTypes.value.join(", ");
+  }
 
-  const rawProfileUrl = hasField(body, "profileUrl") ? body.profileUrl : current?.profileUrl;
-  let profileUrl = rawProfileUrl ? normalizeProfileUrl(rawProfileUrl, platform) : null;
-  if (rawProfileUrl && !profileUrl) return { ok: false, error: "Please enter a valid profile URL.", code: "invalid_profile_url" };
+  const parseSocial = (
+    field: "instagram" | "youtube" | "profileUrl",
+    normalize: (value: string) => string | null,
+    maxLength: number,
+    code: string,
+    error: string,
+  ): ValidationResult<string | null> => {
+    const raw = supplied(field) ? body[field] : current?.[field];
+    if (raw == null || (typeof raw === "string" && !raw.trim())) return { ok: true, value: null };
+    if (typeof raw !== "string") {
+      return supplied(field) ? { ok: false, error, code, field } : { ok: true, value: null };
+    }
+    const normalized = normalize(raw);
+    if (!normalized) {
+      return supplied(field) || !current ? { ok: false, error, code, field } : { ok: true, value: null };
+    }
+    if (normalized.length > maxLength) return { ok: false, error, code, field };
+    return { ok: true, value: normalized };
+  };
+
+  const instagram = parseSocial(
+    "instagram",
+    (value) => normalizeInstagramUrl(value),
+    160,
+    "invalid_instagram",
+    "Please enter a valid Instagram handle or profile URL.",
+  );
+  if (!instagram.ok) return instagram;
+  const youtube = parseSocial(
+    "youtube",
+    (value) => normalizeYouTubeUrl(value),
+    160,
+    "invalid_youtube",
+    "Please enter a valid YouTube channel handle or URL.",
+  );
+  if (!youtube.ok) return youtube;
+  const parsedProfileUrl = parseSocial(
+    "profileUrl",
+    (value) => normalizeProfileUrl(value, platform),
+    200,
+    "invalid_profile_url",
+    "Please enter a valid profile URL.",
+  );
+  if (!parsedProfileUrl.ok) return parsedProfileUrl;
 
   // If the creator gave a social handle but left the profile-link field
   // blank, use the cleaned social URL as the main profile link.
-  profileUrl ??= instagram ?? youtube;
+  const profileUrl = parsedProfileUrl.value ?? instagram.value ?? youtube.value;
   if (!profileUrl) {
-    return { ok: false, error: "Please add your Instagram, YouTube, or other profile link so account ownership can be verified.", code: "profile_link_required" };
+    return {
+      ok: false,
+      error: "Please add your Instagram, YouTube, or other profile link so account ownership can be verified.",
+      code: "profile_link_required",
+      field: "profileUrl",
+    };
   }
-  const resolvedInstagram = instagram ?? normalizeInstagramUrl(profileUrl);
-  const resolvedYouTube = youtube ?? normalizeYouTubeUrl(profileUrl);
+  const resolvedInstagram = instagram.value ?? normalizeInstagramUrl(profileUrl);
+  const resolvedYouTube = youtube.value ?? normalizeYouTubeUrl(profileUrl);
+  if ((resolvedInstagram && resolvedInstagram.length > 160) || (resolvedYouTube && resolvedYouTube.length > 160)) {
+    return { ok: false, error: "Please enter a valid profile URL.", code: "invalid_profile_url", field: "profileUrl" };
+  }
+  if (
+    (!current || supplied("instagram") || supplied("youtube") || supplied("profileUrl")) &&
+    (hasSuspiciousUrl(profileUrl) || hasSuspiciousUrl(resolvedInstagram) || hasSuspiciousUrl(resolvedYouTube))
+  ) {
+    return { ok: false, error: "Please use a direct profile link without a URL shortener.", code: "content_not_allowed", field: "profileUrl" };
+  }
 
-  const rawFollowers = hasField(body, "followers") ? body.followers : current?.followers;
-  const followers =
-    typeof rawFollowers === "string" ? parseInt(rawFollowers.replace(/[^0-9]/g, "") || "0", 10) : Number(rawFollowers || 0);
-  if (!Number.isInteger(followers) || followers < 0 || followers > 100_000_000) {
-    return { ok: false, error: "Please enter a valid follower count.", code: "invalid_followers" };
+  let followers: number;
+  if (current && !supplied("followers")) {
+    followers = current.followers;
+  } else if (!supplied("followers") || body.followers == null || (typeof body.followers === "string" && !body.followers.trim())) {
+    followers = 0;
+  } else {
+    const parsedFollowers = parseFollowersField(body.followers);
+    if (!parsedFollowers.ok) return parsedFollowers;
+    followers = parsedFollowers.value;
   }
+
+  const location = current && !supplied("location")
+    ? { ok: true, value: current.location } as ValidationResult<string | null>
+    : parseOptionalText(body.location, { field: "location", maxLength: 100 });
+  if (!location.ok) return location;
+  const bio = current && !supplied("bio")
+    ? { ok: true, value: current.bio } as ValidationResult<string | null>
+    : parseOptionalText(body.bio, { field: "bio", maxLength: 500, multiline: true });
+  if (!bio.ok) return bio;
 
   return {
     ok: true,
     values: {
-      name,
-      email: email ? email.slice(0, 120) : null,
-      phone: optionalText(hasField(body, "phone") ? body.phone : current?.phone, 20),
-      instagram: resolvedInstagram?.slice(0, 160) ?? null,
-      youtube: resolvedYouTube?.slice(0, 160) ?? null,
-      profileUrl: profileUrl.slice(0, 200),
+      name: name.value,
+      email,
+      phone,
+      instagram: resolvedInstagram,
+      youtube: resolvedYouTube,
+      profileUrl,
       platform,
       followers,
       category,
-      languages: languages.join(", "),
-      location: optionalText(hasField(body, "location") ? body.location : current?.location, 100),
-      contentTypes: contentTypes.join(", "),
-      bio: optionalText(hasField(body, "bio") ? body.bio : current?.bio, 500),
+      languages,
+      location: location.value,
+      contentTypes,
+      bio: bio.value,
     },
+  };
+}
+
+function sameCreatorProfile(values: CreatorProfileValues, existing: Creator): boolean {
+  return (Object.keys(values) as Array<keyof CreatorProfileValues>).every((field) => values[field] === existing[field]);
+}
+
+function returningFromCreator(creator: Creator) {
+  return {
+    id: creator.id,
+    name: creator.name,
+    status: creator.status,
+    verificationCode: creator.verificationCode,
+    verificationStatus: creator.verificationStatus,
+    updatedAt: creator.updatedAt,
   };
 }
 
@@ -326,41 +484,83 @@ export async function POST(req: Request) {
   const rl = await rateLimit(getClientKey(req, "creator-create"), 5, 60 * 60_000);
   if (!rl.ok) return limitedResponse(rl.retryAfter);
   try {
-    const body = bodyRecord(await req.json().catch(() => null));
-    if (!body) return Response.json({ error: "Invalid creator profile", code: "invalid_request" }, { status: 400, headers: NO_STORE });
+    const parsedBody = await readJsonObject(req, { headers: NO_STORE });
+    if (!parsedBody.ok) return parsedBody.response;
+    const body = parsedBody.body;
+
     const user = await getSessionUser();
     if (!user) return Response.json({ error: "Please log in as a creator before creating your profile.", code: "unauthorized" }, { status: 401, headers: NO_STORE });
     if (user.role !== "creator") return Response.json({ error: "Only creator accounts can create creator profiles.", code: "forbidden" }, { status: 403, headers: NO_STORE });
 
     const parsed = parseCreatorProfile(body, user);
-    if (!parsed.ok) return Response.json({ error: parsed.error, code: parsed.code }, { status: 400, headers: NO_STORE });
+    if (!parsed.ok) return validationErrorResponse(parsed);
 
-    const now = new Date();
-    const values = {
-      userId: user.id,
-      ...parsed.values,
-      status: "pending",
-      verificationCode: createVerificationCode(),
-      verificationStatus: "pending",
-      verifiedFollowers: null,
-      moderationNote: null,
-      reviewedAt: null,
-      updatedAt: now,
-    };
+    type CreatorPostOutcome =
+      | { kind: "created"; creator: ReturnType<typeof returningFromCreator> }
+      | { kind: "replay"; creator: ReturnType<typeof returningFromCreator> }
+      | { kind: "exists" };
 
-    const [existing] = await db.select({ id: creators.id, status: creators.status }).from(creators).where(eq(creators.userId, user.id)).limit(1);
-    if (existing) {
-      // Signup creates a starter `incomplete` row; completing the profile
-      // updates that same row instead of creating a second profile.
-      if (existing.status !== "incomplete") {
-        return Response.json({ error: "You already have a creator profile. You can manage it from your dashboard.", code: "creator_profile_exists" }, { status: 409, headers: NO_STORE });
+    const outcome: CreatorPostOutcome = await db.transaction(async (tx) => {
+      const now = new Date();
+      const completedValues = {
+        userId: user.id,
+        ...parsed.values,
+        status: "pending",
+        verificationStatus: "pending",
+        verifiedFollowers: null,
+        moderationNote: null,
+        reviewedAt: null,
+        updatedAt: now,
+      };
+
+      const [existing] = await tx.select().from(creators).where(eq(creators.userId, user.id)).limit(1).for("update");
+      if (existing) {
+        if (existing.status === "incomplete") {
+          const [row] = await tx
+            .update(creators)
+            .set({ ...completedValues, verificationCode: createVerificationCode() })
+            .where(eq(creators.id, existing.id))
+            .returning(returningProfile);
+          if (row) return { kind: "created", creator: row } as const;
+        }
+        return sameCreatorProfile(parsed.values, existing)
+          ? { kind: "replay", creator: returningFromCreator(existing) } as const
+          : { kind: "exists" } as const;
       }
-      const [row] = await db.update(creators).set(values).where(eq(creators.id, existing.id)).returning(returningProfile);
-      return Response.json({ creator: row }, { headers: NO_STORE });
-    }
 
-    const [row] = await db.insert(creators).values(values).returning(returningProfile);
-    return Response.json({ creator: row }, { headers: NO_STORE });
+      const [created] = await tx
+        .insert(creators)
+        .values({ ...completedValues, verificationCode: createVerificationCode() })
+        .onConflictDoNothing({ target: creators.userId })
+        .returning(returningProfile);
+      if (created) return { kind: "created", creator: created } as const;
+
+      // A parallel request won the insert. Its row is now the arbiter: an
+      // exact retry replays that profile; only a different profile conflicts.
+      const [raced] = await tx.select().from(creators).where(eq(creators.userId, user.id)).limit(1).for("update");
+      if (raced?.status === "incomplete") {
+        const [row] = await tx
+          .update(creators)
+          .set({ ...completedValues, verificationCode: createVerificationCode(), updatedAt: new Date() })
+          .where(eq(creators.id, raced.id))
+          .returning(returningProfile);
+        if (row) return { kind: "created", creator: row } as const;
+      }
+      return raced && sameCreatorProfile(parsed.values, raced)
+        ? { kind: "replay", creator: returningFromCreator(raced) } as const
+        : { kind: "exists" } as const;
+    });
+
+    if (outcome.kind === "exists") {
+      return Response.json(
+        { error: "You already have a creator profile. You can manage it from your dashboard.", code: "creator_profile_exists" },
+        { status: 409, headers: NO_STORE },
+      );
+    }
+    return Response.json(
+      { creator: outcome.creator, ...(outcome.kind === "replay" ? { idempotentReplay: true } : {}) },
+      { status: outcome.kind === "created" ? 201 : 200, headers: NO_STORE },
+    );
   } catch (e) {
     if (isSessionUnavailableError(e)) {
       logSessionUnavailable(e);
@@ -380,8 +580,10 @@ export async function PATCH(req: Request) {
   const rl = await rateLimit(getClientKey(req, "creator-manage"), 30, 60 * 60_000);
   if (!rl.ok) return limitedResponse(rl.retryAfter);
   try {
-    const body = bodyRecord(await req.json().catch(() => null));
-    if (!body || !CREATOR_FIELDS.some((field) => hasField(body, field))) {
+    const parsedBody = await readJsonObject(req, { headers: NO_STORE });
+    if (!parsedBody.ok) return parsedBody.response;
+    const body = parsedBody.body;
+    if (!CREATOR_FIELDS.some((field) => hasField(body, field))) {
       return Response.json({ error: "No creator profile changes were provided.", code: "no_changes" }, { status: 400, headers: NO_STORE });
     }
 
@@ -389,74 +591,91 @@ export async function PATCH(req: Request) {
     if (!user) return Response.json({ error: "Please log in as a creator to edit your profile.", code: "unauthorized" }, { status: 401, headers: NO_STORE });
     if (user.role !== "creator") return Response.json({ error: "Only creator accounts can edit creator profiles.", code: "forbidden" }, { status: 403, headers: NO_STORE });
 
-    const [existing] = await db.select().from(creators).where(eq(creators.userId, user.id)).limit(1);
-    if (!existing) return Response.json({ error: "Creator profile not found.", code: "creator_profile_not_found" }, { status: 404, headers: NO_STORE });
+    const expectedUpdatedAt = parseExpectedUpdatedAt(body);
+    if (!expectedUpdatedAt.ok) return validationErrorResponse(expectedUpdatedAt);
 
-    const parsed = parseCreatorProfile(body, user, existing);
-    if (!parsed.ok) return Response.json({ error: parsed.error, code: parsed.code }, { status: 400, headers: NO_STORE });
+    type PatchOutcome =
+      | { kind: "updated"; creator: ReturnType<typeof returningFromCreator>; reviewRequired: boolean }
+      | { kind: "unchanged"; creator: Creator }
+      | { kind: "not_found" }
+      | { kind: "changed" }
+      | { kind: "invalid"; result: Extract<ParseResult, { ok: false }> };
 
-    const materialFields: Array<keyof CreatorProfileValues> = [
-      "name",
-      "instagram",
-      "youtube",
-      "profileUrl",
-      "platform",
-      "followers",
-      "category",
-      "languages",
-      "location",
-      "contentTypes",
-      "bio",
-    ];
-    // Only fields the owner actually submitted can force a new review. This
-    // prevents a contact-only PATCH from treating harmless canonicalization
-    // of an untouched legacy profile URL as a material public change.
-    const materialChanged = materialFields.some((field) => hasField(body, field) && parsed.values[field] !== existing[field]);
-    const contactChanged = parsed.values.email !== existing.email || parsed.values.phone !== existing.phone;
+    const outcome: PatchOutcome = await db.transaction(async (tx) => {
+      const [existing] = await tx.select().from(creators).where(eq(creators.userId, user.id)).limit(1).for("update");
+      if (!existing) return { kind: "not_found" } as const;
+      if (expectedUpdatedAt.value && existing.updatedAt.getTime() !== expectedUpdatedAt.value.getTime()) {
+        return { kind: "changed" } as const;
+      }
 
-    if (!materialChanged && !contactChanged) {
+      const parsed = parseCreatorProfile(body, user, existing);
+      if (!parsed.ok) return { kind: "invalid", result: parsed } as const;
+
+      const materialFields: Array<keyof CreatorProfileValues> = [
+        "name",
+        "instagram",
+        "youtube",
+        "profileUrl",
+        "platform",
+        "followers",
+        "category",
+        "languages",
+        "location",
+        "contentTypes",
+        "bio",
+      ];
+      // Only fields the owner actually submitted can force a new review. This
+      // prevents a contact-only PATCH from treating harmless canonicalization
+      // of an untouched legacy profile URL as a material public change.
+      const materialChanged = materialFields.some(
+        (field) => hasField(body, field) && parsed.values[field] !== existing[field],
+      );
+      const contactChanged = parsed.values.email !== existing.email || parsed.values.phone !== existing.phone;
+      if (!materialChanged && !contactChanged) return { kind: "unchanged", creator: existing } as const;
+
+      const [row] = await tx
+        .update(creators)
+        .set(
+          materialChanged
+            ? {
+                ...parsed.values,
+                updatedAt: new Date(),
+                status: "pending",
+                verificationCode: createVerificationCode(),
+                verificationStatus: "pending",
+                verifiedFollowers: null,
+                moderationNote: null,
+                reviewedAt: null,
+              }
+            : {
+                // Contact-only edits must not rewrite the already verified
+                // public profile representation.
+                email: parsed.values.email,
+                phone: parsed.values.phone,
+                updatedAt: new Date(),
+              },
+        )
+        .where(and(eq(creators.id, existing.id), eq(creators.userId, user.id)))
+        .returning(returningProfile);
+      if (!row) return { kind: "not_found" } as const;
+      return { kind: "updated", creator: row, reviewRequired: materialChanged } as const;
+    });
+
+    if (outcome.kind === "invalid") return validationErrorResponse(outcome.result);
+    if (outcome.kind === "not_found") {
+      return Response.json({ error: "Creator profile not found.", code: "creator_profile_not_found" }, { status: 404, headers: NO_STORE });
+    }
+    if (outcome.kind === "changed") {
       return Response.json(
-        {
-          creator: {
-            id: existing.id,
-            name: existing.name,
-            status: existing.status,
-            verificationCode: existing.verificationCode,
-            verificationStatus: existing.verificationStatus,
-            updatedAt: existing.updatedAt,
-          },
-          unchanged: true,
-        },
-        { headers: NO_STORE },
+        { error: "This creator profile changed while you were editing it. Please refresh and try again.", code: "creator_profile_changed" },
+        { status: 409, headers: NO_STORE },
       );
     }
+    if (outcome.kind === "unchanged") {
+      return Response.json({ creator: returningFromCreator(outcome.creator), unchanged: true }, { headers: NO_STORE });
+    }
+    return Response.json({ creator: outcome.creator, reviewRequired: outcome.reviewRequired }, { headers: NO_STORE });
 
-    const [row] = await db
-      .update(creators)
-      .set(
-        materialChanged
-          ? {
-              ...parsed.values,
-              updatedAt: new Date(),
-              status: "pending",
-              verificationCode: createVerificationCode(),
-              verificationStatus: "pending",
-              verifiedFollowers: null,
-              moderationNote: null,
-              reviewedAt: null,
-            }
-          : {
-              // Contact-only edits must not rewrite the already verified
-              // public profile representation.
-              email: parsed.values.email,
-              phone: parsed.values.phone,
-              updatedAt: new Date(),
-            },
-      )
-      .where(and(eq(creators.id, existing.id), eq(creators.userId, user.id)))
-      .returning(returningProfile);
-    if (!row) return Response.json({ error: "Creator profile not found.", code: "creator_profile_not_found" }, { status: 404, headers: NO_STORE });
-    return Response.json({ creator: row, reviewRequired: materialChanged }, { headers: NO_STORE });
   } catch (e) {
     if (isSessionUnavailableError(e)) {
       logSessionUnavailable(e);

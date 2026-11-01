@@ -8,7 +8,7 @@ export async function GET(req: Request) {
   if (!isBotChallengePurpose(purpose)) {
     return Response.json(
       { error: "Invalid security challenge.", code: "invalid_bot_challenge" },
-      { status: 400, headers: { "Cache-Control": "no-store" } },
+      { status: 400, headers: { "Cache-Control": "private, no-store" } },
     );
   }
 
@@ -18,10 +18,10 @@ export async function GET(req: Request) {
   if (botChallengeProblem()) {
     return Response.json(
       { error: "Service temporarily unavailable.", code: "service_unavailable" },
-      { status: 503, headers: { "Cache-Control": "no-store" } },
+      { status: 503, headers: { "Cache-Control": "private, no-store" } },
     );
   }
 
   const challenge = await createBotChallenge(purpose);
-  return Response.json(challenge, { headers: { "Cache-Control": "no-store" } });
+  return Response.json(challenge, { headers: { "Cache-Control": "private, no-store" } });
 }

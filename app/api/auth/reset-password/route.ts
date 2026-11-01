@@ -4,10 +4,11 @@ import { hashPassword, SESSION_COOKIE } from "@/backend/auth";
 import { sendAccountSecurityNoticeEmail } from "@/backend/email";
 import { PasswordBreachCheckUnavailableError, validateNewPassword } from "@/backend/password-policy";
 import { getClientKey, hashKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
+import { readJsonObject } from "@/backend/validation";
 
 export const dynamic = "force-dynamic";
 
-const NO_STORE = { "Cache-Control": "no-store" } as const;
+const NO_STORE = { "Cache-Control": "private, no-store" } as const;
 
 function invalidResponse() {
   return Response.json(
@@ -21,9 +22,10 @@ export async function POST(req: Request) {
   if (!rl.ok) return limitedResponse(rl.retryAfter);
 
   try {
-    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-    const token = body?.token;
-    const newPassword = String(body?.newPassword || "");
+    const parsedBody = await readJsonObject(req, { headers: NO_STORE });
+    if (!parsedBody.ok) return parsedBody.response;
+    const token = parsedBody.body.token;
+    const newPassword = typeof parsedBody.body.newPassword === "string" ? parsedBody.body.newPassword : "";
 
     if (!isAccountToken(token)) return invalidResponse();
 

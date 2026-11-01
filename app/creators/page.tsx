@@ -100,7 +100,7 @@ export default function CreatorsPage() {
       const res = await fetch("/api/creators", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, followers: form.followers || 0 }),
+        body: JSON.stringify({ ...form, followers: form.followers.trim() ? form.followers : 0 }),
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -182,7 +182,7 @@ export default function CreatorsPage() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="grid gap-1.5" htmlFor="creator-phone">
                     <span className="text-[13.5px] font-bold">{t("cr.phone")}</span>
-                    <input id="creator-phone" value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="98XXX XXXXX" className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                    <input id="creator-phone" value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder={t("brand.phPhone")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                   </label>
                   <label className="grid gap-1.5" htmlFor="creator-email">
                     <span className="text-[13.5px] font-bold">{t("cr.email")}</span>
@@ -226,7 +226,7 @@ export default function CreatorsPage() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="grid gap-1.5" htmlFor="creator-followers">
                     <span className="text-[13.5px] font-bold">{t("cr.followers")}</span>
-                    <input id="creator-followers" value={form.followers} onChange={(e) => set("followers", e.target.value)} placeholder={t("cr.phFollowers")} inputMode="numeric" className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                    <input id="creator-followers" value={form.followers} onChange={(e) => set("followers", e.target.value)} placeholder={t("cr.phFollowers")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                   </label>
                   <label className="grid gap-1.5" htmlFor="creator-category">
                     <span className="text-[13.5px] font-bold">{t("cr.category")}</span>

@@ -39,26 +39,24 @@ import {
   validateNewPassword,
 } from "@/backend/password-policy";
 import { getClientKey, hashKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
+import { normalizeEmail, normalizePhoneNumber, readJsonObject } from "@/backend/validation";
 
 export const dynamic = "force-dynamic";
 
 const NO_STORE = { "Cache-Control": "private, no-store" } as const;
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PHONE_PATTERN = /^[+0-9][0-9 ()-]{6,19}$/;
 
 function jsonError(status: number, error: string, code: string) {
   return Response.json({ error, code }, { status, headers: NO_STORE });
 }
 
 function cleanEmail(value: unknown) {
-  return String(value || "").toLowerCase().trim();
+  return normalizeEmail(value) ?? "";
 }
 
 function cleanPhone(value: unknown): { ok: true; phone: string | null } | { ok: false } {
-  const phone = String(value ?? "").trim().replace(/\s+/g, " ");
-  if (!phone) return { ok: true, phone: null };
-  if (phone.length > 20 || !PHONE_PATTERN.test(phone)) return { ok: false };
-  return { ok: true, phone };
+  if (value == null || (typeof value === "string" && value.trim() === "")) return { ok: true, phone: null };
+  const phone = normalizePhoneNumber(value);
+  return phone ? { ok: true, phone } : { ok: false };
 }
 
 async function accountPayload(userId: string, sessionId: string, user: unknown) {
@@ -92,8 +90,10 @@ export async function PATCH(req: Request) {
     const rl = await rateLimit(`${getClientKey(req, "account")}:${await hashKey(context.user.id)}`, 30, 15 * 60_000);
     if (!rl.ok) return limitedResponse(rl.retryAfter);
 
-    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-    const action = String(body?.action || "");
+    const parsedBody = await readJsonObject(req, { headers: NO_STORE });
+    if (!parsedBody.ok) return parsedBody.response;
+    const body = parsedBody.body;
+    const action = typeof body.action === "string" ? body.action : "";
     const sensitive = ["request_email_change", "change_phone", "change_password"].includes(action);
     if (sensitive) {
       const sensitiveRl = await rateLimit(`account-sensitive:${await hashKey(context.user.id)}`, 10, 15 * 60_000);
@@ -130,9 +130,9 @@ export async function PATCH(req: Request) {
     }
 
     if (action === "request_email_change") {
-      const newEmail = cleanEmail(body?.newEmail);
-      const currentPassword = String(body?.currentPassword || "");
-      if (!newEmail || newEmail.length > 160 || !EMAIL_PATTERN.test(newEmail)) {
+      const newEmail = cleanEmail(body.newEmail);
+      const currentPassword = typeof body.currentPassword === "string" ? body.currentPassword : "";
+      if (!newEmail) {
         return jsonError(400, "Please enter a valid email.", "invalid_email");
       }
       if (!currentPassword || passwordLength(currentPassword) > PASSWORD_MAX_LENGTH) {
@@ -182,8 +182,8 @@ export async function PATCH(req: Request) {
     }
 
     if (action === "change_phone") {
-      const currentPassword = String(body?.currentPassword || "");
-      const cleaned = cleanPhone(body?.phone);
+      const currentPassword = typeof body.currentPassword === "string" ? body.currentPassword : "";
+      const cleaned = cleanPhone(body.phone);
       if (!cleaned.ok) return jsonError(400, "Please enter a valid phone number.", "invalid_phone");
       if (!currentPassword || passwordLength(currentPassword) > PASSWORD_MAX_LENGTH) {
         return jsonError(400, "Current password is required.", "current_password_required");
@@ -195,8 +195,8 @@ export async function PATCH(req: Request) {
     }
 
     if (action === "change_password") {
-      const currentPassword = String(body?.currentPassword || "");
-      const newPassword = String(body?.newPassword || "");
+      const currentPassword = typeof body.currentPassword === "string" ? body.currentPassword : "";
+      const newPassword = typeof body.newPassword === "string" ? body.newPassword : "";
       if (!currentPassword || passwordLength(currentPassword) > PASSWORD_MAX_LENGTH) {
         return jsonError(400, "Current password is required.", "current_password_required");
       }
@@ -259,7 +259,7 @@ export async function PATCH(req: Request) {
     }
 
     if (action === "revoke_session") {
-      const sessionId = body?.sessionId;
+      const sessionId = body.sessionId;
       if (!isSessionId(sessionId)) return jsonError(400, "Invalid session.", "invalid_session");
       if (sessionId === context.sessionId) return jsonError(400, "Use logout for this device.", "current_session");
       const revoked = await revokeUserSession(context.user.id, sessionId);
@@ -291,9 +291,11 @@ export async function DELETE(req: Request) {
     const rl = await rateLimit(`account-delete:${await hashKey(context.user.id)}`, 5, 15 * 60_000);
     if (!rl.ok) return limitedResponse(rl.retryAfter);
 
-    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-    const currentPassword = String(body?.currentPassword || "");
-    const confirmationEmail = cleanEmail(body?.confirmationEmail);
+    const parsedBody = await readJsonObject(req, { headers: NO_STORE });
+    if (!parsedBody.ok) return parsedBody.response;
+    const body = parsedBody.body;
+    const currentPassword = typeof body.currentPassword === "string" ? body.currentPassword : "";
+    const confirmationEmail = cleanEmail(body.confirmationEmail);
     if (!currentPassword || passwordLength(currentPassword) > PASSWORD_MAX_LENGTH) {
       return jsonError(400, "Current password is required.", "current_password_required");
     }

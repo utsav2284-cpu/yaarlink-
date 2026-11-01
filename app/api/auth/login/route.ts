@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { hashPassword, sessionSecretProblem, setSessionCookie, verifyLoginPassword } from "@/backend/auth";
 import { db } from "@/backend/db";
 import { users } from "@/backend/db/schema";
+import { normalizeEmail, readJsonObject } from "@/backend/validation";
 import {
   authLockoutSeconds,
   clearAuthFailures,
@@ -14,7 +15,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const NO_STORE = { "Cache-Control": "no-store" } as const;
+const NO_STORE = { "Cache-Control": "private, no-store" } as const;
 
 function wrongCredentialsResponse() {
   return Response.json(
@@ -36,17 +37,13 @@ export async function POST(req: Request) {
     const rl = await rateLimit(clientKey, 10, 5 * 60_000);
     if (!rl.ok) return limitedResponse(rl.retryAfter);
 
-    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!body || Array.isArray(body)) {
-      return Response.json(
-        { error: "Email and password required", code: "invalid_request" },
-        { status: 400, headers: NO_STORE },
-      );
-    }
+    const parsedBody = await readJsonObject(req, { headers: NO_STORE });
+    if (!parsedBody.ok) return parsedBody.response;
+    const body = parsedBody.body;
 
-    const email = typeof body.email === "string" ? body.email.toLowerCase().trim() : "";
-    const password = typeof body.password === "string" ? body.password : "";
-    if (!email || !password) {
+    const email = normalizeEmail(body.email) ?? "";
+    const password = body.password;
+    if (!email || typeof password !== "string" || !password) {
       return Response.json(
         { error: "Email and password required", code: "invalid_request" },
         { status: 400, headers: NO_STORE },

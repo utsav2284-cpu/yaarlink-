@@ -1,6 +1,7 @@
 import { adminPasswordProblem, adminSecretProblem, adminTotpProblem, createAdminSession, isAdminTotpEnabled, verifyAdminPassword, verifyAdminTotp } from "@/backend/admin";
 import { logAdminAudit } from "@/backend/admin-audit";
 import { authLockoutSeconds, clearAuthFailures, getClientKey, limitedResponse, rateLimit, registerAuthFailure } from "@/backend/rate-limit";
+import { readJsonObject } from "@/backend/validation";
 
 export const dynamic = "force-dynamic";
 
@@ -32,8 +33,10 @@ export async function POST(req: Request) {
   if (locked > 0) return limitedResponse(locked);
 
   try {
-    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-    const password = typeof body?.password === "string" ? body.password : "";
+    const parsedBody = await readJsonObject(req, { headers: NO_STORE });
+    if (!parsedBody.ok) return parsedBody.response;
+    const body = parsedBody.body;
+    const password = typeof body.password === "string" ? body.password : "";
     const mfaUsed = isAdminTotpEnabled();
     if (!password) {
       await logAdminAudit(req, {
@@ -53,7 +56,7 @@ export async function POST(req: Request) {
       return await failedAttemptResponse(clientKey, mfaUsed ? "Wrong password or authenticator code" : "Wrong password");
     }
 
-    if (mfaUsed && !(await verifyAdminTotp(body?.totp))) {
+    if (mfaUsed && !(await verifyAdminTotp(body.totp))) {
       await logAdminAudit(req, {
         action: "admin.login",
         outcome: "failure",

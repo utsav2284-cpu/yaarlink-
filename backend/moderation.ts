@@ -13,12 +13,7 @@ export function createVerificationCode(): string {
   return `YL-${suffix}`;
 }
 
-export function isUuid(value: unknown): value is string {
-  return (
-    typeof value === "string" &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
-  );
-}
+export { isUuid, parseUuid } from "@/backend/validation";
 
 export function normalizeReviewStatus(value: unknown): string {
   return typeof value === "string" ? value.trim().toLowerCase() : "";

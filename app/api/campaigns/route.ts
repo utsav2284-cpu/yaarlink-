@@ -2,8 +2,21 @@ import { db } from "@/backend/db";
 import { campaigns, type Campaign } from "@/backend/db/schema";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { getSessionUser, isSessionUnavailableError, logSessionUnavailable, sessionUnavailableResponse, type SessionUser } from "@/backend/auth";
-import { createVerificationCode, isUuid } from "@/backend/moderation";
+import { createVerificationCode } from "@/backend/moderation";
 import { getClientKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
+import {
+  hasField,
+  parseBudgetField,
+  parseEmailField,
+  parseExpectedUpdatedAt,
+  parseOptionalText,
+  parsePhoneField,
+  parseRequiredText,
+  parseUuid,
+  readJsonObject,
+  type ValidationResult,
+} from "@/backend/validation";
+import { hasSuspiciousUrl } from "@/backend/content-moderation";
 import { normalizeProfileUrl } from "@/backend/social-url";
 import { normalizeCategory, normalizeContentType, normalizeLanguage, normalizePromotionType } from "@/shared/constants";
 import {
@@ -58,85 +71,197 @@ type CampaignValues = {
   website: string | null;
 };
 
-type ParseResult = { ok: true; values: CampaignValues } | { ok: false; error: string; code: string };
-
-function bodyRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
-}
-
-function hasField(body: Record<string, unknown>, field: string) {
-  return Object.prototype.hasOwnProperty.call(body, field);
-}
-
-function optionalText(value: unknown, maxLength: number): string | null {
-  if (value == null) return null;
-  const cleaned = String(value).trim();
-  return cleaned ? cleaned.slice(0, maxLength) : null;
-}
+type ParseResult =
+  | { ok: true; values: CampaignValues }
+  | { ok: false; error: string; code: string; field?: string };
 
 function parseCampaign(body: Record<string, unknown>, user: SessionUser, current?: Campaign): ParseResult {
-  const businessName = optionalText(hasField(body, "businessName") ? body.businessName : current?.businessName, 120);
-  const title = optionalText(hasField(body, "title") ? body.title : current?.title, 160);
-  if (!businessName || !title) return { ok: false, error: "Business name and title required", code: "campaign_required_fields" };
+  const supplied = (field: string) => hasField(body, field);
 
-  const rawEmail = hasField(body, "email") ? body.email : current?.email;
-  const emailInput = rawEmail == null ? "" : String(rawEmail).toLowerCase().trim();
-  const email = emailInput || (current && hasField(body, "email") ? null : user.email);
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: "Please enter a valid email.", code: "invalid_email" };
+  const businessName = current && !supplied("businessName")
+    ? { ok: true, value: current.businessName } as ValidationResult<string>
+    : parseRequiredText(body.businessName, {
+        field: "businessName",
+        maxLength: 120,
+        requiredCode: "campaign_required_fields",
+        requiredMessage: "Business name and title required",
+      });
+  if (!businessName.ok) return businessName;
 
-  const rawWebsite = hasField(body, "website") ? body.website : current?.website;
-  let website: string | null = null;
-  if (rawWebsite) {
-    website = normalizeProfileUrl(rawWebsite, "Instagram");
-    if (!website) return { ok: false, error: "Please enter a valid website or Instagram URL.", code: "invalid_website" };
-    website = website.slice(0, 200);
+  const title = current && !supplied("title")
+    ? { ok: true, value: current.title } as ValidationResult<string>
+    : parseRequiredText(body.title, {
+        field: "title",
+        maxLength: 160,
+        requiredCode: "campaign_required_fields",
+        requiredMessage: "Business name and title required",
+      });
+  if (!title.ok) return title;
+
+  let email: string | null;
+  if (supplied("email")) {
+    const parsedEmail = parseEmailField(body.email, { field: "email" });
+    if (!parsedEmail.ok) return parsedEmail;
+    email = parsedEmail.value ?? (current ? null : user.email);
+  } else {
+    email = current?.email ?? user.email;
   }
 
-  const rawBudget = hasField(body, "budget") ? body.budget : current?.budget;
-  const budget = Math.round(Number(rawBudget));
-  if (!Number.isFinite(budget) || budget < 500 || budget > 10_000_000) {
-    return { ok: false, error: "Please enter a budget between ₹500 and ₹1,00,00,000.", code: "invalid_budget" };
+  let phone: string | null;
+  if (supplied("phone")) {
+    const parsedPhone = parsePhoneField(body.phone, { field: "phone" });
+    if (!parsedPhone.ok) return parsedPhone;
+    phone = parsedPhone.value;
+  } else {
+    phone = current?.phone ?? null;
   }
 
-  const rawPromotionType = hasField(body, "promotionType") ? body.promotionType : current?.promotionType;
-  const hasPromotionType = !(rawPromotionType == null || (typeof rawPromotionType === "string" && !rawPromotionType.trim()));
-  const promotionType = hasPromotionType ? normalizePromotionType(rawPromotionType) : "Product";
-  if (!promotionType) return { ok: false, error: "Please choose a valid promotion type.", code: "invalid_promotion_type" };
+  let website: string | null;
+  if (supplied("website")) {
+    const rawWebsite = body.website;
+    if (rawWebsite == null || (typeof rawWebsite === "string" && !rawWebsite.trim())) {
+      website = null;
+    } else if (typeof rawWebsite !== "string") {
+      return { ok: false, error: "Please enter a valid website or Instagram URL.", code: "invalid_website", field: "website" };
+    } else {
+      website = normalizeProfileUrl(rawWebsite, "Instagram");
+      if (!website || website.length > 200) {
+        return { ok: false, error: "Please enter a valid website or Instagram URL.", code: "invalid_website", field: "website" };
+      }
+      if (hasSuspiciousUrl(website)) {
+        return {
+          ok: false,
+          error: "Please remove links, contact details, or prohibited content and try again.",
+          code: "content_not_allowed",
+          field: "website",
+        };
+      }
+    }
+  } else {
+    website = current?.website ?? null;
+  }
 
-  const rawCategory = hasField(body, "category") ? body.category : current?.category;
-  const hasCategory = !(rawCategory == null || (typeof rawCategory === "string" && !rawCategory.trim()));
-  const category = hasCategory ? normalizeCategory(rawCategory) : null;
-  if (hasCategory && !category) return { ok: false, error: "Please choose a valid category.", code: "invalid_category" };
+  let budget: number;
+  if (current && !supplied("budget")) {
+    budget = current.budget;
+  } else {
+    const parsedBudget = parseBudgetField(body.budget);
+    if (!parsedBudget.ok) return parsedBudget;
+    budget = parsedBudget.value;
+  }
 
-  const rawLanguage = hasField(body, "language") ? body.language : current?.language;
-  const hasLanguage = !(rawLanguage == null || (typeof rawLanguage === "string" && !rawLanguage.trim()));
-  const language = hasLanguage ? normalizeLanguage(rawLanguage) : "English";
-  if (!language) return { ok: false, error: "Please choose a valid language.", code: "invalid_language" };
+  let promotionType: string;
+  if (current && !supplied("promotionType")) {
+    promotionType = current.promotionType;
+  } else if (!supplied("promotionType")) {
+    promotionType = "Product";
+  } else {
+    const normalized = normalizePromotionType(body.promotionType);
+    if (!normalized) {
+      return { ok: false, error: "Please choose a valid promotion type.", code: "invalid_promotion_type", field: "promotionType" };
+    }
+    promotionType = normalized;
+  }
 
-  const rawFormat = hasField(body, "format") ? body.format : current?.format;
-  const hasFormat = !(rawFormat == null || (typeof rawFormat === "string" && !rawFormat.trim()));
-  const format = hasFormat ? normalizeContentType(rawFormat) : "Story";
-  if (!format) return { ok: false, error: "Please choose a valid format.", code: "invalid_format" };
+  let category: string | null;
+  if (!supplied("category")) {
+    category = current?.category ?? null;
+  } else if (body.category == null || (typeof body.category === "string" && !body.category.trim())) {
+    category = null;
+  } else {
+    const normalized = normalizeCategory(body.category);
+    if (!normalized) return { ok: false, error: "Please choose a valid category.", code: "invalid_category", field: "category" };
+    category = normalized;
+  }
+
+  let language: string;
+  if (current && !supplied("language")) {
+    language = current.language;
+  } else if (!supplied("language")) {
+    language = "English";
+  } else {
+    const normalized = normalizeLanguage(body.language);
+    if (!normalized) return { ok: false, error: "Please choose a valid language.", code: "invalid_language", field: "language" };
+    language = normalized;
+  }
+
+  let format: string;
+  if (current && !supplied("format")) {
+    format = current.format;
+  } else if (!supplied("format")) {
+    format = "Story";
+  } else {
+    const normalized = normalizeContentType(body.format);
+    if (!normalized) return { ok: false, error: "Please choose a valid format.", code: "invalid_format", field: "format" };
+    format = normalized;
+  }
+
+  const optionalField = (
+    field: "contactName" | "description" | "location" | "targetAudience",
+    maxLength: number,
+    multiline = false,
+  ): ValidationResult<string | null> =>
+    current && !supplied(field)
+      ? { ok: true, value: current[field] }
+      : parseOptionalText(body[field], { field, maxLength, multiline });
+
+  const contactName = optionalField("contactName", 100);
+  if (!contactName.ok) return contactName;
+  const description = optionalField("description", 2000, true);
+  if (!description.ok) return description;
+  const location = optionalField("location", 100);
+  if (!location.ok) return location;
+  const targetAudience = optionalField("targetAudience", 300);
+  if (!targetAudience.ok) return targetAudience;
 
   return {
     ok: true,
     values: {
-      businessName,
-      contactName: optionalText(hasField(body, "contactName") ? body.contactName : current?.contactName, 100),
-      email: email ? email.slice(0, 120) : null,
-      phone: optionalText(hasField(body, "phone") ? body.phone : current?.phone, 20),
-      title,
+      businessName: businessName.value,
+      contactName: contactName.value,
+      email,
+      phone,
+      title: title.value,
       promotionType,
       category,
-      description: optionalText(hasField(body, "description") ? body.description : current?.description, 2000),
+      description: description.value,
       budget,
-      location: optionalText(hasField(body, "location") ? body.location : current?.location, 100),
+      location: location.value,
       language,
-      targetAudience: optionalText(hasField(body, "targetAudience") ? body.targetAudience : current?.targetAudience, 300),
+      targetAudience: targetAudience.value,
       format,
       website,
     },
   };
+}
+
+function parseSubmissionId(req: Request, body: Record<string, unknown>): ValidationResult<string | null> {
+  const headerValue = req.headers.get("idempotency-key");
+  const headerId = headerValue == null ? null : parseUuid(headerValue);
+  if (headerValue != null && !headerId) {
+    return { ok: false, error: "Please send a valid submission ID.", code: "invalid_request", field: "clientRequestId" };
+  }
+
+  const bodyId = hasField(body, "clientRequestId") && body.clientRequestId != null ? parseUuid(body.clientRequestId) : null;
+  if (hasField(body, "clientRequestId") && body.clientRequestId != null && !bodyId) {
+    return { ok: false, error: "Please send a valid submission ID.", code: "invalid_request", field: "clientRequestId" };
+  }
+  if (headerId && bodyId && headerId !== bodyId) {
+    return { ok: false, error: "Please send one valid submission ID.", code: "invalid_request", field: "clientRequestId" };
+  }
+  return { ok: true, value: headerId ?? bodyId };
+}
+
+async function submissionFingerprint(values: CampaignValues): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(values)));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function validationErrorResponse(result: { error: string; code: string; field?: string }, status = 400) {
+  return Response.json(
+    { error: result.error, code: result.code, ...(result.field ? { field: result.field } : {}) },
+    { status, headers: NO_STORE },
+  );
 }
 
 const returningCampaign = {
@@ -310,18 +435,27 @@ export async function POST(req: Request) {
   const rl = await rateLimit(getClientKey(req, "campaign-create"), 5, 60 * 60_000);
   if (!rl.ok) return limitedResponse(rl.retryAfter);
   try {
-    const body = bodyRecord(await req.json().catch(() => null));
-    if (!body) return Response.json({ error: "Invalid campaign", code: "invalid_request" }, { status: 400, headers: NO_STORE });
+    const parsedBody = await readJsonObject(req, { headers: NO_STORE });
+    if (!parsedBody.ok) return parsedBody.response;
+    const body = parsedBody.body;
+
     const auth = await requireBrand();
     if (auth.error) return auth.error;
 
-    const parsed = parseCampaign(body, auth.user);
-    if (!parsed.ok) return Response.json({ error: parsed.error, code: parsed.code }, { status: 400, headers: NO_STORE });
+    const submission = parseSubmissionId(req, body);
+    if (!submission.ok) return validationErrorResponse(submission);
 
-    const [row] = await db
+    const parsed = parseCampaign(body, auth.user);
+    if (!parsed.ok) return validationErrorResponse(parsed);
+
+    const submissionId = submission.value;
+    const fingerprint = submissionId ? await submissionFingerprint(parsed.values) : null;
+    const insert = db
       .insert(campaigns)
       .values({
         ownerId: auth.user.id,
+        submissionId,
+        submissionFingerprint: fingerprint,
         ...parsed.values,
         status: "pending",
         verificationCode: createVerificationCode(),
@@ -331,7 +465,28 @@ export async function POST(req: Request) {
         updatedAt: new Date(),
       })
       .returning(returningCampaign);
-    return Response.json({ campaign: row }, { headers: NO_STORE });
+    const [row] = submissionId
+      ? await insert.onConflictDoNothing({ target: [campaigns.ownerId, campaigns.submissionId] })
+      : await insert;
+
+    if (row) return Response.json({ campaign: row }, { status: 201, headers: NO_STORE });
+    if (!submissionId) throw new Error("campaign insert returned no row");
+
+    const [existing] = await db
+      .select({ ...returningCampaign, submissionFingerprint: campaigns.submissionFingerprint })
+      .from(campaigns)
+      .where(and(eq(campaigns.ownerId, auth.user.id), eq(campaigns.submissionId, submissionId)))
+      .limit(1);
+    if (!existing) throw new Error("idempotent campaign lookup returned no row");
+    if (existing.submissionFingerprint !== fingerprint) {
+      return Response.json(
+        { error: "This submission ID was already used for a different campaign.", code: "idempotency_key_reused" },
+        { status: 409, headers: NO_STORE },
+      );
+    }
+
+    const { submissionFingerprint: _fingerprint, ...campaign } = existing;
+    return Response.json({ campaign, idempotentReplay: true }, { headers: NO_STORE });
   } catch (e) {
     if (isSessionUnavailableError(e)) {
       logSessionUnavailable(e);
@@ -351,9 +506,11 @@ export async function PATCH(req: Request) {
   const rl = await rateLimit(getClientKey(req, "campaign-manage"), 30, 60 * 60_000);
   if (!rl.ok) return limitedResponse(rl.retryAfter);
   try {
-    const body = bodyRecord(await req.json().catch(() => null));
-    if (!body || !isUuid(body.id)) return Response.json({ error: "Invalid campaign", code: "invalid_target" }, { status: 400, headers: NO_STORE });
-    const id = body.id;
+    const parsedBody = await readJsonObject(req, { headers: NO_STORE });
+    if (!parsedBody.ok) return parsedBody.response;
+    const body = parsedBody.body;
+    const id = parseUuid(body.id);
+    if (!id) return Response.json({ error: "Invalid campaign", code: "invalid_target" }, { status: 400, headers: NO_STORE });
 
     const auth = await requireBrand();
     if (auth.error) return auth.error;
@@ -415,71 +572,113 @@ export async function PATCH(req: Request) {
       return Response.json({ error: "No campaign changes were provided.", code: "no_changes" }, { status: 400, headers: NO_STORE });
     }
 
-    const parsed = parseCampaign(body, auth.user, existing);
-    if (!parsed.ok) return Response.json({ error: parsed.error, code: parsed.code }, { status: 400, headers: NO_STORE });
+    const expectedUpdatedAt = parseExpectedUpdatedAt(body);
+    if (!expectedUpdatedAt.ok) return validationErrorResponse(expectedUpdatedAt);
 
-    const materialFields: Array<keyof CampaignValues> = [
-      "businessName",
-      "title",
-      "promotionType",
-      "category",
-      "description",
-      "budget",
-      "location",
-      "language",
-      "targetAudience",
-      "format",
-      "website",
-    ];
-    // Only submitted public fields can force another review; canonicalizing
-    // an untouched legacy value during parsing is not an owner edit.
-    const materialChanged = materialFields.some((field) => hasField(body, field) && parsed.values[field] !== existing[field]);
-    const contactChanged =
-      parsed.values.contactName !== existing.contactName || parsed.values.email !== existing.email || parsed.values.phone !== existing.phone;
+    type EditOutcome =
+      | { kind: "updated"; campaign: typeof returningCampaign extends never ? never : { id: string; title: string; status: string; verificationCode: string | null; verificationStatus: string; updatedAt: Date }; reviewRequired: boolean }
+      | { kind: "unchanged"; campaign: Campaign }
+      | { kind: "not_found" }
+      | { kind: "changed" }
+      | { kind: "invalid"; result: Extract<ParseResult, { ok: false }> };
 
-    if (!materialChanged && !contactChanged) {
+    const outcome: EditOutcome = await db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select()
+        .from(campaigns)
+        .where(and(eq(campaigns.id, id), eq(campaigns.ownerId, auth.user.id)))
+        .limit(1)
+        .for("update");
+      if (!locked) return { kind: "not_found" } as const;
+      if (expectedUpdatedAt.value && locked.updatedAt.getTime() !== expectedUpdatedAt.value.getTime()) {
+        return { kind: "changed" } as const;
+      }
+
+      const lockedParsed = parseCampaign(body, auth.user, locked);
+      if (!lockedParsed.ok) return { kind: "invalid", result: lockedParsed } as const;
+
+      const materialFields: Array<keyof CampaignValues> = [
+        "businessName",
+        "title",
+        "promotionType",
+        "category",
+        "description",
+        "budget",
+        "location",
+        "language",
+        "targetAudience",
+        "format",
+        "website",
+      ];
+      // Only submitted public fields can force another review; canonicalizing
+      // an untouched legacy value during parsing is not an owner edit.
+      const materialChanged = materialFields.some(
+        (field) => hasField(body, field) && lockedParsed.values[field] !== locked[field],
+      );
+      const contactChanged =
+        lockedParsed.values.contactName !== locked.contactName ||
+        lockedParsed.values.email !== locked.email ||
+        lockedParsed.values.phone !== locked.phone;
+
+      if (!materialChanged && !contactChanged) return { kind: "unchanged", campaign: locked } as const;
+
+      const [row] = await tx
+        .update(campaigns)
+        .set(
+          materialChanged
+            ? {
+                ...lockedParsed.values,
+                updatedAt: now,
+                status: "pending",
+                verificationCode: createVerificationCode(),
+                verificationStatus: "pending",
+                moderationNote: null,
+                reviewedAt: null,
+              }
+            : {
+                // A private contact update should not rewrite the verified
+                // public campaign representation.
+                contactName: lockedParsed.values.contactName,
+                email: lockedParsed.values.email,
+                phone: lockedParsed.values.phone,
+                updatedAt: now,
+              },
+        )
+        .where(and(eq(campaigns.id, id), eq(campaigns.ownerId, auth.user.id)))
+        .returning(returningCampaign);
+      if (!row) return { kind: "not_found" } as const;
+      return { kind: "updated", campaign: row, reviewRequired: materialChanged } as const;
+    });
+
+    if (outcome.kind === "invalid") return validationErrorResponse(outcome.result);
+    if (outcome.kind === "not_found") {
+      return Response.json({ error: "Campaign not found.", code: "campaign_not_found" }, { status: 404, headers: NO_STORE });
+    }
+    if (outcome.kind === "changed") {
+      return Response.json(
+        { error: "This campaign changed while you were editing it. Please refresh and try again.", code: "campaign_changed" },
+        { status: 409, headers: NO_STORE },
+      );
+    }
+    if (outcome.kind === "unchanged") {
+      const locked = outcome.campaign;
       return Response.json(
         {
           campaign: {
-            id: existing.id,
-            title: existing.title,
-            status: existing.status,
-            verificationCode: existing.verificationCode,
-            verificationStatus: existing.verificationStatus,
-            updatedAt: existing.updatedAt,
+            id: locked.id,
+            title: locked.title,
+            status: locked.status,
+            verificationCode: locked.verificationCode,
+            verificationStatus: locked.verificationStatus,
+            updatedAt: locked.updatedAt,
           },
           unchanged: true,
         },
         { headers: NO_STORE },
       );
     }
+    return Response.json({ campaign: outcome.campaign, reviewRequired: outcome.reviewRequired }, { headers: NO_STORE });
 
-    const [row] = await db
-      .update(campaigns)
-      .set(
-        materialChanged
-          ? {
-              ...parsed.values,
-              updatedAt: now,
-              status: "pending",
-              verificationCode: createVerificationCode(),
-              verificationStatus: "pending",
-              moderationNote: null,
-              reviewedAt: null,
-            }
-          : {
-              // A private contact update should not rewrite the verified
-              // public campaign representation.
-              contactName: parsed.values.contactName,
-              email: parsed.values.email,
-              phone: parsed.values.phone,
-              updatedAt: now,
-            },
-      )
-      .where(and(eq(campaigns.id, id), eq(campaigns.ownerId, auth.user.id)))
-      .returning(returningCampaign);
-    if (!row) return Response.json({ error: "Campaign not found.", code: "campaign_not_found" }, { status: 404, headers: NO_STORE });
-    return Response.json({ campaign: row, reviewRequired: materialChanged }, { headers: NO_STORE });
   } catch (e) {
     if (isSessionUnavailableError(e)) {
       logSessionUnavailable(e);
@@ -494,10 +693,11 @@ export async function DELETE(req: Request) {
   const rl = await rateLimit(getClientKey(req, "campaign-manage"), 30, 60 * 60_000);
   if (!rl.ok) return limitedResponse(rl.retryAfter);
   try {
-    const body = bodyRecord(await req.json().catch(() => null));
+    const parsedBody = await readJsonObject(req, { allowEmpty: true, headers: NO_STORE });
+    if (!parsedBody.ok) return parsedBody.response;
     const queryId = new URL(req.url).searchParams.get("id");
-    const id = body?.id ?? queryId;
-    if (!isUuid(id)) return Response.json({ error: "Invalid campaign", code: "invalid_target" }, { status: 400, headers: NO_STORE });
+    const id = parseUuid(parsedBody.body.id ?? queryId);
+    if (!id) return Response.json({ error: "Invalid campaign", code: "invalid_target" }, { status: 400, headers: NO_STORE });
 
     const auth = await requireBrand();
     if (auth.error) return auth.error;

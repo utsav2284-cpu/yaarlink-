@@ -3,18 +3,20 @@ import { buildLoginUrl, consumeEmailChangeToken, hashAccountToken, isAccountToke
 import { SESSION_COOKIE } from "@/backend/auth";
 import { sendAccountSecurityNoticeEmail } from "@/backend/email";
 import { getClientKey, hashKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
+import { readJsonObject } from "@/backend/validation";
 
 export const dynamic = "force-dynamic";
 
-const NO_STORE = { "Cache-Control": "no-store" } as const;
+const NO_STORE = { "Cache-Control": "private, no-store" } as const;
 
 export async function POST(req: Request) {
   const rl = await rateLimit(getClientKey(req, "confirm-email-change"), 10, 15 * 60_000);
   if (!rl.ok) return limitedResponse(rl.retryAfter);
 
   try {
-    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-    const token = body?.token;
+    const parsedBody = await readJsonObject(req, { headers: NO_STORE });
+    if (!parsedBody.ok) return parsedBody.response;
+    const token = parsedBody.body.token;
     if (!isAccountToken(token)) {
       return Response.json({ error: "This email change link is not valid.", code: "invalid_token" }, { status: 400, headers: NO_STORE });
     }

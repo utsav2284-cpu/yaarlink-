@@ -2,17 +2,16 @@ import { db } from "@/backend/db";
 import { applications, campaigns, contacts, creators, reports } from "@/backend/db/schema";
 import { adminSessionUnavailableResponse, isAdmin, isAdminSessionUnavailableError, logAdminSessionUnavailable } from "@/backend/admin";
 import { logAdminAudit } from "@/backend/admin-audit";
-import { createVerificationCode, isUuid, normalizeReviewStatus } from "@/backend/moderation";
+import { createVerificationCode, normalizeReviewStatus } from "@/backend/moderation";
+import { MAX_FOLLOWERS, hasField, parseIntegerField, parseOptionalText, parseUuid, readJsonObject } from "@/backend/validation";
 import { and, eq } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
 const NO_STORE = { "Cache-Control": "private, no-store" };
 
-function cleanNote(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const cleaned = value.trim().replace(/\s+/g, " ");
-  return cleaned ? cleaned.slice(0, 500) : null;
+function invalidTarget() {
+  return Response.json({ error: "Invalid moderation target", code: "invalid_target" }, { status: 400, headers: NO_STORE });
 }
 
 async function resolveOpenReports(targetType: "campaign" | "creator", targetId: string, now: Date) {
@@ -26,19 +25,34 @@ export async function POST(req: Request) {
   try {
     if (!(await isAdmin())) return Response.json({ error: "Not allowed", code: "unauthorized" }, { status: 401, headers: NO_STORE });
 
-    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!body) return Response.json({ error: "Invalid moderation request", code: "invalid_request" }, { status: 400, headers: NO_STORE });
+    const parsedBody = await readJsonObject(req, { headers: NO_STORE });
+    if (!parsedBody.ok) return parsedBody.response;
+    const body = parsedBody.body;
 
-    const entity = body.entity;
+    const entity = typeof body.entity === "string" ? body.entity.trim().toLowerCase() : "";
     const action = typeof body.action === "string" ? body.action.trim().toLowerCase() : "";
-    const id = body.id;
-    const note = cleanNote(body.note);
+    const id = parseUuid(body.id);
+    const parsedNote = hasField(body, "note")
+      ? parseOptionalText(body.note, {
+          field: "note",
+          maxLength: 500,
+          invalidCode: "invalid_request",
+          invalidMessage: "Please enter a valid moderation note.",
+        })
+      : ({ ok: true, value: null } as const);
+    if (!parsedNote.ok) {
+      return Response.json(
+        { error: parsedNote.error, code: parsedNote.code, field: parsedNote.field },
+        { status: 400, headers: NO_STORE },
+      );
+    }
+    const note = parsedNote.value;
     const now = new Date();
 
     if (entity !== "creator" && entity !== "campaign" && entity !== "report" && entity !== "application" && entity !== "contact") {
-      return Response.json({ error: "Invalid moderation target", code: "invalid_target" }, { status: 400, headers: NO_STORE });
+      return invalidTarget();
     }
-    if (!isUuid(id)) return Response.json({ error: "Invalid moderation target", code: "invalid_target" }, { status: 400, headers: NO_STORE });
+    if (!id) return invalidTarget();
 
     const auditModeration = (details: Record<string, string | number | boolean | null | undefined> = {}) =>
       logAdminAudit(req, {
@@ -60,24 +74,33 @@ export async function POST(req: Request) {
       }
 
       if (normalizeReviewStatus(existing.status) === "incomplete") {
-        return Response.json({ error: "This creator has not completed a profile yet.", code: "creator_profile_incomplete" }, { status: 400, headers: NO_STORE });
+        return Response.json({ error: "This creator has not completed a profile yet.", code: "creator_profile_incomplete" }, { status: 409, headers: NO_STORE });
       }
 
       if (action === "approve") {
         if (!existing.verificationCode) {
-          return Response.json({ error: "Send this creator back to review first so a verification code is issued.", code: "creator_review_required" }, { status: 400, headers: NO_STORE });
+          return Response.json({ error: "Send this creator back to review first so a verification code is issued.", code: "creator_review_required" }, { status: 409, headers: NO_STORE });
         }
         if (!existing.profileUrl && !existing.instagram && !existing.youtube) {
-          return Response.json({ error: "This creator has no linked social profile to verify.", code: "creator_no_linked_profile" }, { status: 400, headers: NO_STORE });
+          return Response.json({ error: "This creator has no linked social profile to verify.", code: "creator_no_linked_profile" }, { status: 409, headers: NO_STORE });
         }
 
         let verifiedFollowers = existing.followers ?? 0;
-        if (body.verifiedFollowers !== undefined && body.verifiedFollowers !== null && body.verifiedFollowers !== "") {
-          const parsed = Number(body.verifiedFollowers);
-          if (!Number.isInteger(parsed) || parsed < 0 || parsed > 100_000_000) {
-            return Response.json({ error: "Please enter a valid verified follower count.", code: "invalid_followers" }, { status: 400, headers: NO_STORE });
+        if (hasField(body, "verifiedFollowers") && body.verifiedFollowers != null && body.verifiedFollowers !== "") {
+          const parsed = parseIntegerField(body.verifiedFollowers, {
+            field: "verifiedFollowers",
+            min: 0,
+            max: MAX_FOLLOWERS,
+            code: "invalid_followers",
+            error: "Please enter a valid verified follower count.",
+          });
+          if (!parsed.ok) {
+            return Response.json(
+              { error: parsed.error, code: parsed.code, field: parsed.field },
+              { status: 400, headers: NO_STORE },
+            );
           }
-          verifiedFollowers = parsed;
+          verifiedFollowers = parsed.value;
         }
 
         const [creator] = await db
@@ -145,7 +168,7 @@ export async function POST(req: Request) {
 
       if (action === "approve") {
         if (!existing.verificationCode) {
-          return Response.json({ error: "Send this campaign back to review first so a verification code is issued.", code: "campaign_review_required" }, { status: 400, headers: NO_STORE });
+          return Response.json({ error: "Send this campaign back to review first so a verification code is issued.", code: "campaign_review_required" }, { status: 409, headers: NO_STORE });
         }
         const [campaign] = await db
           .update(campaigns)

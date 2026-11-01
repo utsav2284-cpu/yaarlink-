@@ -247,7 +247,7 @@ export function limitedResponse(retryAfter: number) {
   const safeRetryAfter = Number.isFinite(retryAfter) ? Math.max(1, Math.ceil(retryAfter)) : 60;
   return Response.json(
     { error: "Too many requests. Please try again later.", code: "rate_limited" },
-    { status: 429, headers: { "Retry-After": String(safeRetryAfter), "Cache-Control": "no-store" } },
+    { status: 429, headers: { "Retry-After": String(safeRetryAfter), "Cache-Control": "private, no-store" } },
   );
 }
 

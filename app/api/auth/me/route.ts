@@ -2,7 +2,7 @@ import { getSessionUser, isSessionUnavailableError, logSessionUnavailable, sessi
 
 export const dynamic = "force-dynamic";
 
-const NO_STORE = { "Cache-Control": "no-store" };
+const NO_STORE = { "Cache-Control": "private, no-store" };
 
 export async function GET() {
   if (sessionSecretProblem()) {

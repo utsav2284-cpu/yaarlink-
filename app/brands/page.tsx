@@ -7,7 +7,15 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { ApiResponseError, appendUniqueById, fetchJsonPage, type ListPagination } from "@/frontend/api-json";
 import { ListingError, ListingLoading, ListingPagination } from "@/frontend/components/ListingState";
 import { useSearchParams } from "next/navigation";
-import { CATEGORIES, LANGUAGES, CONTENT_TYPES, PROMOTION_TYPES, normalizePromotionType } from "@/shared/constants";
+import {
+  CAMPAIGN_BUDGET_MAX,
+  CAMPAIGN_BUDGET_MIN,
+  CATEGORIES,
+  CONTENT_TYPES,
+  LANGUAGES,
+  PROMOTION_TYPES,
+  normalizePromotionType,
+} from "@/shared/constants";
 import ContactLink from "@/frontend/components/ContactLink";
 import PrivacyNotice from "@/frontend/components/PrivacyNotice";
 import ReportButton from "@/frontend/components/ReportButton";
@@ -130,36 +138,51 @@ function BrandInner() {
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   const [budgetAmount, setBudgetAmount] = useState("8000");
-  const budgetNum = Number(budgetAmount || 0);
-  const budgetHint = !budgetNum
+  const budgetText = budgetAmount.trim();
+  const budgetDigits = budgetText.replace(/,/g, "");
+  const budgetNum =
+    /^\d+$/.test(budgetText) || /^\d{1,3}(,\d{3})+$/.test(budgetText) || /^\d{1,2}(,\d{2})*,\d{3}$/.test(budgetText)
+      ? Number(budgetDigits)
+      : null;
+  const budgetInRange =
+    budgetNum !== null && Number.isSafeInteger(budgetNum) && budgetNum >= CAMPAIGN_BUDGET_MIN && budgetNum <= CAMPAIGN_BUDGET_MAX;
+  const budgetHint = !budgetAmount.trim()
     ? t("brand.budgetHintEmpty")
-    : budgetNum < 500
+    : !budgetInRange
       ? t("brand.budgetHintMin")
       : t("brand.budgetHint");
+  const campaignSubmissionRef = useRef<{ payload: string; key: string } | null>(null);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrKey("");
-    if (!form.businessName || !form.title) {
+    if (!form.businessName.trim() || !form.title.trim()) {
       setErrKey("brand.errMissing");
       return;
     }
-    if (budgetNum < 500) {
+    if (!budgetInRange || budgetNum === null) {
       setErrKey("brand.errBudget");
       return;
     }
+    const payload = { ...form, budget: budgetNum };
+    const payloadKey = JSON.stringify(payload);
+    if (campaignSubmissionRef.current?.payload !== payloadKey) {
+      campaignSubmissionRef.current = { payload: payloadKey, key: crypto.randomUUID() };
+    }
+    const clientRequestId = campaignSubmissionRef.current.key;
     setSaving(true);
     try {
       const res = await fetch("/api/campaigns", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, budget: budgetNum }),
+        headers: { "Content-Type": "application/json", "Idempotency-Key": clientRequestId },
+        body: JSON.stringify({ ...payload, clientRequestId }),
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) {
         setErrKey(apiErrorKey(res.status, d?.code));
         return;
       }
+      campaignSubmissionRef.current = null;
       setVerificationCode(d.campaign?.verificationCode ?? "");
       setDone(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -290,8 +313,8 @@ function BrandInner() {
                     id="budget"
                     aria-describedby="brand-budget-private brand-budget-hint"
                     inputMode="numeric"
-                    value={budgetAmount ? formatNumber(Number(budgetAmount)) : ""}
-                    onChange={(e) => setBudgetAmount(e.target.value.replace(/[^0-9]/g, "").slice(0, 8))}
+                    value={budgetAmount}
+                    onChange={(e) => setBudgetAmount(e.target.value)}
                     placeholder={t("brand.budgetPlaceholder")}
                     className="w-full rounded-xl bg-transparent px-2 py-3 text-[20px] font-extrabold outline-none"
                   />
@@ -302,14 +325,14 @@ function BrandInner() {
                       key={v}
                       type="button"
                       onClick={() => setBudgetAmount(String(v))}
-                      aria-pressed={Number(budgetAmount) === v}
-                      className={`rounded-full border px-3.5 py-1.5 text-[13px] font-bold ${Number(budgetAmount) === v ? "border-[#1c1917] bg-[#1c1917] text-white" : "border-[#e9ddc3] bg-white"}`}
+                      aria-pressed={budgetNum === v}
+                      className={`rounded-full border px-3.5 py-1.5 text-[13px] font-bold ${budgetNum === v ? "border-[#1c1917] bg-[#1c1917] text-white" : "border-[#e9ddc3] bg-white"}`}
                     >
                       {formatCurrency(v)}
                     </button>
                   ))}
                 </div>
-                <p id="brand-budget-hint" className={`mt-3 text-[13px] font-semibold ${budgetNum > 0 && budgetNum < 500 ? "text-red-700" : "text-[#57534e]"}`}>
+                <p id="brand-budget-hint" className={`mt-3 text-[13px] font-semibold ${budgetAmount.trim() && !budgetInRange ? "text-red-700" : "text-[#57534e]"}`}>
                   {budgetHint}
                 </p>
               </div>
