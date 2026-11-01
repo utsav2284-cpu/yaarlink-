@@ -95,7 +95,9 @@ headers, and the origin cannot be reached directly. With `TRUST_PROXY_HEADERS`, 
 
 This project is configured for OpenNext + Cloudflare Workers. Build/deploy with your normal Cloudflare/OpenNext workflow.
 
-Before production, verify the deployment build completes successfully in the deployment provider. This source package was audited, but dependency installation could not be completed in the isolated review environment, so a successful production build cannot be claimed from this environment.
+Install dependencies with `npm ci` so builds use the exact versions recorded in the tracked
+`package-lock.json`. Before production, verify the deployment build completes successfully in
+the deployment provider.
 
 ## 5. Admin
 
