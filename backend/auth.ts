@@ -3,6 +3,8 @@ import { and, eq, gt, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { db } from "@/backend/db";
 import { userSessions, users } from "@/backend/db/schema";
+import { PASSWORD_MAX_LENGTH, passwordLength } from "@/backend/password-policy";
+import { getSigningSecret, signingSecretProblemForName } from "@/backend/secret-config";
 
 /*
  * Auth helpers built on Web Crypto, so they run fast on Node and on Cloudflare Workers.
@@ -16,6 +18,11 @@ export const SESSION_COOKIE = "__Host-yl_session";
 const SESSION_DAYS = 7;
 const SESSION_SIGN_PREFIX = "yl_session:";
 const PBKDF2_ITERATIONS = 100_000;
+// A valid-format, non-account PBKDF2 hash used only to spend equivalent
+// verification work for unknown accounts and malformed stored hashes. It is
+// not the hash of a usable credential.
+const DUMMY_PASSWORD_HASH =
+  "pbkdf2$100000$eWFhcmxpbmstZHVtbXkxNg$PCmJkPkbXYEiubgq4VuyMxyuXSi6zZ8NO6JkAQhtkhw";
 // Tokens claiming an `iat` further ahead than this are rejected (small allowance for clock skew).
 const MAX_CLOCK_SKEW_MS = 60_000;
 const SESSION_TOUCH_INTERVAL_MS = 15 * 60_000;
@@ -61,33 +68,92 @@ export async function hashPassword(password: string) {
   return `pbkdf2$${PBKDF2_ITERATIONS}$${toB64url(salt)}$${toB64url(hash)}`;
 }
 
+function decodePasswordPart(value: string | undefined, minBytes: number, maxBytes: number): Uint8Array | null {
+  if (!value || !/^[A-Za-z0-9_-]+$/.test(value)) return null;
+  try {
+    const bytes = fromB64url(value);
+    return bytes.length >= minBytes && bytes.length <= maxBytes ? bytes : null;
+  } catch {
+    return null;
+  }
+}
+
+async function burnPasswordVerification(password: string): Promise<void> {
+  try {
+    const [, iter, salt, hash] = DUMMY_PASSWORD_HASH.split("$");
+    const saltBytes = decodePasswordPart(salt, 8, 64);
+    const hashBytes = decodePasswordPart(hash, 16, 64);
+    if (!saltBytes || !hashBytes) return;
+    const calc = await pbkdf2(password, saltBytes, Number(iter));
+    // The comparison result is intentionally discarded; performing it keeps
+    // this path shaped like a real PBKDF2 verification.
+    safeEqual(calc, hashBytes);
+  } catch {
+    // A crypto failure must still fail closed below.
+  }
+}
+
 /** Returns { ok, needsRehash } — needsRehash is true for legacy bcrypt hashes. */
 export async function verifyPassword(password: string, stored: string) {
-  if (stored.startsWith("pbkdf2$")) {
-    const [, iter, salt, hash] = stored.split("$");
-    const calc = await pbkdf2(password, fromB64url(salt), Number(iter));
-    return { ok: safeEqual(calc, fromB64url(hash)), needsRehash: false };
+  try {
+    if (stored.startsWith("pbkdf2$")) {
+      const parts = stored.split("$");
+      const iterations = Number(parts[1]);
+      const salt = decodePasswordPart(parts[2], 8, 64);
+      const hash = decodePasswordPart(parts[3], 16, 64);
+      if (
+        parts.length === 4 &&
+        Number.isSafeInteger(iterations) &&
+        iterations >= 1 &&
+        iterations <= 1_000_000 &&
+        salt &&
+        hash
+      ) {
+        const calc = await pbkdf2(password, salt, iterations);
+        return { ok: safeEqual(calc, hash), needsRehash: false };
+      }
+    } else if (stored.startsWith("$2")) {
+      return { ok: await bcrypt.compare(password, stored), needsRehash: true };
+    }
+  } catch {
+    // Malformed stored data gets the same dummy work and a closed result.
   }
-  if (stored.startsWith("$2")) {
-    return { ok: await bcrypt.compare(password, stored), needsRehash: true };
-  }
+
+  await burnPasswordVerification(password);
   return { ok: false, needsRehash: false };
+}
+
+/**
+ * Login-specific verification that never skips password work merely because
+ * the submitted email has no account. Unknown accounts and over-long
+ * candidates run against the dummy PBKDF2 hash before returning the same
+ * closed result as a wrong password for a real account.
+ */
+export async function verifyLoginPassword(password: string, storedHash?: string | null) {
+  if (passwordLength(password) > PASSWORD_MAX_LENGTH) {
+    await burnPasswordVerification("yaarlink-overlong-login-password");
+    return { ok: false, needsRehash: false };
+  }
+  if (!storedHash) {
+    await burnPasswordVerification(password);
+    return { ok: false, needsRehash: false };
+  }
+  return verifyPassword(password, storedHash);
 }
 
 /* ---------- session secret ---------- */
 
 /**
- * SESSION_SECRET is required. There is no database fallback: a missing secret fails the
- * request rather than silently signing sessions with a key stored next to the data it protects.
+ * SESSION_SECRET must be strong, machine-generated key material. There is no
+ * database fallback: missing, placeholder, or weak configuration fails closed
+ * rather than signing sessions with an unsuitable key.
  */
 function getSecret() {
-  const secret = process.env.SESSION_SECRET;
-  if (!secret) throw new Error("SESSION_SECRET is required");
-  return secret;
+  return getSigningSecret("SESSION_SECRET");
 }
 
-export function sessionSecretProblem(): "missing" | null {
-  return process.env.SESSION_SECRET ? null : "missing";
+export function sessionSecretProblem(): "missing" | "weak" | null {
+  return signingSecretProblemForName("SESSION_SECRET");
 }
 
 async function hmac(data: string) {

@@ -53,9 +53,9 @@ You should see `[✓] Changes applied`.
 ```bash
 npx wrangler login                       # opens the browser, click Allow
 npx wrangler secret put DATABASE_URL     # paste the Neon URL
-npx wrangler secret put ADMIN_PASSWORD   # a long password only you know (for /admin)
-npx wrangler secret put SESSION_SECRET   # any long random text (signs login cookies)
-npx wrangler secret put ADMIN_SESSION_SECRET   # a *different* long random text (signs the admin cookie)
+npx wrangler secret put ADMIN_PASSWORD   # unique passphrase, at least 16 characters (for /admin)
+npx wrangler secret put SESSION_SECRET   # paste fresh `openssl rand -hex 32` output (signs login cookies)
+npx wrangler secret put ADMIN_SESSION_SECRET   # paste *different* `openssl rand -hex 32` output (signs the admin cookie)
 npx wrangler secret put RESEND_API_KEY         # Resend API key for signup verification email
 npx wrangler secret put EMAIL_FROM             # e.g. YaarLink <no-reply@theyaar.com> (domain verified in Resend)
 # Optional: npx wrangler secret put ADMIN_TOTP_SECRET   # Base32 authenticator secret for admin MFA
@@ -75,7 +75,7 @@ Cloudflare dashboard → **Workers & Pages → Create → Import a repository** 
 - Build command: `npx opennextjs-cloudflare build`
 - Deploy command: `npx opennextjs-cloudflare deploy`
 
-Then in the Worker → **Settings → Variables and Secrets**, add `DATABASE_URL`, `ADMIN_PASSWORD`, `SESSION_SECRET`, `ADMIN_SESSION_SECRET`, `RESEND_API_KEY`, and `EMAIL_FROM` (type **Secret**). `ADMIN_SESSION_SECRET` must be different from `SESSION_SECRET`, or admin login is disabled. Signup fails closed with HTTP 503 until the two email settings are present, and the `EMAIL_FROM` domain must be verified in Resend. Optionally add `ADMIN_TOTP_SECRET` with a Base32 secret enrolled in your authenticator app to require a six-digit code at `/admin`; leave it unset for password-only login. Optionally add a distinct `BOT_CHALLENGE_SECRET` for public-form security challenges; otherwise `SESSION_SECRET` is used. Do not enable the proxy-trust variables in `.env.example` unless the deployment's only ingress is that trusted proxy.
+Then in the Worker → **Settings → Variables and Secrets**, add `DATABASE_URL`, `ADMIN_PASSWORD`, `SESSION_SECRET`, `ADMIN_SESSION_SECRET`, `RESEND_API_KEY`, and `EMAIL_FROM` (type **Secret**). Generate the two signing secrets independently with `openssl rand -hex 32`; `ADMIN_SESSION_SECRET` must be different from `SESSION_SECRET`, and `ADMIN_PASSWORD` must be a unique passphrase of at least 16 characters. The server refuses to start when a required auth secret is missing, weak, copied from `.env.example`, or shared, and the relevant login routes also fail closed with HTTP 503. Signup fails closed with HTTP 503 until the two email settings are present, and the `EMAIL_FROM` domain must be verified in Resend. Optionally add `ADMIN_TOTP_SECRET` with a Base32 secret enrolled in your authenticator app to require a six-digit code at `/admin`; leave it unset for password-only login. Optionally add a distinct generated `BOT_CHALLENGE_SECRET` for public-form security challenges; otherwise the validated `SESSION_SECRET` is used. Do not enable the proxy-trust variables in `.env.example` unless the deployment's only ingress is that trusted proxy.
 
 ## 4 · Connect theyaar.com
 
@@ -118,7 +118,7 @@ Logs: Cloudflare → Workers & Pages → `yaarlink` → **Logs**.
 ## Run on your own computer
 
 ```bash
-cp .env.example .env     # fill in DATABASE_URL, ADMIN_PASSWORD, SESSION_SECRET, ADMIN_SESSION_SECRET
+cp .env.example .env     # fill in DATABASE_URL and generate fresh auth secrets; placeholders refuse to start
 npm install
 npm run dev              # http://localhost:3000
 ```

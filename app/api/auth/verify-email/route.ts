@@ -15,6 +15,13 @@ import {
   isUserEmailUniqueViolation,
   recordFailedPendingVerification,
 } from "@/backend/email-verification";
+import {
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  PasswordBreachCheckUnavailableError,
+  passwordLength,
+  validateNewPassword,
+} from "@/backend/password-policy";
 import { getClientKey, hashKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -37,7 +44,12 @@ export async function POST(req: Request) {
     const token = body?.token;
     const password = String(body?.password || "");
 
-    if (!isSignupVerificationToken(token) || password.length < 10 || password.length > 256) {
+    const submittedPasswordLength = passwordLength(password);
+    if (
+      !isSignupVerificationToken(token) ||
+      submittedPasswordLength < PASSWORD_MIN_LENGTH ||
+      submittedPasswordLength > PASSWORD_MAX_LENGTH
+    ) {
       return invalidResponse();
     }
 
@@ -52,6 +64,40 @@ export async function POST(req: Request) {
     if (!ok) {
       await recordFailedPendingVerification(pending.id);
       return invalidResponse();
+    }
+
+    // Recheck at account creation as well as initial signup. This closes the
+    // gap for a pending signup created before the breach check was deployed
+    // (and for newly published breach data) without consuming the token when
+    // the check is unavailable.
+    let passwordValidation;
+    try {
+      passwordValidation = await validateNewPassword(password, {
+        email: pending.email,
+        name: pending.name,
+        phone: pending.phone,
+      });
+    } catch (error) {
+      if (error instanceof PasswordBreachCheckUnavailableError) {
+        return Response.json(
+          {
+            error: "Password security check is temporarily unavailable. Please try again later.",
+            code: "password_breach_check_unavailable",
+          },
+          { status: 503, headers: NO_STORE },
+        );
+      }
+      throw error;
+    }
+    if (!passwordValidation.ok) {
+      if (passwordValidation.problem === "length") return invalidResponse();
+      return Response.json(
+        {
+          error: "That password has appeared in a known data breach. Start signup again with a different one.",
+          code: "password_breached",
+        },
+        { status: 400, headers: NO_STORE },
+      );
     }
 
     if (sessionSecretProblem()) {

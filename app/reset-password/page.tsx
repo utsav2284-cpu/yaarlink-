@@ -47,6 +47,8 @@ export default function ResetPasswordPage() {
       if (!res.ok) {
         if (res.status === 429) setErr(t("auth.tooManyRequests"));
         else if (data?.code === "password_policy") setErr(t("auth.passwordPolicy"));
+        else if (data?.code === "password_breached") setErr(t("auth.passwordBreached"));
+        else if (data?.code === "password_breach_check_unavailable") setErr(t("auth.passwordBreachCheckUnavailable"));
         else setErr(t("auth.resetFailed"));
         return;
       }

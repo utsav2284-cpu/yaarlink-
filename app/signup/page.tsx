@@ -29,7 +29,11 @@ export default function SignupPage() {
     return () => window.clearTimeout(timer);
   }, [resendSeconds]);
 
-  const errorForStatus = (status: number) => {
+  const errorForStatus = (status: number, code?: string) => {
+    if (code === "password_breached") return t("auth.passwordBreached");
+    if (code === "password_policy") return t("auth.passwordPolicy");
+    if (code === "password_breach_check_unavailable") return t("auth.passwordBreachCheckUnavailable");
+    if (code === "legal_consent_required") return t("auth.legalConsentRequired");
     if (status === 400) return t("auth.signupInvalid");
     if (status === 429) return t("auth.tooManyRequests");
     if (status === 503) return t("auth.signupUnavailable");
@@ -49,9 +53,9 @@ export default function SignupPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...form, legalConsent: acceptedLegal }),
       });
-      const data = (await res.json().catch(() => null)) as { status?: string } | null;
+      const data = (await res.json().catch(() => null)) as { status?: string; code?: string } | null;
       if (!res.ok || data?.status !== "verification_required") {
-        setErr(errorForStatus(res.status));
+        setErr(errorForStatus(res.status, data?.code));
         return;
       }
 
@@ -136,7 +140,7 @@ export default function SignupPage() {
               <input value={form.name} onChange={(e) => set("name", e.target.value)} required autoComplete="name" placeholder={form.role === "brand" ? t("auth.nameBrand") : t("auth.nameCreator")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
               <input value={form.email} onChange={(e) => set("email", e.target.value)} required type="email" autoComplete="email" placeholder={t("auth.email")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
               <input value={form.phone} onChange={(e) => set("phone", e.target.value)} autoComplete="tel" placeholder={t("auth.phone")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
-              <input value={form.password} onChange={(e) => set("password", e.target.value)} required type="password" minLength={10} autoComplete="new-password" placeholder={t("auth.pwHint")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+              <input value={form.password} onChange={(e) => set("password", e.target.value)} required type="password" minLength={10} maxLength={256} autoComplete="new-password" placeholder={t("auth.pwHint")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
               <label htmlFor="signup-legal-consent" className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 text-[13.5px] font-semibold leading-relaxed text-[#57534e]">
                 <input
                   id="signup-legal-consent"

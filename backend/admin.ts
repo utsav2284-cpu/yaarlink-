@@ -2,6 +2,14 @@ import { cookies } from "next/headers";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/backend/db";
 import { settings } from "@/backend/db/schema";
+import { passwordLength } from "@/backend/password-policy";
+import {
+  ADMIN_PASSWORD_MAX_LENGTH,
+  adminPasswordProblem as adminPasswordConfigurationProblem,
+  decodeBase32Secret as decodeBase32,
+  getSigningSecret,
+  SecretConfigurationError,
+} from "@/backend/secret-config";
 
 export const ADMIN_COOKIE = "__Host-yl_admin";
 const ADMIN_DAYS = 1;
@@ -41,27 +49,41 @@ function fromB64url(str: string) {
   return out;
 }
 
-/** Raised when the admin signing secret is missing or not distinct from SESSION_SECRET. */
+/** Raised when the admin signing secret is missing, weak, or not distinct from SESSION_SECRET. */
 export class AdminSecretError extends Error {
-  constructor(readonly reason: "missing" | "shared") {
-    super(reason === "missing" ? "ADMIN_SESSION_SECRET is required" : "ADMIN_SESSION_SECRET must differ from SESSION_SECRET");
+  constructor(readonly reason: "missing" | "weak" | "shared") {
+    super(
+      reason === "missing"
+        ? "ADMIN_SESSION_SECRET is required"
+        : reason === "weak"
+          ? "ADMIN_SESSION_SECRET is too weak"
+          : "ADMIN_SESSION_SECRET must differ from SESSION_SECRET",
+    );
     this.name = "AdminSecretError";
   }
 }
 
 /**
- * ADMIN_SESSION_SECRET must be set and different from SESSION_SECRET. There is no fallback:
- * an admin token must never be signable with the same key as a user session.
+ * ADMIN_SESSION_SECRET must be strong generated key material and different
+ * from SESSION_SECRET. There is no fallback: an admin token must never be
+ * signable with the same or a weak key as a user session.
  */
 function getAdminSecret() {
   const secret = process.env.ADMIN_SESSION_SECRET;
   if (!secret) throw new AdminSecretError("missing");
   if (secret === process.env.SESSION_SECRET) throw new AdminSecretError("shared");
-  return secret;
+  try {
+    return getSigningSecret("ADMIN_SESSION_SECRET");
+  } catch (error) {
+    if (error instanceof SecretConfigurationError) {
+      throw new AdminSecretError(error.reason === "weak" ? "weak" : "missing");
+    }
+    throw error;
+  }
 }
 
 /** null when admin auth is safely configured; otherwise the reason it is not (→ 503). */
-export function adminSecretProblem(): "missing" | "shared" | null {
+export function adminSecretProblem(): "missing" | "weak" | "shared" | null {
   try {
     getAdminSecret();
     return null;
@@ -122,32 +144,11 @@ export async function revokeAdminSessions(): Promise<number> {
   return version;
 }
 
-function decodeBase32(input: string): Uint8Array | null {
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-  const normalized = input.replace(/[\s-]/g, "").replace(/=+$/, "").toUpperCase();
-  if (!normalized || normalized.length % 8 === 1) return null;
-  const bytes: number[] = [];
-  let bits = 0;
-  let value = 0;
-  for (const char of normalized) {
-    const index = alphabet.indexOf(char);
-    if (index < 0) return null;
-    value = (value << 5) | index;
-    bits += 5;
-    if (bits >= 8) {
-      bytes.push((value >>> (bits - 8)) & 0xff);
-      bits -= 8;
-      value &= (1 << bits) - 1;
-    }
-  }
-  return new Uint8Array(bytes);
-}
-
 function getAdminTotpSecretBytes(): Uint8Array | null {
   const secret = process.env.ADMIN_TOTP_SECRET?.trim();
   if (!secret) return null;
   const decoded = decodeBase32(secret);
-  return decoded && decoded.byteLength >= 10 ? decoded : null;
+  return decoded && decoded.byteLength >= 10 && new Set(decoded).size >= 4 ? decoded : null;
 }
 
 export function isAdminTotpEnabled(): boolean {
@@ -241,9 +242,21 @@ export async function isAdmin(): Promise<boolean> {
   }
 }
 
-/** ADMIN_PASSWORD is required — the legacy settings-table hash fallback has been removed. */
+/** null when ADMIN_PASSWORD is present and strong enough for owner-only access. */
+export function adminPasswordProblem(): "missing" | "weak" | "shared" | null {
+  return adminPasswordConfigurationProblem(process.env.ADMIN_PASSWORD);
+}
+
+/** ADMIN_PASSWORD is required and validated; the legacy settings-table hash fallback has been removed. */
 export async function verifyAdminPassword(given: string) {
   const envPass = process.env.ADMIN_PASSWORD;
-  if (!envPass) return false;
-  return safeEqualStr(given, envPass);
+  if (!envPass || adminPasswordProblem()) return false;
+  if (passwordLength(given) > ADMIN_PASSWORD_MAX_LENGTH) return false;
+
+  // Compare fixed-length digests so the comparison does not terminate based
+  // on supplied length or a matching prefix.
+  const digest = async (value: string) =>
+    toB64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))));
+  const [givenDigest, expectedDigest] = await Promise.all([digest(given), digest(envPass)]);
+  return safeEqualStr(givenDigest, expectedDigest);
 }

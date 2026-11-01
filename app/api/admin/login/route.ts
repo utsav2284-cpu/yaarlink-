@@ -1,4 +1,4 @@
-import { adminSecretProblem, adminTotpProblem, createAdminSession, isAdminTotpEnabled, verifyAdminPassword, verifyAdminTotp } from "@/backend/admin";
+import { adminPasswordProblem, adminSecretProblem, adminTotpProblem, createAdminSession, isAdminTotpEnabled, verifyAdminPassword, verifyAdminTotp } from "@/backend/admin";
 import { logAdminAudit } from "@/backend/admin-audit";
 import { authLockoutSeconds, clearAuthFailures, getClientKey, limitedResponse, rateLimit, registerAuthFailure } from "@/backend/rate-limit";
 
@@ -18,9 +18,10 @@ async function failedAttemptResponse(clientKey: string, error: string) {
 }
 
 export async function POST(req: Request) {
-  // Refuse to operate unless a distinct admin signing secret is configured.
-  // An invalid TOTP secret also fails closed instead of silently using password-only auth.
-  if (adminSecretProblem() || adminTotpProblem()) {
+  // Refuse to operate unless the admin password and a distinct, strong admin
+  // signing secret are configured. An invalid TOTP secret also fails closed
+  // instead of silently using password-only auth.
+  if (adminPasswordProblem() || adminSecretProblem() || adminTotpProblem()) {
     return Response.json({ error: "Admin login is not configured.", code: "admin_not_configured" }, { status: 503, headers: NO_STORE });
   }
   const clientKey = getClientKey(req, "admin-login");
