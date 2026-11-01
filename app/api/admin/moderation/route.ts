@@ -1,6 +1,6 @@
 import { db } from "@/backend/db";
 import { applications, campaigns, contacts, creators, reports } from "@/backend/db/schema";
-import { isAdmin } from "@/backend/admin";
+import { adminSessionUnavailableResponse, isAdmin, isAdminSessionUnavailableError, logAdminSessionUnavailable } from "@/backend/admin";
 import { logAdminAudit } from "@/backend/admin-audit";
 import { createVerificationCode, isUuid, normalizeReviewStatus } from "@/backend/moderation";
 import { and, eq } from "drizzle-orm";
@@ -239,6 +239,10 @@ export async function POST(req: Request) {
     });
     return Response.json({ ok: true, report }, { headers: NO_STORE });
   } catch (e) {
+    if (isAdminSessionUnavailableError(e)) {
+      logAdminSessionUnavailable(e);
+      return adminSessionUnavailableResponse(NO_STORE);
+    }
     console.error(e);
     return Response.json({ error: "Could not complete moderation action", code: "moderation_failed" }, { status: 500, headers: NO_STORE });
   }

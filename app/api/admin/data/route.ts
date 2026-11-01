@@ -1,6 +1,6 @@
 import { db } from "@/backend/db";
 import { adminAuditLogs, applications, campaigns, contacts, creators, reports } from "@/backend/db/schema";
-import { isAdmin } from "@/backend/admin";
+import { adminSessionUnavailableResponse, isAdmin, isAdminSessionUnavailableError, logAdminSessionUnavailable } from "@/backend/admin";
 import { and, eq, sql } from "drizzle-orm";
 import {
   APPLICATION_STATUSES,
@@ -652,6 +652,10 @@ export async function GET(req: Request) {
     const counts = await loadAdminCounts();
     return Response.json({ entity, [entity]: page.rows, pagination: page.pagination, counts }, { headers: NO_STORE });
   } catch (e) {
+    if (isAdminSessionUnavailableError(e)) {
+      logAdminSessionUnavailable(e);
+      return adminSessionUnavailableResponse(NO_STORE);
+    }
     if (isListingQueryError(e)) {
       return Response.json({ error: e.message, code: e.code }, { status: e.status, headers: NO_STORE });
     }

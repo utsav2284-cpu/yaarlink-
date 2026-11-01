@@ -18,9 +18,12 @@ import {
   clearSessionCookie,
   getSessionContext,
   isSessionId,
+  isSessionUnavailableError,
+  logSessionUnavailable,
   revokeOtherUserSessions,
   revokeUserSession,
   sessionSecretProblem,
+  sessionUnavailableResponse,
   setExistingSessionCookie,
 } from "@/backend/auth";
 import {
@@ -72,6 +75,10 @@ export async function GET() {
     if (!context) return jsonError(401, "Please log in", "unauthorized");
     return Response.json(await accountPayload(context.user.id, context.sessionId, context.user), { headers: NO_STORE });
   } catch (error) {
+    if (isSessionUnavailableError(error)) {
+      logSessionUnavailable(error);
+      return sessionUnavailableResponse(NO_STORE);
+    }
     console.error(error);
     return jsonError(500, "Could not load account settings.", "request_failed");
   }
@@ -267,6 +274,10 @@ export async function PATCH(req: Request) {
 
     return jsonError(400, "Unsupported account action.", "invalid_request");
   } catch (error) {
+    if (isSessionUnavailableError(error)) {
+      logSessionUnavailable(error);
+      return sessionUnavailableResponse(NO_STORE);
+    }
     console.error(error);
     return jsonError(500, "Could not update account settings.", "request_failed");
   }
@@ -307,6 +318,10 @@ export async function DELETE(req: Request) {
 
     return Response.json({ ok: true, status: "account_deleted" }, { headers: NO_STORE });
   } catch (error) {
+    if (isSessionUnavailableError(error)) {
+      logSessionUnavailable(error);
+      return sessionUnavailableResponse(NO_STORE);
+    }
     console.error(error);
     return jsonError(500, "Could not delete account.", "request_failed");
   }

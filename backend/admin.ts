@@ -49,6 +49,52 @@ function fromB64url(str: string) {
   return out;
 }
 
+/**
+ * The admin session-version store could not be checked. Authorization still
+ * fails closed, but callers can return a controlled 503 instead of treating
+ * a database/configuration outage as an ordinary logged-out admin.
+ */
+export class AdminSessionUnavailableError extends Error {
+  readonly code = "service_unavailable" as const;
+
+  constructor(cause?: unknown) {
+    super("Admin session service is temporarily unavailable", cause === undefined ? undefined : { cause });
+    this.name = "AdminSessionUnavailableError";
+  }
+}
+
+export function isAdminSessionUnavailableError(error: unknown): error is AdminSessionUnavailableError {
+  return error instanceof AdminSessionUnavailableError;
+}
+
+export function logAdminSessionUnavailable(error: AdminSessionUnavailableError): void {
+  let current: unknown = error.cause ?? error;
+  const seen = new Set<unknown>();
+  while (current instanceof Error && !seen.has(current)) {
+    seen.add(current);
+    const cause = (current as Error & { cause?: unknown }).cause;
+    if (!(cause instanceof Error)) break;
+    current = cause;
+  }
+
+  const root = current instanceof Error ? current : null;
+  const code = (root as (Error & { code?: unknown }) | null)?.code;
+  console.error("[admin-session] lookup failed", {
+    name: root?.name || "UnknownError",
+    code: typeof code === "string" || typeof code === "number" ? String(code) : "unknown",
+  });
+}
+
+export function adminSessionUnavailableResponse(headersInit?: HeadersInit): Response {
+  const headers = new Headers(headersInit);
+  if (!headers.has("Cache-Control")) headers.set("Cache-Control", "private, no-store");
+  headers.set("Retry-After", "30");
+  return Response.json(
+    { error: "Admin session service is temporarily unavailable", code: "service_unavailable" },
+    { status: 503, headers },
+  );
+}
+
 /** Raised when the admin signing secret is missing, weak, or not distinct from SESSION_SECRET. */
 export class AdminSecretError extends Error {
   constructor(readonly reason: "missing" | "weak" | "shared") {
@@ -224,22 +270,35 @@ export async function isAdmin(): Promise<boolean> {
   if (parts.length !== 2) return false;
   const [body, sig] = parts;
   if (!body || !sig) return false;
+
+  let parsed: Partial<AdminTokenPayload>;
   try {
     const expected = await sign(body);
     if (!expected || !safeEqualStr(expected, sig)) return false;
-    const parsed = JSON.parse(new TextDecoder().decode(fromB64url(body))) as Partial<AdminTokenPayload>;
-    const version = parseSafeInteger(parsed.ver);
-    const issuedAt = parseSafeInteger(parsed.iat);
-    const expiresAt = parseSafeInteger(parsed.exp);
-    const now = Date.now();
-    // Old-format tokens (scope + exp only) intentionally fail here, revoking them on deploy.
-    if (parsed.scope !== ADMIN_SCOPE || version === null || version < 0 || issuedAt === null || expiresAt === null) return false;
-    if (issuedAt > now + ADMIN_CLOCK_SKEW_MS || expiresAt <= now) return false;
-    if (expiresAt - issuedAt > ADMIN_DAYS * 864e5 + ADMIN_CLOCK_SKEW_MS) return false;
-    return version === (await getAdminSessionVersion());
-  } catch {
+    parsed = JSON.parse(new TextDecoder().decode(fromB64url(body))) as Partial<AdminTokenPayload>;
+  } catch (error) {
+    if (error instanceof AdminSecretError) throw new AdminSessionUnavailableError(error);
     return false;
   }
+
+  const version = parseSafeInteger(parsed.ver);
+  const issuedAt = parseSafeInteger(parsed.iat);
+  const expiresAt = parseSafeInteger(parsed.exp);
+  const now = Date.now();
+  // Old-format tokens (scope + exp only) intentionally fail here, revoking them on deploy.
+  if (parsed.scope !== ADMIN_SCOPE || version === null || version < 0 || issuedAt === null || expiresAt === null) return false;
+  if (issuedAt > now + ADMIN_CLOCK_SKEW_MS || expiresAt <= now) return false;
+  if (expiresAt - issuedAt > ADMIN_DAYS * 864e5 + ADMIN_CLOCK_SKEW_MS) return false;
+
+  let currentVersion: number;
+  try {
+    currentVersion = await getAdminSessionVersion();
+  } catch (error) {
+    // Unknown revocation state is not the same as a definitively logged-out
+    // admin, even though authorization must remain closed either way.
+    throw new AdminSessionUnavailableError(error);
+  }
+  return version === currentVersion;
 }
 
 /** null when ADMIN_PASSWORD is present and strong enough for owner-only access. */

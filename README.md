@@ -95,7 +95,7 @@ HTTPS certificates are provisioned by Vercel automatically.
 
 ## 5 · Check everything works
 
-- `https://www.theyaar.com/api/health` → `{"ok":true}` (if `false`, check `DATABASE_URL` and `DATABASE_CA_CERT`)
+- `https://www.theyaar.com/api/health` → HTTP 200 with `{"ok":true,...}`. A failure returns HTTP 503 with `"status":"degraded"`; check `DATABASE_URL`, `DATABASE_CA_CERT`, and that the current database schema has been applied.
 - A page response includes an enforcing `Content-Security-Policy` header (not `Content-Security-Policy-Report-Only`) and a `Reporting-Endpoints` header
 - Sign up as a brand → verify the emailed link → create a campaign → it appears on your dashboard with the budget 🔒
 - Sign up as a creator (another email) → verify the emailed link → apply to the campaign → the brand sees it on their dashboard
@@ -139,5 +139,5 @@ For a remote Supabase database from local development, either set `DATABASE_CA_C
 
 - **Login:** signed, httpOnly cookie (`backend/auth.ts`). Passwords are hashed with PBKDF2 via Web Crypto.
 - **Privacy:** budgets, phone numbers and applications are never in public APIs. Brands see only their own campaigns + applications (`/api/me/dashboard`); the owner sees everything at `/admin`.
-- **Database:** `backend/db/index.ts` uses one shared node-postgres pool per warm Node/Vercel instance. `backend/db/connection-config.ts` fails closed when a remote database URL does not require verified TLS.
+- **Database:** `backend/db/index.ts` uses one shared node-postgres pool per warm Node/Vercel instance, with an explicit size/timeout policy and an idle-client error handler. `backend/db/connection-config.ts` fails closed when a remote database URL does not require verified TLS, and `/api/health` verifies both connectivity and the required tables/columns.
 - **Security headers:** `proxy.ts` generates a per-request CSP nonce so the enforcing policy can allow Next.js bootstrap/RSC scripts without `unsafe-inline`; the root layout renders dynamically for that nonce. Static security headers live in `next.config.ts`, and sanitized CSP reports are collected at `/api/security/csp-report`.

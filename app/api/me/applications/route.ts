@@ -1,4 +1,4 @@
-import { getSessionUser, sessionSecretProblem } from "@/backend/auth";
+import { getSessionUser, isSessionUnavailableError, logSessionUnavailable, sessionSecretProblem, sessionUnavailableResponse } from "@/backend/auth";
 import { applicationContactOptions, isCompletedCreatorProfile } from "@/backend/application-contact";
 import { db } from "@/backend/db";
 import { applications, campaigns, creators } from "@/backend/db/schema";
@@ -194,6 +194,10 @@ export async function GET(req: Request) {
       { headers: NO_STORE },
     );
   } catch (e) {
+    if (isSessionUnavailableError(e)) {
+      logSessionUnavailable(e);
+      return sessionUnavailableResponse(NO_STORE);
+    }
     if (isListingQueryError(e)) {
       return Response.json({ error: e.message, code: e.code }, { status: e.status, headers: NO_STORE });
     }

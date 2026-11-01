@@ -1,7 +1,7 @@
 import { db } from "@/backend/db";
 import { campaigns, type Campaign } from "@/backend/db/schema";
 import { and, desc, eq, sql } from "drizzle-orm";
-import { getSessionUser, type SessionUser } from "@/backend/auth";
+import { getSessionUser, isSessionUnavailableError, logSessionUnavailable, sessionUnavailableResponse, type SessionUser } from "@/backend/auth";
 import { createVerificationCode, isUuid } from "@/backend/moderation";
 import { getClientKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
 import { normalizeProfileUrl } from "@/backend/social-url";
@@ -149,7 +149,7 @@ const returningCampaign = {
 };
 
 async function requireBrand() {
-  const user = await getSessionUser().catch(() => null);
+  const user = await getSessionUser();
   if (!user) return { error: Response.json({ error: "Please log in as a brand to manage campaigns.", code: "unauthorized" }, { status: 401, headers: NO_STORE }) };
   if (user.role !== "brand") return { error: Response.json({ error: "Only brand accounts can manage campaigns.", code: "forbidden" }, { status: 403, headers: NO_STORE }) };
   return { user };
@@ -333,6 +333,10 @@ export async function POST(req: Request) {
       .returning(returningCampaign);
     return Response.json({ campaign: row }, { headers: NO_STORE });
   } catch (e) {
+    if (isSessionUnavailableError(e)) {
+      logSessionUnavailable(e);
+      return sessionUnavailableResponse(NO_STORE);
+    }
     console.error(e);
     return Response.json({ error: "Could not create campaign", code: "request_failed" }, { status: 500, headers: NO_STORE });
   }
@@ -477,6 +481,10 @@ export async function PATCH(req: Request) {
     if (!row) return Response.json({ error: "Campaign not found.", code: "campaign_not_found" }, { status: 404, headers: NO_STORE });
     return Response.json({ campaign: row, reviewRequired: materialChanged }, { headers: NO_STORE });
   } catch (e) {
+    if (isSessionUnavailableError(e)) {
+      logSessionUnavailable(e);
+      return sessionUnavailableResponse(NO_STORE);
+    }
     console.error(e);
     return Response.json({ error: "Could not update campaign", code: "request_failed" }, { status: 500, headers: NO_STORE });
   }
@@ -501,6 +509,10 @@ export async function DELETE(req: Request) {
     if (!row) return Response.json({ error: "Campaign not found.", code: "campaign_not_found" }, { status: 404, headers: NO_STORE });
     return Response.json({ ok: true, deleted: true }, { headers: NO_STORE });
   } catch (e) {
+    if (isSessionUnavailableError(e)) {
+      logSessionUnavailable(e);
+      return sessionUnavailableResponse(NO_STORE);
+    }
     console.error(e);
     return Response.json({ error: "Could not delete campaign", code: "request_failed" }, { status: 500, headers: NO_STORE });
   }

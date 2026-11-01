@@ -1,13 +1,13 @@
-import { db } from "@/backend/db";
-import { sql } from "drizzle-orm";
+import { checkDatabaseHealth } from "@/backend/db/health";
 
 export const dynamic = "force-dynamic";
 
+const NO_STORE = { "Cache-Control": "no-store" };
+
 export async function GET() {
-  try {
-    await db.execute(sql`select 1`);
-    return Response.json({ ok: true });
-  } catch {
-    return Response.json({ ok: false }, { status: 500 });
-  }
+  const health = await checkDatabaseHealth();
+  return Response.json(health, {
+    status: health.ok ? 200 : 503,
+    headers: health.ok ? NO_STORE : { ...NO_STORE, "Retry-After": "30" },
+  });
 }

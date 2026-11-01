@@ -1,7 +1,7 @@
 import { consumeBotChallenge } from "@/backend/bot-challenge";
 import { db } from "@/backend/db";
 import { campaigns, creators, reports } from "@/backend/db/schema";
-import { getSessionUser } from "@/backend/auth";
+import { getSessionUser, isSessionUnavailableError, logSessionUnavailable, sessionUnavailableResponse } from "@/backend/auth";
 import { isUuid } from "@/backend/moderation";
 import { getClientKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
 import { REPORT_REASONS, type ReportReason, type ReportTargetType } from "@/shared/constants";
@@ -61,7 +61,7 @@ export async function POST(req: Request) {
       if (!target.length) return Response.json({ error: "This campaign is not currently public.", code: "target_not_public" }, { status: 404 });
     }
 
-    const user = await getSessionUser().catch(() => null);
+    const user = await getSessionUser();
 
     if (user) {
       const existing = await db
@@ -98,6 +98,10 @@ export async function POST(req: Request) {
 
     return Response.json({ report }, { status: 201, headers: { "Cache-Control": "private, no-store" } });
   } catch (e) {
+    if (isSessionUnavailableError(e)) {
+      logSessionUnavailable(e);
+      return sessionUnavailableResponse();
+    }
     console.error(e);
     return Response.json({ error: "Could not send report", code: "request_failed" }, { status: 500 });
   }
