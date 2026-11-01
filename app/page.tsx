@@ -151,9 +151,9 @@ export default function HomePage() {
               <div className="hero-in-3 mt-7 flex flex-col gap-3 sm:flex-row">
                 <Link
                   href="/brands"
-                  className="nudge rounded-2xl bg-[#e4572e] px-7 py-4 text-center text-[17px] font-extrabold text-white shadow-[0_10px_24px_-8px_rgba(228,87,46,0.6)] transition hover:-translate-y-0.5 hover:bg-[#c7431f]"
+                  className="nudge rounded-2xl bg-[#c7431f] px-7 py-4 text-center text-[17px] font-extrabold text-white shadow-[0_10px_24px_-8px_rgba(199,67,31,0.6)] transition hover:-translate-y-0.5 hover:bg-[#a93618]"
                 >
-                  {t("hero.ctaBrand")} <span className="arrow">→</span>
+                  {t("hero.ctaBrand")} <span aria-hidden="true" className="arrow">→</span>
                 </Link>
                 <Link
                   href="/creators"
@@ -166,7 +166,7 @@ export default function HomePage() {
                 <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#17452e] text-white">✓</span>
                 <div>
                   <p className="text-[14.5px] font-bold leading-snug">{t("hero.trust")}</p>
-                  <p className="mt-1 text-[13.5px] text-[#78716c]">{t("hero.from")}</p>
+                  <p className="mt-1 text-[13.5px] text-[#6f6862]">{t("hero.from")}</p>
                 </div>
               </div>
             </div>
@@ -175,7 +175,7 @@ export default function HomePage() {
             <div className="relative">
               <div className="rounded-[28px] border border-[#e9ddc3] bg-white p-5 card-shadow">
                 <div className="flex items-center justify-between">
-                  <p className="text-[12px] font-bold uppercase tracking-widest text-[#a8a29e]">{t("home.briefTitle")}</p>
+                  <p className="text-[12px] font-bold uppercase tracking-widest text-[#6f6862]">{t("home.briefTitle")}</p>
                   <span className="rounded-full bg-[#fff4de] border border-[#e9ddc3] px-2.5 py-1 text-[12px] font-bold text-[#92400e]">{t("home.example")}</span>
                 </div>
                 <div className="mt-4 grid gap-3">
@@ -198,11 +198,11 @@ export default function HomePage() {
                       <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[#ffc53d] text-[20px] font-black">★</span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-[14px] font-extrabold">{c.shop}</p>
-                        <p className="truncate text-[13px] text-[#78716c]">{c.what}</p>
+                        <p className="truncate text-[13px] text-[#6f6862]">{c.what}</p>
                       </div>
                       <div className="text-right">
                         <p className="text-[13.5px] font-extrabold">{c.tag}</p>
-                        <p className="text-[11.5px] font-bold text-[#a8a29e]">{c.lang}</p>
+                        <p className="text-[11.5px] font-bold text-[#6f6862]">{c.lang}</p>
                       </div>
                     </div>
                   ))}
@@ -229,7 +229,7 @@ export default function HomePage() {
             ].map((s) => (
               <div key={s.a} className="rounded-2xl border border-[#e9ddc3] bg-white px-5 py-4">
                 <p className="text-[16px] font-extrabold">{s.a}</p>
-                <p className="text-[13.5px] text-[#78716c]">{s.b}</p>
+                <p className="text-[13.5px] text-[#6f6862]">{s.b}</p>
               </div>
             ))}
           </div>
@@ -239,7 +239,7 @@ export default function HomePage() {
       {/* STRIP */}
       <section className="border-y border-[#e9ddc3] bg-[#fff4de]">
         <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-4 sm:px-6">
-          <span className="shrink-0 text-[13px] font-bold uppercase tracking-widest text-[#a8a29e]">{t("home.madeFor")}</span>
+          <span className="shrink-0 text-[13px] font-bold uppercase tracking-widest text-[#6f6862]">{t("home.madeFor")}</span>
           <div className="marquee min-w-0 flex-1 overflow-hidden">
             <div className="marquee-track gap-2">
               {[0, 1].map((copy) =>
@@ -272,7 +272,7 @@ export default function HomePage() {
       {/* WHAT CAN YOU PROMOTE */}
       <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
         <Reveal className="max-w-2xl">
-          <p className="text-[13px] font-bold uppercase tracking-widest text-[#e4572e]">{t("home.startHere")}</p>
+          <p className="text-[13px] font-bold uppercase tracking-widest text-[#c7431f]">{t("home.startHere")}</p>
           <h2 className="font-display mt-2 text-[32px] font-black leading-tight sm:text-[44px]">{t("promo.title")}</h2>
           <p className="mt-2 text-[16.5px] text-[#57534e]">{t("promo.sub")}</p>
         </Reveal>
@@ -280,11 +280,11 @@ export default function HomePage() {
           {PROMOTION_TYPES.map((p, i) => (
             <Reveal key={p.id} delay={(i % 3) * 90}>
             <Link href={`/brands?type=${encodeURIComponent(p.id)}`} className="lift group block h-full rounded-3xl border border-[#e9ddc3] bg-white p-6 card-shadow hover:border-[#1c1917]">
-              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#fff4de] text-[26px] transition-transform duration-300 group-hover:-rotate-6 group-hover:scale-110">{p.emoji}</span>
+              <span aria-hidden="true" className="grid h-12 w-12 place-items-center rounded-2xl bg-[#fff4de] text-[26px] transition-transform duration-300 group-hover:-rotate-6 group-hover:scale-110">{p.emoji}</span>
               <h3 className="mt-4 text-[19px] font-extrabold">{promo(p.id)}</h3>
               <p className="mt-1.5 text-[14.5px] leading-relaxed text-[#57534e]">{promoDetail(p.id).desc}</p>
-              <p className="mt-3 inline-block rounded-full bg-[#fffbf1] border border-[#f0e6cc] px-3 py-1 text-[12.5px] font-bold text-[#78716c]">{promoDetail(p.id).example}</p>
-              <p className="nudge mt-3 text-[14px] font-bold text-[#e4572e]">{t("promo.start")} <span className="arrow">→</span></p>
+              <p className="mt-3 inline-block rounded-full bg-[#fffbf1] border border-[#f0e6cc] px-3 py-1 text-[12.5px] font-bold text-[#6f6862]">{promoDetail(p.id).example}</p>
+              <p className="nudge mt-3 text-[14px] font-bold text-[#c7431f]">{t("promo.start")} <span aria-hidden="true" className="arrow">→</span></p>
             </Link>
             </Reveal>
           ))}
@@ -346,10 +346,10 @@ export default function HomePage() {
             </div>
           </div>
           <div className="rounded-3xl bg-[#fffbf1] border border-[#f0e6cc] p-6">
-            <p className="text-[13px] font-bold uppercase tracking-widest text-[#78716c]">{t("exp.nofake")}</p>
+            <p className="text-[13px] font-bold uppercase tracking-widest text-[#6f6862]">{t("exp.nofake")}</p>
             <div className="mt-3 grid gap-2.5">
               {[t("home.noFake1").replace("{count}", formatNumber(10000)), t("home.noFake2"), t("home.noFake3")].map((x) => (
-                <p key={x} className="rounded-xl bg-white border border-[#f0e6cc] px-4 py-3 text-[14.5px] font-bold text-[#78716c] line-through decoration-[#e4572e]/60">
+                <p key={x} className="rounded-xl bg-white border border-[#f0e6cc] px-4 py-3 text-[14.5px] font-bold text-[#6f6862] line-through decoration-[#c7431f]/60">
                   {x}
                 </p>
               ))}
@@ -385,7 +385,7 @@ export default function HomePage() {
               <li>{t("home.creatorPoint2")}</li>
               <li>{t("home.creatorPoint3")}</li>
             </ul>
-            <Link href="/creators" className="mt-6 inline-block rounded-2xl bg-[#e4572e] px-6 py-3.5 text-[15.5px] font-bold text-white hover:bg-[#c7431f]">
+            <Link href="/creators" className="mt-6 inline-block rounded-2xl bg-[#c7431f] px-6 py-3.5 text-[15.5px] font-bold text-white hover:bg-[#a93618]">
               {t("home.joinNetwork")}
             </Link>
           </div>
@@ -398,7 +398,7 @@ export default function HomePage() {
           <div className="flex items-end justify-between gap-4">
             <div>
               <h2 className="font-display text-[28px] font-black sm:text-[36px]">{t("home.freshTitle")}</h2>
-              <p className="text-[15px] text-[#78716c]">{t("home.freshSub")}</p>
+              <p className="text-[15px] text-[#6f6862]">{t("home.freshSub")}</p>
             </div>
             <Link href="/campaigns" className="hidden rounded-full border border-[#1c1917] px-5 py-2.5 text-[14px] font-bold hover:bg-[#1c1917] hover:text-white sm:block">
               {t("home.viewAll")}
@@ -406,7 +406,7 @@ export default function HomePage() {
           </div>
           <div className="mt-8 grid gap-6 grid-cols-1 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
             <div>
-              <p className="mb-3 text-[12.5px] font-bold uppercase tracking-widest text-[#a8a29e]">{t("home.openCampaigns")}</p>
+              <p className="mb-3 text-[12.5px] font-bold uppercase tracking-widest text-[#6f6862]">{t("home.openCampaigns")}</p>
               <div className="grid gap-3">
                 {campaignsStatus === "loading" && campaigns.length === 0 ? (
                   <ListingLoading
@@ -422,15 +422,15 @@ export default function HomePage() {
                       <ListingError errorKey={campaignsErrorKey} onRetry={() => void loadCampaigns()} />
                     )}
                     {campaigns.length === 0 && (
-                      <div className="rounded-2xl border border-dashed border-[#e9ddc3] bg-white p-6 text-[14.5px] text-[#78716c]">
-                        {t("home.noCampaigns")} <Link href="/brands" className="font-bold text-[#e4572e]">{t("home.create")}</Link>
+                      <div className="rounded-2xl border border-dashed border-[#e9ddc3] bg-white p-6 text-[14.5px] text-[#6f6862]">
+                        {t("home.noCampaigns")} <Link href="/brands" className="font-bold text-[#c7431f]">{t("home.create")}</Link>
                       </div>
                     )}
                     {campaigns.map((c) => (
                   <Link key={c.id} href="/campaigns" className="flex items-center justify-between gap-3 rounded-2xl border border-[#e9ddc3] bg-white p-4 hover:border-[#1c1917]">
                     <div>
                       <p className="text-[15px] font-extrabold">{c.title}</p>
-                      <p className="text-[13px] text-[#78716c]">{c.businessName} • {c.location} • {opt(c.language)} • {opt(c.format)} • {t("listing.reviewed")}</p>
+                      <p className="text-[13px] text-[#6f6862]">{c.businessName} • {c.location} • {opt(c.language)} • {opt(c.format)} • {t("listing.reviewed")}</p>
                     </div>
                     <span className="shrink-0 rounded-full bg-[#17452e] px-3 py-1.5 text-[13px] font-bold text-white">{promo(c.promotionType)}</span>
                   </Link>
@@ -440,7 +440,7 @@ export default function HomePage() {
               </div>
             </div>
             <div>
-              <p className="mb-3 text-[12.5px] font-bold uppercase tracking-widest text-[#a8a29e]">{t("home.newCreators")}</p>
+              <p className="mb-3 text-[12.5px] font-bold uppercase tracking-widest text-[#6f6862]">{t("home.newCreators")}</p>
               <div className="grid gap-3 sm:grid-cols-2">
                 {creatorsStatus === "loading" && creators.length === 0 ? (
                   <ListingLoading
@@ -461,8 +461,8 @@ export default function HomePage() {
                       </div>
                     )}
                     {creators.length === 0 && (
-                      <div className="rounded-2xl border border-dashed border-[#e9ddc3] bg-white p-6 text-[14.5px] text-[#78716c] sm:col-span-2">
-                        {t("home.noCreators")} <Link href="/creators" className="font-bold text-[#e4572e]">{t("home.joinCreators")}</Link>
+                      <div className="rounded-2xl border border-dashed border-[#e9ddc3] bg-white p-6 text-[14.5px] text-[#6f6862] sm:col-span-2">
+                        {t("home.noCreators")} <Link href="/creators" className="font-bold text-[#c7431f]">{t("home.joinCreators")}</Link>
                       </div>
                     )}
                     {creators.map((cr) => (
@@ -473,7 +473,7 @@ export default function HomePage() {
                       </span>
                       <div>
                         <p className="text-[14.5px] font-extrabold leading-tight">{cr.name}</p>
-                        <p className="text-[12px] text-[#78716c]">{opt(cr.category)} • {cr.followers ? `${formatCompactNumber(cr.followers)} ${t("browse.followers")}` : "—"}</p>
+                        <p className="text-[12px] text-[#6f6862]">{opt(cr.category)} • {cr.followers ? `${formatCompactNumber(cr.followers)} ${t("browse.followers")}` : "—"}</p>
                       </div>
                     </div>
                     <p className="mt-2 text-[12.5px] font-semibold text-[#57534e]">{cr.location} • {opt(cr.languages)}</p>
@@ -512,15 +512,15 @@ export default function HomePage() {
               <div key={x.l} className="rounded-2xl border border-[#f0e6cc] bg-[#fffbf1] p-5">
                 <p className="text-[28px]">{x.f}</p>
                 <p className="mt-1 text-[18px] font-extrabold">{opt(x.l)}</p>
-                <p className="text-[13px] text-[#78716c]">{x.d}</p>
+                <p className="text-[13px] text-[#6f6862]">{x.d}</p>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="mt-6 rounded-[28px] bg-[#e4572e] p-8 text-center text-white sm:p-12">
+        <div className="mt-6 rounded-[28px] bg-[#c7431f] p-8 text-center text-white sm:p-12">
           <h2 className="font-display text-[30px] font-black sm:text-[42px]">{t("cta.title")}</h2>
-          <p className="mt-2 text-[16px] text-white/85">{t("cta.sub")}</p>
+          <p className="mt-2 text-[16px] text-white">{t("cta.sub")}</p>
           <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
             <Link href="/brands" className="rounded-2xl bg-white px-7 py-3.5 text-[16px] font-extrabold text-[#1c1917] hover:bg-[#ffc53d]">{t("hero.ctaBrand")}</Link>
             <Link href="/creators" className="rounded-2xl border-2 border-white px-7 py-3 text-[16px] font-extrabold text-white hover:bg-white hover:text-[#1c1917]">{t("hero.ctaCreator")}</Link>

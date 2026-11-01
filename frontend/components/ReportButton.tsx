@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useLang } from "@/frontend/i18n";
 import { solveBotChallenge } from "@/frontend/bot-challenge";
 import PrivacyNotice from "@/frontend/components/PrivacyNotice";
@@ -25,6 +25,29 @@ export default function ReportButton({ targetType, targetId, targetName, classNa
   const [websiteUrl, setWebsiteUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [errorKey, setErrorKey] = useState("");
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const firstFieldRef = useRef<HTMLSelectElement>(null);
+
+  const closeForm = (returnFocus = false) => {
+    if (returnFocus) triggerRef.current?.focus();
+    setOpen(false);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const focusFrame = requestAnimationFrame(() => firstFieldRef.current?.focus());
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      triggerRef.current?.focus();
+      setOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      cancelAnimationFrame(focusFrame);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
 
   const formId = `report-form-${uid}`;
   const title = t(targetType === "campaign" ? "report.campaignTitle" : "report.creatorTitle");
@@ -82,12 +105,13 @@ export default function ReportButton({ targetType, targetId, targetName, classNa
   return (
     <div className={className}>
       <button
+        ref={triggerRef}
         type="button"
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => (open ? closeForm(true) : setOpen(true))}
         aria-expanded={open}
         aria-controls={formId}
         aria-label={buttonLabel}
-        className={`inline-flex items-center gap-1 rounded-full border border-current px-2.5 py-1 text-[11.5px] font-bold opacity-75 transition hover:opacity-100 ${buttonClassName}`}
+        className={`inline-flex items-center gap-1 rounded-full border border-current px-2.5 py-1 text-[11.5px] font-bold ${buttonClassName}`}
       >
         <span aria-hidden="true">⚑</span>
         {t("report.button")}
@@ -109,6 +133,7 @@ export default function ReportButton({ targetType, targetId, targetName, classNa
             {t("report.reason")}
           </label>
           <select
+            ref={firstFieldRef}
             id={`${formId}-reason`}
             value={reason}
             onChange={(event) => setReason(event.target.value as ReportReason)}
@@ -164,7 +189,7 @@ export default function ReportButton({ targetType, targetId, targetName, classNa
             </button>
             <button
               type="button"
-              onClick={() => setOpen(false)}
+              onClick={() => closeForm(true)}
               className="rounded-lg border border-[#e9ddc3] px-3 py-2 text-[12.5px] font-bold"
             >
               {t("report.cancel")}

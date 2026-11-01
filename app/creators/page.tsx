@@ -131,7 +131,7 @@ export default function CreatorsPage() {
               <p className="text-[12px] font-bold uppercase tracking-widest text-amber-800">{t("verify.creatorCode")}</p>
               <p className="mt-1 font-mono text-[22px] font-black tracking-wider">{verificationCode}</p>
               <p className="mt-1 text-[13.5px] leading-relaxed text-[#57534e]">{t("verify.creatorHelp")}</p>
-              <p className="mt-1 text-[12.5px] font-semibold text-[#78716c]">{t("verify.dashboardNote")}</p>
+              <p className="mt-1 text-[12.5px] font-semibold text-[#6f6862]">{t("verify.dashboardNote")}</p>
             </div>
           )}
           <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
@@ -163,74 +163,74 @@ export default function CreatorsPage() {
           <div className="rounded-[24px] border border-[#e9ddc3] bg-white p-6 sm:p-8 card-shadow">
             <div className="flex items-center justify-between">
               <h2 className="font-display text-[24px] font-black">{t("cr.formTitle")}</h2>
-              <span className="text-[13px] font-bold text-[#a8a29e]">{t("cr.step")} {formatNumber(step, { useGrouping: false })} {t("cr.of")}</span>
+              <span className="text-[13px] font-bold text-[#6f6862]">{t("cr.step")} {formatNumber(step, { useGrouping: false })} {t("cr.of")}</span>
             </div>
             {/* progress */}
             <div className="mt-3 flex gap-2">
               {[1, 2, 3].map((s) => (
-                <div key={s} className={`h-2 flex-1 rounded-full ${s <= step ? "bg-[#e4572e]" : "bg-[#f0e6cc]"}`} />
+                <div key={s} className={`h-2 flex-1 rounded-full ${s <= step ? "bg-[#c7431f]" : "bg-[#f0e6cc]"}`} />
               ))}
             </div>
 
             {step === 1 && (
               <div className="mt-6 grid gap-4">
-                <p className="text-[14px] font-bold text-[#78716c]">{t("cr.s1")}</p>
-                <label className="grid gap-1.5">
+                <p className="text-[14px] font-bold text-[#6f6862]">{t("cr.s1")}</p>
+                <label className="grid gap-1.5" htmlFor="creator-name">
                   <span className="text-[13.5px] font-bold">{t("cr.name")}</span>
-                  <input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder={t("cr.phName")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                  <input id="creator-name" value={form.name} onChange={(e) => set("name", e.target.value)} placeholder={t("cr.phName")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                 </label>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="grid gap-1.5">
+                  <label className="grid gap-1.5" htmlFor="creator-phone">
                     <span className="text-[13.5px] font-bold">{t("cr.phone")}</span>
-                    <input value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="98XXX XXXXX" className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                    <input id="creator-phone" value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="98XXX XXXXX" className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                   </label>
-                  <label className="grid gap-1.5">
+                  <label className="grid gap-1.5" htmlFor="creator-email">
                     <span className="text-[13.5px] font-bold">{t("cr.email")}</span>
-                    <input value={form.email} onChange={(e) => set("email", e.target.value)} placeholder={t("cr.phEmail")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                    <input id="creator-email" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder={t("cr.phEmail")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                   </label>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="grid gap-1.5">
+                  <label className="grid gap-1.5" htmlFor="creator-location">
                     <span className="text-[13.5px] font-bold">{t("cr.city")}</span>
-                    <input value={form.location} onChange={(e) => set("location", e.target.value)} placeholder={t("cr.phCity")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                    <input id="creator-location" value={form.location} onChange={(e) => set("location", e.target.value)} placeholder={t("cr.phCity")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                   </label>
-                  <label className="grid gap-1.5">
+                  <label className="grid gap-1.5" htmlFor="creator-platform">
                     <span className="text-[13.5px] font-bold">{t("cr.platform")}</span>
-                    <select value={form.platform} onChange={(e) => set("platform", e.target.value)} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3">
+                    <select id="creator-platform" value={form.platform} onChange={(e) => set("platform", e.target.value)} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3">
                       {PLATFORMS.map((p) => <option key={p} value={p}>{platformLabel(p)}</option>)}
                     </select>
                   </label>
                 </div>
                 <button disabled={!canNext1} onClick={() => setStep(2)} className="mt-2 rounded-2xl bg-[#1c1917] py-3.5 text-[15.5px] font-bold text-white disabled:opacity-40">{t("cr.continue")}</button>
-                {!canNext1 && <p className="text-[13px] text-[#a8a29e]">{t("cr.needContact")}</p>}
+                {!canNext1 && <p className="text-[13px] text-[#6f6862]">{t("cr.needContact")}</p>}
               </div>
             )}
 
             {step === 2 && (
               <div className="mt-6 grid gap-4">
-                <p className="text-[14px] font-bold text-[#78716c]">{t("cr.s2")}</p>
-                <label className="grid gap-1.5">
+                <p className="text-[14px] font-bold text-[#6f6862]">{t("cr.s2")}</p>
+                <label className="grid gap-1.5" htmlFor="creator-profile-url">
                   <span className="text-[13.5px] font-bold">{t("cr.profileLink")}</span>
-                  <input value={form.profileUrl} onChange={(e) => set("profileUrl", e.target.value)} placeholder={t("cr.phProfile")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                  <input id="creator-profile-url" value={form.profileUrl} onChange={(e) => set("profileUrl", e.target.value)} placeholder={t("cr.phProfile")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                 </label>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="grid gap-1.5">
+                  <label className="grid gap-1.5" htmlFor="creator-instagram">
                     <span className="text-[13.5px] font-bold">{t("cr.instagram")}</span>
-                    <input value={form.instagram} onChange={(e) => set("instagram", e.target.value)} placeholder={t("cr.phIg")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                    <input id="creator-instagram" value={form.instagram} onChange={(e) => set("instagram", e.target.value)} placeholder={t("cr.phIg")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                   </label>
-                  <label className="grid gap-1.5">
+                  <label className="grid gap-1.5" htmlFor="creator-youtube">
                     <span className="text-[13.5px] font-bold">{t("cr.youtube")}</span>
-                    <input value={form.youtube} onChange={(e) => set("youtube", e.target.value)} placeholder={t("cr.phYt")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                    <input id="creator-youtube" value={form.youtube} onChange={(e) => set("youtube", e.target.value)} placeholder={t("cr.phYt")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                   </label>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="grid gap-1.5">
+                  <label className="grid gap-1.5" htmlFor="creator-followers">
                     <span className="text-[13.5px] font-bold">{t("cr.followers")}</span>
-                    <input value={form.followers} onChange={(e) => set("followers", e.target.value)} placeholder={t("cr.phFollowers")} inputMode="numeric" className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                    <input id="creator-followers" value={form.followers} onChange={(e) => set("followers", e.target.value)} placeholder={t("cr.phFollowers")} inputMode="numeric" className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                   </label>
-                  <label className="grid gap-1.5">
+                  <label className="grid gap-1.5" htmlFor="creator-category">
                     <span className="text-[13.5px] font-bold">{t("cr.category")}</span>
-                    <select value={form.category} onChange={(e) => set("category", e.target.value)} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3">
+                    <select id="creator-category" value={form.category} onChange={(e) => set("category", e.target.value)} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3">
                       {CATEGORIES.map((c) => <option key={c} value={c}>{opt(c)}</option>)}
                     </select>
                   </label>
@@ -244,12 +244,12 @@ export default function CreatorsPage() {
 
             {step === 3 && (
               <div className="mt-6 grid gap-4">
-                <p className="text-[14px] font-bold text-[#78716c]">{t("cr.s3")}</p>
+                <p className="text-[14px] font-bold text-[#6f6862]">{t("cr.s3")}</p>
                 <div>
-                  <p className="text-[13.5px] font-bold">{t("cr.langs")}</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
+                  <p id="creator-languages-label" className="text-[13.5px] font-bold">{t("cr.langs")}</p>
+                  <div role="group" aria-labelledby="creator-languages-label" className="mt-2 flex flex-wrap gap-2">
                     {LANGUAGES.map((l) => (
-                      <button key={l} type="button" onClick={() => toggle("languages", l)}
+                      <button key={l} type="button" onClick={() => toggle("languages", l)} aria-pressed={form.languages.includes(l)}
                         className={`rounded-full border px-4 py-2 text-[13.5px] font-bold ${form.languages.includes(l) ? "border-[#1c1917] bg-[#1c1917] text-white" : "border-[#e9ddc3] bg-[#fffbf1]"}`}>
                         {opt(l)}
                       </button>
@@ -257,25 +257,25 @@ export default function CreatorsPage() {
                   </div>
                 </div>
                 <div>
-                  <p className="text-[13.5px] font-bold">{t("cr.content")}</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
+                  <p id="creator-content-types-label" className="text-[13.5px] font-bold">{t("cr.content")}</p>
+                  <div role="group" aria-labelledby="creator-content-types-label" className="mt-2 flex flex-wrap gap-2">
                     {CONTENT_TYPES.map((c) => (
-                      <button key={c} type="button" onClick={() => toggle("contentTypes", c)}
-                        className={`rounded-full border px-4 py-2 text-[13.5px] font-bold ${form.contentTypes.includes(c) ? "border-[#e4572e] bg-[#e4572e] text-white" : "border-[#e9ddc3] bg-[#fffbf1]"}`}>
+                      <button key={c} type="button" onClick={() => toggle("contentTypes", c)} aria-pressed={form.contentTypes.includes(c)}
+                        className={`rounded-full border px-4 py-2 text-[13.5px] font-bold ${form.contentTypes.includes(c) ? "border-[#c7431f] bg-[#c7431f] text-white" : "border-[#e9ddc3] bg-[#fffbf1]"}`}>
                         {opt(c)}
                       </button>
                     ))}
                   </div>
                 </div>
-                <label className="grid gap-1.5">
-                  <span className="text-[13.5px] font-bold">{t("cr.bio")} <span className="font-medium text-[#a8a29e]">{t("cr.optional")}</span></span>
-                  <textarea value={form.bio} onChange={(e) => set("bio", e.target.value)} rows={3} placeholder={t("cr.phBio")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                <label className="grid gap-1.5" htmlFor="creator-bio">
+                  <span className="text-[13.5px] font-bold">{t("cr.bio")} <span className="font-medium text-[#6f6862]">{t("cr.optional")}</span></span>
+                  <textarea id="creator-bio" value={form.bio} onChange={(e) => set("bio", e.target.value)} rows={3} placeholder={t("cr.phBio")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                 </label>
                 <PrivacyNotice textKey="privacy.creatorNotice" />
                 {errKey && <p role="alert" className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-[14px] font-bold text-red-700">{t(errKey)}</p>}
                 <div className="flex gap-2">
                   <button onClick={() => setStep(2)} className="flex-1 rounded-2xl border border-[#e9ddc3] py-3.5 text-[15px] font-bold">{t("cr.back")}</button>
-                  <button onClick={submit} disabled={saving} className="flex-[2] rounded-2xl bg-[#e4572e] py-3.5 text-[15.5px] font-extrabold text-white hover:bg-[#c7431f] disabled:opacity-60">
+                  <button onClick={submit} disabled={saving} className="flex-[2] rounded-2xl bg-[#c7431f] py-3.5 text-[15.5px] font-extrabold text-white hover:bg-[#a93618] disabled:opacity-60">
                     {saving ? t("cr.submitting") : t("cr.submit")}
                   </button>
                 </div>
@@ -306,10 +306,10 @@ export default function CreatorsPage() {
                     {campaigns.map((c) => (
                   <div key={c.id} className="rounded-2xl border border-black/10 bg-white p-4">
                     <p className="text-[15px] font-extrabold leading-snug">{c.title}</p>
-                    <p className="mt-1 text-[13px] text-[#78716c]">{c.businessName} • {c.location} • {opt(c.language)}</p>
+                    <p className="mt-1 text-[13px] text-[#6f6862]">{c.businessName} • {c.location} • {opt(c.language)}</p>
                     <div className="mt-2 flex items-center justify-between">
                       <span className="rounded-full bg-[#17452e] px-3 py-1 text-[12.5px] font-bold text-white">{t("cr.paid")} • {opt(c.format)}</span>
-                      <Link href="/campaigns" className="text-[13.5px] font-bold text-[#e4572e]">{t("cr.view")}</Link>
+                      <Link href="/campaigns" className="text-[13.5px] font-bold text-[#c7431f]">{t("cr.view")}</Link>
                     </div>
                     <div className="mt-2">
                       <span className="text-[11.5px] font-bold text-green-800">{t("listing.reviewed")}</span>

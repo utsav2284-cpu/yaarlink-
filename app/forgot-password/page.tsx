@@ -68,14 +68,14 @@ export default function ForgotPasswordPage() {
               type="button"
               disabled={saving || resendSeconds > 0}
               onClick={requestReset}
-              className="mt-5 w-full rounded-2xl bg-[#e4572e] py-3.5 text-[15.5px] font-extrabold text-white hover:bg-[#c7431f] disabled:opacity-60"
+              className="mt-5 w-full rounded-2xl bg-[#c7431f] py-3.5 text-[15.5px] font-extrabold text-white hover:bg-[#a93618] disabled:opacity-60"
             >
               {saving ? t("auth.creating") : resendSeconds > 0 ? `${t("auth.resendIn")} ${resendSeconds}s` : t("auth.sendAgain")}
             </button>
           </div>
         ) : (
           <>
-            <p className="mt-1 text-[14.5px] leading-relaxed text-[#78716c]">{t("auth.forgotSub")}</p>
+            <p className="mt-1 text-[14.5px] leading-relaxed text-[#6f6862]">{t("auth.forgotSub")}</p>
             <form
               className="mt-5 grid gap-3"
               onSubmit={(e) => {
@@ -83,7 +83,9 @@ export default function ForgotPasswordPage() {
                 requestReset();
               }}
             >
+              <label htmlFor="forgot-password-email" className="sr-only">{t("auth.email")}</label>
               <input
+                id="forgot-password-email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -101,7 +103,7 @@ export default function ForgotPasswordPage() {
         )}
 
         <p className="mt-5 text-center text-[14px]">
-          <Link href="/login" className="font-bold text-[#e4572e]">{t("auth.backToLogin")}</Link>
+          <Link href="/login" className="font-bold text-[#c7431f]">{t("auth.backToLogin")}</Link>
         </p>
       </div>
     </div>

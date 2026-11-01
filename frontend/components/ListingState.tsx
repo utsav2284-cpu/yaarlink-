@@ -68,7 +68,7 @@ export function ListingPagination({
   loading = false,
   onLoadMore,
   className = "mt-5 flex flex-col items-center gap-2",
-  textClassName = "text-[13px] font-semibold text-[#78716c]",
+  textClassName = "text-[13px] font-semibold text-[#6f6862]",
   buttonClassName = "rounded-2xl border border-[#1c1917] bg-white px-6 py-3 text-[14px] font-bold text-[#1c1917] hover:bg-[#fffbf1] disabled:cursor-not-allowed disabled:opacity-60",
 }: ListingPaginationProps) {
   const { t, formatNumber } = useLang();

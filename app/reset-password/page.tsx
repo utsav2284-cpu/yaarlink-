@@ -86,17 +86,19 @@ export default function ResetPasswordPage() {
               <h2 className="text-[18px] font-black text-red-800">{t("auth.linkInvalidTitle")}</h2>
               <p className="mt-2 text-[14px] leading-relaxed text-red-700">{t("auth.linkInvalidBody")}</p>
             </div>
-            <Link href="/forgot-password" className="mt-5 block rounded-2xl bg-[#e4572e] py-3.5 text-center text-[15.5px] font-extrabold text-white hover:bg-[#c7431f]">
+            <Link href="/forgot-password" className="mt-5 block rounded-2xl bg-[#c7431f] py-3.5 text-center text-[15.5px] font-extrabold text-white hover:bg-[#a93618]">
               {t("auth.requestNewLink")}
             </Link>
           </div>
         ) : (
           <>
-            <p className="mt-1 text-[14.5px] leading-relaxed text-[#78716c]">{t("auth.resetSub")}</p>
+            <p className="mt-1 text-[14.5px] leading-relaxed text-[#6f6862]">{t("auth.resetSub")}</p>
             <form onSubmit={submit} className="mt-5 grid gap-3">
-              <input value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required type="password" minLength={10} maxLength={256} autoComplete="new-password" placeholder={t("auth.newPassword")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
-              <input value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required type="password" minLength={10} maxLength={256} autoComplete="new-password" placeholder={t("auth.confirmPassword")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
-              <p className="text-[13px] text-[#78716c]">{t("auth.passwordPolicy")}</p>
+              <label htmlFor="reset-new-password" className="sr-only">{t("auth.newPassword")}</label>
+              <input id="reset-new-password" aria-describedby="reset-password-policy" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required type="password" minLength={10} maxLength={256} autoComplete="new-password" placeholder={t("auth.newPassword")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+              <label htmlFor="reset-confirm-password" className="sr-only">{t("auth.confirmPassword")}</label>
+              <input id="reset-confirm-password" aria-describedby="reset-password-policy" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required type="password" minLength={10} maxLength={256} autoComplete="new-password" placeholder={t("auth.confirmPassword")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+              <p id="reset-password-policy" className="text-[13px] text-[#6f6862]">{t("auth.passwordPolicy")}</p>
               {err && <p className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-[13.5px] font-bold text-red-700">{err}</p>}
               <button disabled={!mounted || saving} className="rounded-2xl bg-[#1c1917] py-3.5 text-[16px] font-extrabold text-white hover:bg-black disabled:opacity-60">
                 {saving ? t("auth.resetting") : t("auth.resetBtn")}
@@ -107,7 +109,7 @@ export default function ResetPasswordPage() {
 
         {!success && (
           <p className="mt-5 text-center text-[14px]">
-            <Link href="/login" className="font-bold text-[#e4572e]">{t("auth.backToLogin")}</Link>
+            <Link href="/login" className="font-bold text-[#c7431f]">{t("auth.backToLogin")}</Link>
           </p>
         )}
       </div>

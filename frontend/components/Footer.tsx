@@ -29,7 +29,7 @@ export default function Footer() {
             </p>
           </div>
           <div>
-            <p className="text-[12px] font-bold uppercase tracking-widest text-[#78716c]">{t("foot.explore")}</p>
+            <p className="text-[12px] font-bold uppercase tracking-widest text-[#a8a29e]">{t("foot.explore")}</p>
             <div className="mt-3 grid gap-2 text-[14.5px] font-semibold">
               <Link href="/brands" className="hover:text-[#ffc53d]">{t("foot.brands")}</Link>
               <Link href="/creators" className="hover:text-[#ffc53d]">{t("foot.creators")}</Link>
@@ -38,7 +38,7 @@ export default function Footer() {
             </div>
           </div>
           <div>
-            <p className="text-[12px] font-bold uppercase tracking-widest text-[#78716c]">{t("foot.company")}</p>
+            <p className="text-[12px] font-bold uppercase tracking-widest text-[#a8a29e]">{t("foot.company")}</p>
             <div className="mt-3 grid gap-2 text-[14.5px] font-semibold">
               <Link href="/about" className="hover:text-[#ffc53d]">{t("nav.about")}</Link>
               <Link href="/contact" className="hover:text-[#ffc53d]">{t("nav.contact")}</Link>
@@ -47,23 +47,23 @@ export default function Footer() {
             </div>
           </div>
           <div>
-            <p className="text-[12px] font-bold uppercase tracking-widest text-[#78716c]">{t("foot.contact")}</p>
+            <p className="text-[12px] font-bold uppercase tracking-widest text-[#a8a29e]">{t("foot.contact")}</p>
             <div className="mt-3 grid gap-2 text-[14.5px]">
               {SITE.phoneDisplay && (
-                <ContactLink kind="call" href={callLink} value={SITE.phoneDisplay} title={t("cont.call")} className="hover:text-[#ffc53d]">📞 {SITE.phoneDisplay}</ContactLink>
+                <ContactLink kind="call" href={callLink} value={SITE.phoneDisplay} title={t("cont.call")} className="hover:text-[#ffc53d]"><span aria-hidden="true">📞</span> {SITE.phoneDisplay}</ContactLink>
               )}
-              <ContactLink kind="email" href={mailtoLink()} webHref={gmailComposeLink()} value={SITE.email} title={t("cont.email")} className="break-all hover:text-[#ffc53d]">✉️ {SITE.email}</ContactLink>
+              <ContactLink kind="email" href={mailtoLink()} webHref={gmailComposeLink()} value={SITE.email} title={t("cont.email")} className="break-all hover:text-[#ffc53d]"><span aria-hidden="true">✉️</span> {SITE.email}</ContactLink>
               {SITE.instagram && (
-                <ContactLink kind="instagram" href={instagramLink} value={"@" + SITE.instagram} title={t("cont.ig")} className="hover:text-[#ffc53d]">📸 @{SITE.instagram}</ContactLink>
+                <ContactLink kind="instagram" href={instagramLink} value={"@" + SITE.instagram} title={t("cont.ig")} className="hover:text-[#ffc53d]"><span aria-hidden="true">📸</span> @{SITE.instagram}</ContactLink>
               )}
               <p className="text-[#a8a29e]">📍 {t("site.city")}</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {whatsappLink && (
-                  <ContactLink kind="whatsapp" href={whatsappLink} value={SITE.phoneDisplay} title={t("cont.wa")} className="inline-flex w-fit rounded-full bg-[#25D366] px-4 py-2 text-[13.5px] font-bold text-white hover:brightness-95">
+                  <ContactLink kind="whatsapp" href={whatsappLink} value={SITE.phoneDisplay} title={t("cont.wa")} className="inline-flex w-fit rounded-full bg-[#0f7a3f] px-4 py-2 text-[13.5px] font-bold text-white hover:brightness-95">
                     {t("cont.wa")}
                   </ContactLink>
                 )}
-                <Link href="/contact" className="inline-flex w-fit rounded-full bg-[#e4572e] px-4 py-2 text-[13.5px] font-bold text-white hover:bg-[#c7431f]">
+                <Link href="/contact" className="inline-flex w-fit rounded-full bg-[#c7431f] px-4 py-2 text-[13.5px] font-bold text-white hover:bg-[#a93618]">
                   {t("cont.askAs")} →
                 </Link>
               </div>
@@ -82,12 +82,12 @@ export default function Footer() {
         </nav>
         <a
           href={SITE.url}
-          className="font-display mt-10 block select-none whitespace-nowrap text-center text-[11vw] font-black leading-[0.9] tracking-tight text-white/[0.07] transition hover:text-white/[0.12] md:text-[150px]"
-          aria-label={SITE.domain}
+          className="font-display mt-10 block select-none whitespace-nowrap text-center text-[11vw] font-black leading-[0.9] tracking-tight text-white/45 transition hover:text-white/60 md:text-[150px]"
+          aria-label={`${SITE.domain} — ${t("nav.home")}`}
         >
-          the<span className="text-[#ffc53d]/30">yaar</span>.com
+          the<span className="text-[#ffc53d]/70">yaar</span>.com
         </a>
-        <div className="mt-6 flex flex-col gap-2 border-t border-white/10 pt-6 text-[12.5px] text-[#78716c] sm:flex-row sm:items-center sm:justify-between">
+        <div className="mt-6 flex flex-col gap-2 border-t border-white/10 pt-6 text-[12.5px] text-[#a8a29e] sm:flex-row sm:items-center sm:justify-between">
           <p>© {formatNumber(2026, { useGrouping: false })} YaarLink · <span className="font-bold text-[#ffc53d]">{SITE.domain}</span> · {t("foot.rights")} • {t("foot.tagline")}</p>
           <p>{t("foot.principle")}</p>
         </div>

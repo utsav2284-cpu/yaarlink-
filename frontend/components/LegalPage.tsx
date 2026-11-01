@@ -1190,7 +1190,7 @@ const NAV_ITEMS: Array<{ page: LegalPageKind; href: string; labelKey: string }> 
 
 function ActionLink({ action }: { action: LegalAction }) {
   const className = action.primary
-    ? "rounded-2xl bg-[#e4572e] px-5 py-3 text-center text-[14.5px] font-extrabold text-white hover:bg-[#c7431f]"
+    ? "rounded-2xl bg-[#c7431f] px-5 py-3 text-center text-[14.5px] font-extrabold text-white hover:bg-[#a93618]"
     : "rounded-2xl border border-[#1c1917] bg-white px-5 py-3 text-center text-[14.5px] font-extrabold text-[#1c1917] hover:bg-[#1c1917] hover:text-white";
 
   if (action.href.startsWith("mailto:") || action.href.startsWith("https://")) {
@@ -1233,10 +1233,10 @@ export default function LegalPage({ page }: { page: LegalPageKind }) {
       </nav>
 
       <header className="mt-6 rounded-[28px] border border-[#e9ddc3] bg-white p-7 card-shadow sm:p-10">
-        <p className="text-[12.5px] font-extrabold uppercase tracking-[0.18em] text-[#e4572e]">{common.eyebrow}</p>
+        <p className="text-[12.5px] font-extrabold uppercase tracking-[0.18em] text-[#c7431f]">{common.eyebrow}</p>
         <h1 className="font-display mt-3 text-[38px] font-black leading-tight sm:text-[52px]">{doc.title}</h1>
         <p className="mt-3 max-w-3xl text-[16.5px] leading-relaxed text-[#57534e]">{doc.intro}</p>
-        <p className="mt-4 text-[13px] font-bold uppercase tracking-wide text-[#a8a29e]">{common.updated}</p>
+        <p className="mt-4 text-[13px] font-bold uppercase tracking-wide text-[#6f6862]">{common.updated}</p>
         <div className="mt-6 flex flex-wrap gap-2.5">
           {doc.actions.map((action) => (
             <ActionLink key={`${action.href}-${action.label}`} action={action} />
@@ -1245,7 +1245,7 @@ export default function LegalPage({ page }: { page: LegalPageKind }) {
       </header>
 
       <section className="mt-6 rounded-[24px] border border-[#e9ddc3] bg-[#fff4de] p-6" aria-labelledby="legal-contents-heading">
-        <h2 id="legal-contents-heading" className="text-[15px] font-black uppercase tracking-wide text-[#78716c]">
+        <h2 id="legal-contents-heading" className="text-[15px] font-black uppercase tracking-wide text-[#6f6862]">
           {common.contents}
         </h2>
         <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2.5">
@@ -1271,7 +1271,7 @@ export default function LegalPage({ page }: { page: LegalPageKind }) {
                 <ul className="grid gap-2.5">
                   {section.bullets.map((bullet) => (
                     <li key={bullet} className="flex gap-3">
-                      <span aria-hidden="true" className="mt-[9px] h-2 w-2 shrink-0 rounded-full bg-[#e4572e]" />
+                      <span aria-hidden="true" className="mt-[9px] h-2 w-2 shrink-0 rounded-full bg-[#c7431f]" />
                       <span>{bullet}</span>
                     </li>
                   ))}
@@ -1288,7 +1288,7 @@ export default function LegalPage({ page }: { page: LegalPageKind }) {
         </h2>
         <p className="mt-2 max-w-3xl text-[15px] leading-relaxed text-white/85">{common.contactBody}</p>
         <p className="mt-4 break-all text-[15px] font-extrabold">
-          {SITE.email} <span className="mx-1 text-white/50">·</span> {SITE.phoneDisplay} <span className="mx-1 text-white/50">·</span> {t("site.city")}
+          {SITE.email} <span className="mx-1 text-white/70">·</span> {SITE.phoneDisplay} <span className="mx-1 text-white/70">·</span> {t("site.city")}
         </p>
         <div className="mt-5 flex flex-wrap gap-2.5">
           <a href={mailtoLink(common.emailSubject)} className="rounded-2xl bg-white px-5 py-3 text-[14.5px] font-extrabold text-[#17452e] hover:bg-[#fff4de]">
@@ -1300,7 +1300,7 @@ export default function LegalPage({ page }: { page: LegalPageKind }) {
         </div>
       </section>
 
-      <p className="mt-5 text-center text-[13px] leading-relaxed text-[#78716c]">{common.translationNote}</p>
+      <p className="mt-5 text-center text-[13px] leading-relaxed text-[#6f6862]">{common.translationNote}</p>
     </div>
   );
 }

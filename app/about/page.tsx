@@ -9,7 +9,7 @@ export default function About() {
   return (
     <div>
       <section className="mx-auto max-w-4xl px-4 py-12 sm:px-6">
-        <p className="text-[12.5px] font-bold uppercase tracking-widest text-[#e4572e]">{t("about.eyebrow")}</p>
+        <p className="text-[12.5px] font-bold uppercase tracking-widest text-[#c7431f]">{t("about.eyebrow")}</p>
         <h1 className="font-display mt-2 text-[36px] font-black leading-tight sm:text-[52px]">
           {t("about.title")}
         </h1>
@@ -60,7 +60,7 @@ export default function About() {
             {t("about.ctaBody").replace("{brands}", formatNumber(100)).replace("{creators}", formatNumber(200))}
           </p>
           <div className="mt-5 flex justify-center gap-2">
-            <Link href="/signup" className="rounded-2xl bg-[#e4572e] px-6 py-3 text-[15px] font-bold text-white">{t("about.join")}</Link>
+            <Link href="/signup" className="rounded-2xl bg-[#c7431f] px-6 py-3 text-[15px] font-bold text-white">{t("about.join")}</Link>
             <Link href="/contact" className="rounded-2xl border border-[#1c1917] px-6 py-3 text-[15px] font-bold">{t("about.talk")}</Link>
           </div>
         </div>

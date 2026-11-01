@@ -92,7 +92,7 @@ function statusClass(status?: string | null, isReport = false) {
 
 function StatusPill({ status, isReport = false }: { status?: string | null; isReport?: boolean }) {
   const { t } = useLang();
-  if (!status) return <span className="text-stone-400">—</span>;
+  if (!status) return <span className="text-stone-600">—</span>;
   const key = `status.${status}`;
   const label = t(key);
   return (
@@ -135,11 +135,11 @@ function ActionButton({
 
 function ProfileLinks({ links }: { links: Array<string | null | undefined> }) {
   const uniqueLinks = [...new Set(links.filter(Boolean) as string[])];
-  if (uniqueLinks.length === 0) return <span className="text-stone-400">—</span>;
+  if (uniqueLinks.length === 0) return <span className="text-stone-600">—</span>;
   return (
     <div className="grid max-w-[230px] gap-1">
       {uniqueLinks.map((link) => (
-        <a key={link} href={link} target="_blank" rel="noopener noreferrer" className="break-all text-[12px] font-semibold text-[#e4572e] hover:underline">
+        <a key={link} href={link} target="_blank" rel="noopener noreferrer" className="break-all text-[12px] font-semibold text-[#c7431f] hover:underline">
           {link}
         </a>
       ))}
@@ -383,25 +383,27 @@ export default function AdminPage() {
           onSubmit={login}
           className="rounded-[28px] border border-[#e9ddc3] bg-white p-8 card-shadow"
         >
-          <p className="text-[12.5px] font-bold uppercase tracking-widest text-[#e4572e]">{t("admin.ownerOnly")}</p>
+          <p className="text-[12.5px] font-bold uppercase tracking-widest text-[#c7431f]">{t("admin.ownerOnly")}</p>
           <h1 className="font-display mt-1 text-[28px] font-black">{t("admin.loginTitle")}</h1>
-          <p className="mt-1 text-[14px] text-[#78716c]">{t("admin.loginSub")}</p>
+          <p className="mt-1 text-[14px] text-[#6f6862]">{t("admin.loginSub")}</p>
+          <label htmlFor="admin-password" className="sr-only">{t("admin.passwordPlaceholder")}</label>
           <input
+            id="admin-password"
             type="password"
             maxLength={256}
             value={key}
             onChange={(e) => setKey(e.target.value)}
             placeholder={t("admin.passwordPlaceholder")}
-            aria-label={t("admin.passwordPlaceholder")}
             autoComplete="current-password"
             className="mt-5 w-full rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]"
           />
+          <label htmlFor="admin-totp" className="sr-only">{t("admin.totpPlaceholder")}</label>
           <input
+            id="admin-totp"
             type="text"
             value={totp}
             onChange={(e) => setTotp(e.target.value.replace(/[^0-9 ]/g, "").slice(0, 7))}
             placeholder={t("admin.totpPlaceholder")}
-            aria-label={t("admin.totpPlaceholder")}
             autoComplete="one-time-code"
             inputMode="numeric"
             className="mt-3 w-full rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]"
@@ -583,9 +585,9 @@ export default function AdminPage() {
           {t("admin.lock")}
         </button>
       </div>
-      <p className="text-[12.5px] font-bold uppercase tracking-widest text-[#e4572e]">{t("admin.internal")}</p>
+      <p className="text-[12.5px] font-bold uppercase tracking-widest text-[#c7431f]">{t("admin.internal")}</p>
       <h1 className="font-display text-[30px] font-black sm:text-[40px]">{t("admin.overview")}</h1>
-      <p className="text-[14.5px] text-[#78716c]">{t("admin.overviewSub")}</p>
+      <p className="text-[14.5px] text-[#6f6862]">{t("admin.overviewSub")}</p>
 
       <div className="mt-6 grid gap-3 sm:grid-cols-3 xl:grid-cols-6">
         {[
@@ -598,7 +600,7 @@ export default function AdminPage() {
         ].map((s) => (
           <div key={s.b} className="rounded-2xl border border-[#e9ddc3] bg-white p-5 text-center">
             <p className="font-display text-[30px] font-black">{formatNumber(s.a)}</p>
-            <p className="text-[13px] font-bold text-[#78716c]">{s.b}</p>
+            <p className="text-[13px] font-bold text-[#6f6862]">{s.b}</p>
           </div>
         ))}
       </div>
@@ -628,29 +630,29 @@ export default function AdminPage() {
       </div>
 
       <form onSubmit={applyAdminFilters} className="mt-4 grid gap-2 rounded-2xl border border-[#e9ddc3] bg-white p-3 md:grid-cols-2 xl:grid-cols-[1fr_190px_190px_190px_auto]">
-        <label>
+        <label htmlFor="admin-search">
           <span className="sr-only">{t("listing.searchLabel")}</span>
-          <input value={adminDraft.q} onChange={(e) => setAdminDraft((current) => ({ ...current, q: e.target.value }))} placeholder={t("listing.searchItems")} className={adminControlClass} />
+          <input id="admin-search" value={adminDraft.q} onChange={(e) => setAdminDraft((current) => ({ ...current, q: e.target.value }))} placeholder={t("listing.searchItems")} className={adminControlClass} />
         </label>
-        <label>
+        <label htmlFor="admin-filter">
           <span className="sr-only">{tab === "contacts" ? t("admin.type") : tab === "audit" ? t("admin.outcome") : t("listing.filterStatus")}</span>
-          <select value={adminDraft.filter} onChange={(e) => setAdminDraft((current) => ({ ...current, filter: e.target.value }))} className={adminControlClass}>
+          <select id="admin-filter" value={adminDraft.filter} onChange={(e) => setAdminDraft((current) => ({ ...current, filter: e.target.value }))} className={adminControlClass}>
             <option value="">{tab === "contacts" ? t("admin.type") : tab === "audit" ? t("admin.outcome") : t("listing.allStatuses")}</option>
             {adminFilterOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
         {(tab === "campaigns" || tab === "creators") && (
-          <label>
+          <label htmlFor="admin-verification-filter">
             <span className="sr-only">{t("admin.verification")}</span>
-            <select value={adminDraft.verificationStatus} onChange={(e) => setAdminDraft((current) => ({ ...current, verificationStatus: e.target.value }))} className={adminControlClass}>
+            <select id="admin-verification-filter" value={adminDraft.verificationStatus} onChange={(e) => setAdminDraft((current) => ({ ...current, verificationStatus: e.target.value }))} className={adminControlClass}>
               <option value="">{t("listing.allVerification")}</option>
               {VERIFICATION_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
             </select>
           </label>
         )}
-        <label>
+        <label htmlFor="admin-sort">
           <span className="sr-only">{t("listing.sort")}</span>
-          <select value={adminDraft.sort} onChange={(e) => setAdminDraft((current) => ({ ...current, sort: e.target.value }))} className={adminControlClass}>
+          <select id="admin-sort" value={adminDraft.sort} onChange={(e) => setAdminDraft((current) => ({ ...current, sort: e.target.value }))} className={adminControlClass}>
             {adminSortOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
@@ -673,7 +675,7 @@ export default function AdminPage() {
         {tab === "campaigns" && (
           <table className="w-full min-w-[980px] text-left text-[13.5px]">
             <thead>
-              <tr className="border-b border-[#f0e6cc] text-[#a8a29e]">
+              <tr className="border-b border-[#f0e6cc] text-[#6f6862]">
                 <th scope="col" className="p-4">{t("admin.campaign")}</th>
                 <th scope="col" className="p-4">{t("admin.businessContact")}</th>
                 <th scope="col" className="p-4">{t("admin.budgetDetails")}</th>
@@ -689,28 +691,28 @@ export default function AdminPage() {
                   <tr key={c.id} className="border-b border-[#faf3e0] align-top">
                     <td className="max-w-[260px] p-4">
                       <p className="font-bold">{c.title}</p>
-                      {c.description && <p className="mt-1 line-clamp-3 text-[12.5px] text-[#78716c]">{c.description}</p>}
-                      <p className="mt-1 text-[11.5px] text-[#a8a29e]">{formatDate(c.createdAt)}</p>
+                      {c.description && <p className="mt-1 line-clamp-3 text-[12.5px] text-[#6f6862]">{c.description}</p>}
+                      <p className="mt-1 text-[11.5px] text-[#6f6862]">{formatDate(c.createdAt)}</p>
                     </td>
                     <td className="max-w-[230px] p-4">
                       <p className="font-semibold">{c.businessName}</p>
                       {c.contactName && <p>{c.contactName}</p>}
-                      <p className="break-all text-[12px] text-[#78716c]">{c.phone || ""}{c.phone && c.email ? <br /> : null}{c.email || ""}</p>
+                      <p className="break-all text-[12px] text-[#6f6862]">{c.phone || ""}{c.phone && c.email ? <br /> : null}{c.email || ""}</p>
                       {c.website && (
-                        <a href={c.website} target="_blank" rel="noopener noreferrer" className="mt-1 block break-all text-[12px] font-semibold text-[#e4572e] hover:underline">
+                        <a href={c.website} target="_blank" rel="noopener noreferrer" className="mt-1 block break-all text-[12px] font-semibold text-[#c7431f] hover:underline">
                           {c.website}
                         </a>
                       )}
                     </td>
                     <td className="p-4">
                       <p className="font-bold">{formatCurrency(c.budget || 0)}</p>
-                      <p className="text-[12.5px] text-[#78716c]">{[c.promotionType ? promo(c.promotionType) : "", c.category ? opt(c.category) : "", c.language ? opt(c.language) : "", c.location, c.format ? opt(c.format) : ""].filter(Boolean).join(" • ")}</p>
+                      <p className="text-[12.5px] text-[#6f6862]">{[c.promotionType ? promo(c.promotionType) : "", c.category ? opt(c.category) : "", c.language ? opt(c.language) : "", c.location, c.format ? opt(c.format) : ""].filter(Boolean).join(" • ")}</p>
                     </td>
                     <td className="max-w-[220px] p-4">
                       <StatusPill status={c.verificationStatus || "unverified"} />
                       {c.verificationCode && <p className="mt-2 font-mono text-[13px] font-black tracking-wide">{c.verificationCode}</p>}
-                      {c.reviewedAt && <p className="mt-1 text-[11.5px] text-[#a8a29e]">{t("admin.reviewed")} {formatDate(c.reviewedAt)}</p>}
-                      {c.moderationNote && <p className="mt-1 text-[12px] text-[#78716c]">{t("admin.note")}: {c.moderationNote}</p>}
+                      {c.reviewedAt && <p className="mt-1 text-[11.5px] text-[#6f6862]">{t("admin.reviewed")} {formatDate(c.reviewedAt)}</p>}
+                      {c.moderationNote && <p className="mt-1 text-[12px] text-[#6f6862]">{t("admin.note")}: {c.moderationNote}</p>}
                     </td>
                     <td className="p-4"><StatusPill status={c.status} /></td>
                     <td className="p-4">
@@ -745,7 +747,7 @@ export default function AdminPage() {
         {tab === "creators" && (
           <table className="w-full min-w-[1120px] text-left text-[13.5px]">
             <thead>
-              <tr className="border-b border-[#f0e6cc] text-[#a8a29e]">
+              <tr className="border-b border-[#f0e6cc] text-[#6f6862]">
                 <th scope="col" className="p-4">{t("admin.creatorContact")}</th>
                 <th scope="col" className="p-4">{t("admin.socialProfiles")}</th>
                 <th scope="col" className="p-4">{t("admin.details")}</th>
@@ -763,16 +765,16 @@ export default function AdminPage() {
                   <tr key={c.id} className="border-b border-[#faf3e0] align-top">
                     <td className="max-w-[220px] p-4">
                       <p className="font-bold">{c.name}</p>
-                      <p className="break-all text-[12px] text-[#78716c]">{c.phone || ""}{c.phone && c.email ? <br /> : null}{c.email || ""}</p>
-                      <p className="mt-1 text-[11.5px] text-[#a8a29e]">{formatDate(c.createdAt)}</p>
+                      <p className="break-all text-[12px] text-[#6f6862]">{c.phone || ""}{c.phone && c.email ? <br /> : null}{c.email || ""}</p>
+                      <p className="mt-1 text-[11.5px] text-[#6f6862]">{formatDate(c.createdAt)}</p>
                     </td>
                     <td className="p-4"><ProfileLinks links={[c.profileUrl, c.instagram, c.youtube]} /></td>
                     <td className="max-w-[260px] p-4">
                       <p>{[c.platform ? platform(c.platform) : "", c.category ? opt(c.category) : "", c.languages ? opt(c.languages) : "", c.location, c.contentTypes ? opt(c.contentTypes) : ""].filter(Boolean).join(" • ")}</p>
-                      {c.bio && <p className="mt-1 line-clamp-3 text-[12.5px] text-[#78716c]">{c.bio}</p>}
+                      {c.bio && <p className="mt-1 line-clamp-3 text-[12.5px] text-[#6f6862]">{c.bio}</p>}
                     </td>
                     <td className="min-w-[170px] p-4">
-                      <p className="text-[12.5px] text-[#78716c]">{t("dash.claimedFollowers")}: {formatNumber(c.followers || 0)}</p>
+                      <p className="text-[12.5px] text-[#6f6862]">{t("dash.claimedFollowers")}: {formatNumber(c.followers || 0)}</p>
                       <label htmlFor={`verified-followers-${c.id}`} className="mt-2 block text-[11.5px] font-bold text-[#57534e]">
                         {t("admin.verifiedCount")}
                       </label>
@@ -789,8 +791,8 @@ export default function AdminPage() {
                     <td className="max-w-[220px] p-4">
                       <StatusPill status={c.verificationStatus || "unverified"} />
                       {c.verificationCode && <p className="mt-2 font-mono text-[13px] font-black tracking-wide">{c.verificationCode}</p>}
-                      {c.reviewedAt && <p className="mt-1 text-[11.5px] text-[#a8a29e]">{t("admin.reviewed")} {formatDate(c.reviewedAt)}</p>}
-                      {c.moderationNote && <p className="mt-1 text-[12px] text-[#78716c]">{t("admin.note")}: {c.moderationNote}</p>}
+                      {c.reviewedAt && <p className="mt-1 text-[11.5px] text-[#6f6862]">{t("admin.reviewed")} {formatDate(c.reviewedAt)}</p>}
+                      {c.moderationNote && <p className="mt-1 text-[12px] text-[#6f6862]">{t("admin.note")}: {c.moderationNote}</p>}
                     </td>
                     <td className="p-4"><StatusPill status={c.status} /></td>
                     <td className="p-4">
@@ -828,7 +830,7 @@ export default function AdminPage() {
         {tab === "reports" && (
           <table className="w-full min-w-[920px] text-left text-[13.5px]">
             <thead>
-              <tr className="border-b border-[#f0e6cc] text-[#a8a29e]">
+              <tr className="border-b border-[#f0e6cc] text-[#6f6862]">
                 <th scope="col" className="p-4">{t("admin.target")}</th>
                 <th scope="col" className="p-4">{t("admin.reasonDetails")}</th>
                 <th scope="col" className="p-4">{t("admin.reporter")}</th>
@@ -846,21 +848,21 @@ export default function AdminPage() {
                     <td className="max-w-[240px] p-4">
                       <p className="font-bold">{entityLabel(r.targetType)}</p>
                       <p>{r.targetLabel || (r.targetType === "campaign" ? t("admin.deletedCampaign") : t("admin.deletedCreator"))}</p>
-                      <p className="break-all text-[11.5px] text-[#a8a29e]">{r.targetId}</p>
+                      <p className="break-all text-[11.5px] text-[#6f6862]">{r.targetId}</p>
                     </td>
                     <td className="max-w-[300px] p-4">
                       <p className="font-semibold">{reportReasonLabel(r.reason)}</p>
-                      {r.details && <p className="mt-1 text-[12.5px] leading-relaxed text-[#78716c]">{r.details}</p>}
+                      {r.details && <p className="mt-1 text-[12.5px] leading-relaxed text-[#6f6862]">{r.details}</p>}
                     </td>
                     <td className="max-w-[220px] p-4">
                       {r.reporterName && <p>{r.reporterName}</p>}
-                      {r.reporterContact && <p className="break-all text-[12px] text-[#78716c]">{r.reporterContact}</p>}
-                      {!r.reporterName && !r.reporterContact && <span className="text-stone-400">{t("admin.anonymous")}</span>}
+                      {r.reporterContact && <p className="break-all text-[12px] text-[#6f6862]">{r.reporterContact}</p>}
+                      {!r.reporterName && !r.reporterContact && <span className="text-stone-600">{t("admin.anonymous")}</span>}
                     </td>
                     <td className="p-4">
                       <StatusPill status={r.status} isReport />
-                      <p className="mt-1 text-[11.5px] text-[#a8a29e]">{formatDate(r.createdAt)}</p>
-                      {r.adminNote && <p className="mt-1 text-[12px] text-[#78716c]">{t("admin.note")}: {r.adminNote}</p>}
+                      <p className="mt-1 text-[11.5px] text-[#6f6862]">{formatDate(r.createdAt)}</p>
+                      {r.adminNote && <p className="mt-1 text-[12px] text-[#6f6862]">{t("admin.note")}: {r.adminNote}</p>}
                     </td>
                     <td className="p-4">
                       <div className="flex max-w-[190px] flex-wrap gap-1.5">
@@ -893,7 +895,7 @@ export default function AdminPage() {
         {tab === "applications" && (
           <table className="w-full min-w-[920px] text-left text-[13.5px]">
             <thead>
-              <tr className="border-b border-[#f0e6cc] text-[#a8a29e]">
+              <tr className="border-b border-[#f0e6cc] text-[#6f6862]">
                 <th scope="col" className="p-4">{t("admin.creator")}</th>
                 <th scope="col" className="p-4">{t("admin.campaign")}</th>
                 <th scope="col" className="p-4">{t("admin.contactMessage")}</th>
@@ -908,17 +910,17 @@ export default function AdminPage() {
                   <tr key={a.id} className="border-b border-[#faf3e0] align-top">
                     <td className="max-w-[190px] p-4">
                       <p className="font-bold">{a.creatorLabel || a.creatorName}</p>
-                      <p className="mt-1 text-[11.5px] text-[#a8a29e]">{formatDate(a.createdAt)}</p>
+                      <p className="mt-1 text-[11.5px] text-[#6f6862]">{formatDate(a.createdAt)}</p>
                     </td>
                     <td className="max-w-[240px] p-4">{a.campaignLabel || (a.campaignMissing ? t("admin.deletedCampaign") : a.campaignId)}</td>
                     <td className="max-w-[300px] p-4">
                       {a.creatorContact && <p className="break-all font-semibold">{a.creatorContact}</p>}
-                      {a.message && <p className="mt-1 text-[12.5px] leading-relaxed text-[#78716c]">{a.message}</p>}
-                      {a.decisionNote && <p className="mt-1 text-[12px] text-[#78716c]">{t("dash.brandNote")}: {a.decisionNote}</p>}
+                      {a.message && <p className="mt-1 text-[12.5px] leading-relaxed text-[#6f6862]">{a.message}</p>}
+                      {a.decisionNote && <p className="mt-1 text-[12px] text-[#6f6862]">{t("dash.brandNote")}: {a.decisionNote}</p>}
                     </td>
                     <td className="p-4">
                       <StatusPill status={a.status} />
-                      {a.decisionAt && <p className="mt-1 text-[11.5px] text-[#a8a29e]">{t("dash.updatedOn")} {formatDate(a.decisionAt)}</p>}
+                      {a.decisionAt && <p className="mt-1 text-[11.5px] text-[#6f6862]">{t("dash.updatedOn")} {formatDate(a.decisionAt)}</p>}
                     </td>
                     <td className="p-4">
                       <ActionButton tone="danger" disabled={busy} onClick={() => moderate("application", a.id, "delete")}>
@@ -934,7 +936,7 @@ export default function AdminPage() {
         {tab === "contacts" && (
           <table className="w-full min-w-[860px] text-left text-[13.5px]">
             <thead>
-              <tr className="border-b border-[#f0e6cc] text-[#a8a29e]">
+              <tr className="border-b border-[#f0e6cc] text-[#6f6862]">
                 <th scope="col" className="p-4">{t("admin.name")}</th>
                 <th scope="col" className="p-4">{t("admin.type")}</th>
                 <th scope="col" className="p-4">{t("admin.message")}</th>
@@ -949,7 +951,7 @@ export default function AdminPage() {
                   <tr key={c.id} className="border-b border-[#faf3e0] align-top">
                     <td className="max-w-[190px] p-4">
                       <p className="font-bold">{c.name}</p>
-                      <p className="mt-1 text-[11.5px] text-[#a8a29e]">{formatDate(c.createdAt)}</p>
+                      <p className="mt-1 text-[11.5px] text-[#6f6862]">{formatDate(c.createdAt)}</p>
                     </td>
                     <td className="p-4">{contactKindLabel(c.kind)}</td>
                     <td className="max-w-[320px] p-4">{c.message}</td>
@@ -968,7 +970,7 @@ export default function AdminPage() {
         {tab === "audit" && (
           <table className="w-full min-w-[920px] text-left text-[13.5px]">
             <thead>
-              <tr className="border-b border-[#f0e6cc] text-[#a8a29e]">
+              <tr className="border-b border-[#f0e6cc] text-[#6f6862]">
                 <th scope="col" className="p-4">{t("admin.time")}</th>
                 <th scope="col" className="p-4">{t("admin.action")}</th>
                 <th scope="col" className="p-4">{t("admin.outcome")}</th>
@@ -981,12 +983,12 @@ export default function AdminPage() {
                 const detailEntries = auditDetailEntries(log.details);
                 return (
                   <tr key={log.id} className="border-b border-[#faf3e0] align-top">
-                    <td className="whitespace-nowrap p-4 text-[12.5px] text-[#78716c]">{formatDate(log.createdAt)}</td>
+                    <td className="whitespace-nowrap p-4 text-[12.5px] text-[#6f6862]">{formatDate(log.createdAt)}</td>
                     <td className="p-4 text-[12.5px] font-bold">{auditActionLabel(log.action)}</td>
                     <td className="p-4"><StatusPill status={log.outcome} /></td>
                     <td className="max-w-[220px] p-4">
-                      {log.entity ? <p className="font-semibold">{entityLabel(log.entity)}</p> : <span className="text-stone-400">{t("admin.adminEntity")}</span>}
-                      {log.entityId && <p className="mt-1 break-all text-[11.5px] text-[#a8a29e]">{log.entityId}</p>}
+                      {log.entity ? <p className="font-semibold">{entityLabel(log.entity)}</p> : <span className="text-stone-600">{t("admin.adminEntity")}</span>}
+                      {log.entityId && <p className="mt-1 break-all text-[11.5px] text-[#6f6862]">{log.entityId}</p>}
                     </td>
                     <td className="max-w-[360px] p-4">
                       {detailEntries.length > 0 && (
@@ -999,8 +1001,8 @@ export default function AdminPage() {
                           ))}
                         </dl>
                       )}
-                      {log.ipAddress && <p className="mt-1 text-[11.5px] text-[#a8a29e]">{t("admin.ipAddress")}: {log.ipAddress}</p>}
-                      {detailEntries.length === 0 && !log.ipAddress && <span className="text-stone-400">—</span>}
+                      {log.ipAddress && <p className="mt-1 text-[11.5px] text-[#6f6862]">{t("admin.ipAddress")}: {log.ipAddress}</p>}
+                      {detailEntries.length === 0 && !log.ipAddress && <span className="text-stone-600">—</span>}
                     </td>
                   </tr>
                 );
@@ -1009,7 +1011,7 @@ export default function AdminPage() {
           </table>
         )}
         {activeRows.length === 0 && (
-          <p className="p-8 text-center text-[14px] text-[#a8a29e]">{loading ? t("common.loading") : activeHasFilters ? t("listing.noMatches") : t("admin.empty")}</p>
+          <p className="p-8 text-center text-[14px] text-[#6f6862]">{loading ? t("common.loading") : activeHasFilters ? t("listing.noMatches") : t("admin.empty")}</p>
         )}
       </div>
       <ListingPagination

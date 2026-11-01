@@ -160,7 +160,7 @@ function Stat({ value, label }: { value: string | number; label: string }) {
   return (
     <div className="rounded-2xl border border-[#e9ddc3] bg-white p-5 text-center">
       <p className="font-display text-[30px] font-black">{value}</p>
-      <p className="text-[13px] font-bold text-[#78716c]">{label}</p>
+      <p className="text-[13px] font-bold text-[#6f6862]">{label}</p>
     </div>
   );
 }
@@ -595,7 +595,7 @@ export default function DashboardPage() {
     <section className="mt-8 rounded-[24px] border border-[#e9ddc3] bg-white p-5 card-shadow" aria-labelledby="notifications-heading">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 id="notifications-heading" className="text-[19px] font-extrabold">
-          {t("notify.title")} {unreadCount > 0 && <span className="ml-1 rounded-full bg-[#e4572e] px-2.5 py-1 text-[12px] text-white">{formatNumber(unreadCount)} {t("notify.unread")}</span>}
+          {t("notify.title")} {unreadCount > 0 && <span className="ml-1 rounded-full bg-[#c7431f] px-2.5 py-1 text-[12px] text-white">{formatNumber(unreadCount)} {t("notify.unread")}</span>}
         </h2>
         {unreadCount > 0 && (
           <button
@@ -609,7 +609,7 @@ export default function DashboardPage() {
         )}
       </div>
       {notifications.length === 0 ? (
-        <p className="mt-3 text-[14px] text-[#78716c]">{t("notify.empty")}</p>
+        <p className="mt-3 text-[14px] text-[#6f6862]">{t("notify.empty")}</p>
       ) : (
         <div className="mt-4 grid gap-2">
           {notifications.map((n) => (
@@ -617,7 +617,7 @@ export default function DashboardPage() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-[14px] font-semibold">{notificationText(n)}</p>
-                  <p className="mt-0.5 text-[12px] text-[#a8a29e]">{formatDate(n.createdAt)}</p>
+                  <p className="mt-0.5 text-[12px] text-[#6f6862]">{formatDate(n.createdAt)}</p>
                 </div>
                 {!n.readAt && (
                   <button
@@ -652,7 +652,15 @@ export default function DashboardPage() {
     const set = (field: keyof CampaignForm, value: string) => setCampaignForm((f) => (f ? { ...f, [field]: value } : f));
     return (
       <form
+        id={`dashboard-campaign-${c.id}-edit-form`}
         className="mt-4 rounded-2xl border border-[#e9ddc3] bg-[#fffbf1] p-4"
+        onKeyDown={(event) => {
+          if (event.key !== "Escape") return;
+          event.preventDefault();
+          document.getElementById(`dashboard-campaign-${c.id}-edit-toggle`)?.focus();
+          setEditingCampaignId("");
+          setCampaignForm(null);
+        }}
         onSubmit={(e) => {
           e.preventDefault();
           runAction(
@@ -666,43 +674,43 @@ export default function DashboardPage() {
         }}
       >
         <h3 className="text-[16px] font-extrabold">{t("dash.editCampaign")}</h3>
-        <p className="mt-1 text-[13px] leading-relaxed text-[#78716c]">{t("dash.editReviewWarning")}</p>
+        <p className="mt-1 text-[13px] leading-relaxed text-[#6f6862]">{t("dash.editReviewWarning")}</p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className={labelClass}>{t("brand.businessName")}<input value={campaignForm.businessName} onChange={(e) => set("businessName", e.target.value)} className={inputClass} /></label>
-          <label className={labelClass}>{t("brand.contactName")}<input value={campaignForm.contactName} onChange={(e) => set("contactName", e.target.value)} className={inputClass} /></label>
-          <label className={`${labelClass} sm:col-span-2`}>{t("brand.titleLabel")}<input value={campaignForm.title} onChange={(e) => set("title", e.target.value)} className={inputClass} /></label>
-          <label className={labelClass}>{t("brand.promoting")}
-            <select value={campaignForm.promotionType} onChange={(e) => set("promotionType", e.target.value)} className={inputClass}>
+          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-business-name`}>{t("brand.businessName")}<input autoFocus id={`dashboard-campaign-${c.id}-business-name`} value={campaignForm.businessName} onChange={(e) => set("businessName", e.target.value)} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-contact-name`}>{t("brand.contactName")}<input id={`dashboard-campaign-${c.id}-contact-name`} value={campaignForm.contactName} onChange={(e) => set("contactName", e.target.value)} className={inputClass} /></label>
+          <label className={`${labelClass} sm:col-span-2`} htmlFor={`dashboard-campaign-${c.id}-title`}>{t("brand.titleLabel")}<input id={`dashboard-campaign-${c.id}-title`} value={campaignForm.title} onChange={(e) => set("title", e.target.value)} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-promotion-type`}>{t("brand.promoting")}
+            <select id={`dashboard-campaign-${c.id}-promotion-type`} value={campaignForm.promotionType} onChange={(e) => set("promotionType", e.target.value)} className={inputClass}>
               {PROMOTION_TYPES.map((p) => <option key={p.id} value={p.id}>{promo(p.title)}</option>)}
             </select>
           </label>
-          <label className={labelClass}>{t("brand.category")}
-            <select value={campaignForm.category} onChange={(e) => set("category", e.target.value)} className={inputClass}>
+          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-category`}>{t("brand.category")}
+            <select id={`dashboard-campaign-${c.id}-category`} value={campaignForm.category} onChange={(e) => set("category", e.target.value)} className={inputClass}>
               <option value="">—</option>
               {CATEGORIES.map((category) => <option key={category} value={category}>{opt(category)}</option>)}
             </select>
           </label>
-          <label className={labelClass}>{t("brand.website")}<input value={campaignForm.website} onChange={(e) => set("website", e.target.value)} placeholder={t("brand.phWebsite")} className={inputClass} /></label>
-          <label className={labelClass}>{t("brand.audience")}<input value={campaignForm.targetAudience} onChange={(e) => set("targetAudience", e.target.value)} placeholder={t("brand.phAudience")} className={inputClass} /></label>
-          <label className={labelClass}>{t("brand.location")}<input value={campaignForm.location} onChange={(e) => set("location", e.target.value)} placeholder={t("brand.phLocation")} className={inputClass} /></label>
-          <label className={labelClass}>{t("brand.budget")}<input inputMode="numeric" value={campaignForm.budget} onChange={(e) => set("budget", e.target.value.replace(/[^0-9]/g, ""))} className={inputClass} /></label>
-          <label className={labelClass}>{t("brand.language")}
-            <select value={campaignForm.language} onChange={(e) => set("language", e.target.value)} className={inputClass}>
+          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-website`}>{t("brand.website")}<input id={`dashboard-campaign-${c.id}-website`} value={campaignForm.website} onChange={(e) => set("website", e.target.value)} placeholder={t("brand.phWebsite")} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-target-audience`}>{t("brand.audience")}<input id={`dashboard-campaign-${c.id}-target-audience`} value={campaignForm.targetAudience} onChange={(e) => set("targetAudience", e.target.value)} placeholder={t("brand.phAudience")} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-location`}>{t("brand.location")}<input id={`dashboard-campaign-${c.id}-location`} value={campaignForm.location} onChange={(e) => set("location", e.target.value)} placeholder={t("brand.phLocation")} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-budget`}>{t("brand.budget")}<input id={`dashboard-campaign-${c.id}-budget`} inputMode="numeric" value={campaignForm.budget} onChange={(e) => set("budget", e.target.value.replace(/[^0-9]/g, ""))} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-language`}>{t("brand.language")}
+            <select id={`dashboard-campaign-${c.id}-language`} value={campaignForm.language} onChange={(e) => set("language", e.target.value)} className={inputClass}>
               {LANGUAGES.map((language) => <option key={language} value={language}>{opt(language)}</option>)}
             </select>
           </label>
-          <label className={labelClass}>{t("brand.format")}
-            <select value={campaignForm.format} onChange={(e) => set("format", e.target.value)} className={inputClass}>
+          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-format`}>{t("brand.format")}
+            <select id={`dashboard-campaign-${c.id}-format`} value={campaignForm.format} onChange={(e) => set("format", e.target.value)} className={inputClass}>
               {CONTENT_TYPES.map((format) => <option key={format} value={format}>{opt(format)}</option>)}
             </select>
           </label>
-          <label className={labelClass}>{t("brand.phone")}<input value={campaignForm.phone} onChange={(e) => set("phone", e.target.value)} placeholder={t("brand.phPhone")} className={inputClass} /></label>
-          <label className={labelClass}>{t("brand.email")}<input value={campaignForm.email} onChange={(e) => set("email", e.target.value)} placeholder={t("brand.phEmail")} className={inputClass} /></label>
-          <label className={`${labelClass} sm:col-span-2`}>{t("brand.descLabel")}<textarea value={campaignForm.description} onChange={(e) => set("description", e.target.value)} rows={4} placeholder={t("brand.phDesc")} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-phone`}>{t("brand.phone")}<input id={`dashboard-campaign-${c.id}-phone`} value={campaignForm.phone} onChange={(e) => set("phone", e.target.value)} placeholder={t("brand.phPhone")} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-email`}>{t("brand.email")}<input id={`dashboard-campaign-${c.id}-email`} value={campaignForm.email} onChange={(e) => set("email", e.target.value)} placeholder={t("brand.phEmail")} className={inputClass} /></label>
+          <label className={`${labelClass} sm:col-span-2`} htmlFor={`dashboard-campaign-${c.id}-description`}>{t("brand.descLabel")}<textarea id={`dashboard-campaign-${c.id}-description`} value={campaignForm.description} onChange={(e) => set("description", e.target.value)} rows={4} placeholder={t("brand.phDesc")} className={inputClass} /></label>
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
           <button type="submit" disabled={busy} className="rounded-xl bg-[#1c1917] px-5 py-2.5 text-[13.5px] font-bold text-white disabled:opacity-50">{busy ? t("dash.saving") : t("dash.saveChanges")}</button>
-          <button type="button" disabled={busy} onClick={() => { setEditingCampaignId(""); setCampaignForm(null); }} className="rounded-xl border border-[#e9ddc3] bg-white px-5 py-2.5 text-[13.5px] font-bold disabled:opacity-50">{t("dash.cancel")}</button>
+          <button type="button" disabled={busy} onClick={() => { document.getElementById(`dashboard-campaign-${c.id}-edit-toggle`)?.focus(); setEditingCampaignId(""); setCampaignForm(null); }} className="rounded-xl border border-[#e9ddc3] bg-white px-5 py-2.5 text-[13.5px] font-bold disabled:opacity-50">{t("dash.cancel")}</button>
         </div>
       </form>
     );
@@ -725,11 +733,11 @@ export default function DashboardPage() {
             <p className="font-bold">{a.creatorName}</p>
             {a.creatorContact && (
               <>
-                <p className="break-all text-[#e4572e]">{a.creatorContact}</p>
-                <p className="mt-0.5 text-[11.5px] font-semibold text-[#78716c]">🔒 {t("dash.brandContactUse")}</p>
+                <p className="break-all text-[#c7431f]">{a.creatorContact}</p>
+                <p className="mt-0.5 text-[11.5px] font-semibold text-[#6f6862]">🔒 {t("dash.brandContactUse")}</p>
               </>
             )}
-            <p className="mt-0.5 text-[12px] text-[#a8a29e]">{t("dash.appliedOn")}: {formatDate(a.createdAt)}</p>
+            <p className="mt-0.5 text-[12px] text-[#6f6862]">{t("dash.appliedOn")}: {formatDate(a.createdAt)}</p>
           </div>
           <span className={`rounded-full px-3 py-1 text-[12px] font-bold ${statusPillClass(a.status)}`}>{statusLabel(a.status)}</span>
         </div>
@@ -742,9 +750,9 @@ export default function DashboardPage() {
                 {t("dash.offPlatformHiredNote")}
               </p>
             )}
-            <label className="grid gap-1 text-[12.5px] font-bold">
+            <label className="grid gap-1 text-[12.5px] font-bold" htmlFor={`dashboard-decision-note-${a.id}`}>
               {t("dash.decisionNote")}
-              <textarea
+              <textarea id={`dashboard-decision-note-${a.id}`}
                 value={decisionNotes[a.id] ?? a.decisionNote ?? ""}
                 onChange={(e) => setDecisionNotes((notes) => ({ ...notes, [a.id]: e.target.value }))}
                 rows={2}
@@ -776,7 +784,15 @@ export default function DashboardPage() {
       });
     return (
       <form
+        id={`dashboard-profile-${profile.id}-edit-form`}
         className="mt-4 rounded-2xl border border-[#e9ddc3] bg-[#fffbf1] p-4"
+        onKeyDown={(event) => {
+          if (event.key !== "Escape") return;
+          event.preventDefault();
+          document.getElementById(`dashboard-profile-${profile.id}-edit-toggle`)?.focus();
+          setEditingProfileId("");
+          setProfileForm(null);
+        }}
         onSubmit={(e) => {
           e.preventDefault();
           if (profileForm.languages.length === 0) {
@@ -790,48 +806,48 @@ export default function DashboardPage() {
         }}
       >
         <h3 className="text-[16px] font-extrabold">{t("dash.editProfile")}</h3>
-        <p className="mt-1 text-[13px] leading-relaxed text-[#78716c]">{t("dash.editReviewWarning")}</p>
+        <p className="mt-1 text-[13px] leading-relaxed text-[#6f6862]">{t("dash.editReviewWarning")}</p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className={labelClass}>{t("cr.name")}<input value={profileForm.name} onChange={(e) => set("name", e.target.value)} placeholder={t("cr.phName")} className={inputClass} /></label>
-          <label className={labelClass}>{t("cr.phone")}<input value={profileForm.phone} onChange={(e) => set("phone", e.target.value)} className={inputClass} /></label>
-          <label className={labelClass}>{t("cr.email")}<input value={profileForm.email} onChange={(e) => set("email", e.target.value)} placeholder={t("cr.phEmail")} className={inputClass} /></label>
-          <label className={labelClass}>{t("cr.city")}<input value={profileForm.location} onChange={(e) => set("location", e.target.value)} placeholder={t("cr.phCity")} className={inputClass} /></label>
-          <label className={labelClass}>{t("cr.platform")}
-            <select value={profileForm.platform} onChange={(e) => set("platform", e.target.value)} className={inputClass}>
+          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-name`}>{t("cr.name")}<input autoFocus id={`dashboard-profile-${profile.id}-name`} value={profileForm.name} onChange={(e) => set("name", e.target.value)} placeholder={t("cr.phName")} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-phone`}>{t("cr.phone")}<input id={`dashboard-profile-${profile.id}-phone`} value={profileForm.phone} onChange={(e) => set("phone", e.target.value)} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-email`}>{t("cr.email")}<input id={`dashboard-profile-${profile.id}-email`} value={profileForm.email} onChange={(e) => set("email", e.target.value)} placeholder={t("cr.phEmail")} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-location`}>{t("cr.city")}<input id={`dashboard-profile-${profile.id}-location`} value={profileForm.location} onChange={(e) => set("location", e.target.value)} placeholder={t("cr.phCity")} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-platform`}>{t("cr.platform")}
+            <select id={`dashboard-profile-${profile.id}-platform`} value={profileForm.platform} onChange={(e) => set("platform", e.target.value)} className={inputClass}>
               {PLATFORMS.map((platform) => <option key={platform} value={platform}>{platformLabel(platform)}</option>)}
             </select>
           </label>
-          <label className={labelClass}>{t("cr.profileLink")}<input value={profileForm.profileUrl} onChange={(e) => set("profileUrl", e.target.value)} placeholder={t("cr.phProfile")} className={inputClass} /></label>
-          <label className={labelClass}>{t("cr.instagram")}<input value={profileForm.instagram} onChange={(e) => set("instagram", e.target.value)} placeholder={t("cr.phIg")} className={inputClass} /></label>
-          <label className={labelClass}>{t("cr.youtube")}<input value={profileForm.youtube} onChange={(e) => set("youtube", e.target.value)} placeholder={t("cr.phYt")} className={inputClass} /></label>
-          <label className={labelClass}>{t("cr.followers")}<input inputMode="numeric" value={profileForm.followers} onChange={(e) => set("followers", e.target.value.replace(/[^0-9]/g, ""))} placeholder={t("cr.phFollowers")} className={inputClass} /></label>
-          <label className={labelClass}>{t("cr.category")}
-            <select value={profileForm.category} onChange={(e) => set("category", e.target.value)} className={inputClass}>
+          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-profile-url`}>{t("cr.profileLink")}<input id={`dashboard-profile-${profile.id}-profile-url`} value={profileForm.profileUrl} onChange={(e) => set("profileUrl", e.target.value)} placeholder={t("cr.phProfile")} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-instagram`}>{t("cr.instagram")}<input id={`dashboard-profile-${profile.id}-instagram`} value={profileForm.instagram} onChange={(e) => set("instagram", e.target.value)} placeholder={t("cr.phIg")} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-youtube`}>{t("cr.youtube")}<input id={`dashboard-profile-${profile.id}-youtube`} value={profileForm.youtube} onChange={(e) => set("youtube", e.target.value)} placeholder={t("cr.phYt")} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-followers`}>{t("cr.followers")}<input id={`dashboard-profile-${profile.id}-followers`} inputMode="numeric" value={profileForm.followers} onChange={(e) => set("followers", e.target.value.replace(/[^0-9]/g, ""))} placeholder={t("cr.phFollowers")} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-category`}>{t("cr.category")}
+            <select id={`dashboard-profile-${profile.id}-category`} value={profileForm.category} onChange={(e) => set("category", e.target.value)} className={inputClass}>
               <option value="">—</option>
               {CATEGORIES.map((category) => <option key={category} value={category}>{opt(category)}</option>)}
             </select>
           </label>
         </div>
         <div className="mt-4">
-          <p className="text-[13.5px] font-bold">{t("cr.langs")}</p>
-          <div className="mt-2 flex flex-wrap gap-2">
+          <p id={`dashboard-profile-${profile.id}-languages-label`} className="text-[13.5px] font-bold">{t("cr.langs")}</p>
+          <div role="group" aria-labelledby={`dashboard-profile-${profile.id}-languages-label`} className="mt-2 flex flex-wrap gap-2">
             {LANGUAGES.map((language) => (
-              <button key={language} type="button" onClick={() => toggle("languages", language)} className={`rounded-full border px-4 py-2 text-[13px] font-bold ${profileForm.languages.includes(language) ? "border-[#1c1917] bg-[#1c1917] text-white" : "border-[#e9ddc3] bg-white"}`}>{opt(language)}</button>
+              <button key={language} type="button" onClick={() => toggle("languages", language)} aria-pressed={profileForm.languages.includes(language)} className={`rounded-full border px-4 py-2 text-[13px] font-bold ${profileForm.languages.includes(language) ? "border-[#1c1917] bg-[#1c1917] text-white" : "border-[#e9ddc3] bg-white"}`}>{opt(language)}</button>
             ))}
           </div>
         </div>
         <div className="mt-4">
-          <p className="text-[13.5px] font-bold">{t("cr.content")}</p>
-          <div className="mt-2 flex flex-wrap gap-2">
+          <p id={`dashboard-profile-${profile.id}-content-types-label`} className="text-[13.5px] font-bold">{t("cr.content")}</p>
+          <div role="group" aria-labelledby={`dashboard-profile-${profile.id}-content-types-label`} className="mt-2 flex flex-wrap gap-2">
             {CONTENT_TYPES.map((contentType) => (
-              <button key={contentType} type="button" onClick={() => toggle("contentTypes", contentType)} className={`rounded-full border px-4 py-2 text-[13px] font-bold ${profileForm.contentTypes.includes(contentType) ? "border-[#e4572e] bg-[#e4572e] text-white" : "border-[#e9ddc3] bg-white"}`}>{opt(contentType)}</button>
+              <button key={contentType} type="button" onClick={() => toggle("contentTypes", contentType)} aria-pressed={profileForm.contentTypes.includes(contentType)} className={`rounded-full border px-4 py-2 text-[13px] font-bold ${profileForm.contentTypes.includes(contentType) ? "border-[#c7431f] bg-[#c7431f] text-white" : "border-[#e9ddc3] bg-white"}`}>{opt(contentType)}</button>
             ))}
           </div>
         </div>
-        <label className={`${labelClass} mt-4`}>{t("cr.bio")}<textarea value={profileForm.bio} onChange={(e) => set("bio", e.target.value)} rows={3} placeholder={t("cr.phBio")} className={inputClass} /></label>
+        <label className={`${labelClass} mt-4`} htmlFor={`dashboard-profile-${profile.id}-bio`}>{t("cr.bio")}<textarea id={`dashboard-profile-${profile.id}-bio`} value={profileForm.bio} onChange={(e) => set("bio", e.target.value)} rows={3} placeholder={t("cr.phBio")} className={inputClass} /></label>
         <div className="mt-4 flex flex-wrap gap-2">
           <button type="submit" disabled={busy} className="rounded-xl bg-[#1c1917] px-5 py-2.5 text-[13.5px] font-bold text-white disabled:opacity-50">{busy ? t("dash.saving") : t("dash.saveChanges")}</button>
-          <button type="button" disabled={busy} onClick={() => { setEditingProfileId(""); setProfileForm(null); }} className="rounded-xl border border-[#e9ddc3] bg-white px-5 py-2.5 text-[13.5px] font-bold disabled:opacity-50">{t("dash.cancel")}</button>
+          <button type="button" disabled={busy} onClick={() => { document.getElementById(`dashboard-profile-${profile.id}-edit-toggle`)?.focus(); setEditingProfileId(""); setProfileForm(null); }} className="rounded-xl border border-[#e9ddc3] bg-white px-5 py-2.5 text-[13.5px] font-bold disabled:opacity-50">{t("dash.cancel")}</button>
         </div>
       </form>
     );
@@ -848,8 +864,8 @@ export default function DashboardPage() {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="truncate text-[15px] font-extrabold">{a.campaignTitle ?? t("nav.campaigns")}</p>
-            <p className="truncate text-[13px] text-[#78716c]">{[a.businessName, opt(a.format)].filter(Boolean).join(" · ")}</p>
-            <p className="mt-0.5 text-[12px] text-[#a8a29e]">{t("dash.appliedOn")}: {formatDate(a.createdAt)}</p>
+            <p className="truncate text-[13px] text-[#6f6862]">{[a.businessName, opt(a.format)].filter(Boolean).join(" · ")}</p>
+            <p className="mt-0.5 text-[12px] text-[#6f6862]">{t("dash.appliedOn")}: {formatDate(a.createdAt)}</p>
           </div>
           <span className={`shrink-0 rounded-full px-3 py-1 text-[12px] font-bold ${statusPillClass(a.status)}`}>{statusLabel(a.status)}</span>
         </div>
@@ -868,7 +884,17 @@ export default function DashboardPage() {
 
         {applicationFormOpen ? (
           <form
+            id={`dashboard-application-${a.id}-edit-form`}
             className="mt-3 grid gap-3 rounded-xl border border-[#e9ddc3] bg-[#fffbf1] p-3"
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") return;
+              event.preventDefault();
+              const wasReactivating = reactivating;
+              setEditingApplicationId("");
+              setReactivatingApplicationId("");
+              setApplicationConsent(false);
+              requestAnimationFrame(() => document.getElementById(`dashboard-application-${a.id}-${wasReactivating ? "reactivate" : "edit"}-toggle`)?.focus());
+            }}
             onSubmit={(e) => {
               e.preventDefault();
               if (reactivating) {
@@ -896,13 +922,14 @@ export default function DashboardPage() {
             }}
           >
             <PrivacyNotice textKey={reactivating ? "dash.reactivateNotice" : "privacy.applicationEditNotice"} compact />
-            <label className={labelClass}>
+            <label className={labelClass} htmlFor={`dashboard-application-${a.id}-contact`}>
               {t("dash.contactForBrand")}
-              <input
+              <input autoFocus id={`dashboard-application-${a.id}-contact`}
                 value={applicationForm.creatorContact}
                 onChange={(e) => setApplicationForm((f) => ({ ...f, creatorContact: e.target.value }))}
                 required
                 minLength={3}
+                aria-describedby={`dashboard-application-${a.id}-contact-note`}
                 list={`dashboard-application-contacts-${a.id}`}
                 placeholder={t("camp.applyContact")}
                 className={inputClass}
@@ -910,9 +937,9 @@ export default function DashboardPage() {
               <datalist id={`dashboard-application-contacts-${a.id}`}>
                 {(data.applicationContactOptions ?? []).map((option) => <option key={option} value={option} />)}
               </datalist>
-              <span className="text-[12.5px] font-semibold leading-relaxed text-[#78716c]">{t("camp.contactMustBeYours")}</span>
+              <span id={`dashboard-application-${a.id}-contact-note`} className="text-[12.5px] font-semibold leading-relaxed text-[#6f6862]">{t("camp.contactMustBeYours")}</span>
             </label>
-            <label className={labelClass}>{t("dash.yourMessage")}<textarea value={applicationForm.message} onChange={(e) => setApplicationForm((f) => ({ ...f, message: e.target.value }))} rows={3} placeholder={t("camp.applyPhMsg")} className={inputClass} /></label>
+            <label className={labelClass} htmlFor={`dashboard-application-${a.id}-message`}>{t("dash.yourMessage")}<textarea id={`dashboard-application-${a.id}-message`} value={applicationForm.message} onChange={(e) => setApplicationForm((f) => ({ ...f, message: e.target.value }))} rows={3} placeholder={t("camp.applyPhMsg")} className={inputClass} /></label>
             {reactivating && (
               <label htmlFor={`reactivate-consent-${a.id}`} className="flex w-full min-w-0 cursor-pointer items-start gap-3 rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-3 text-[13px] font-semibold leading-relaxed text-[#57534e]">
                 <input
@@ -921,7 +948,7 @@ export default function DashboardPage() {
                   checked={applicationConsent}
                   onChange={(e) => setApplicationConsent(e.target.checked)}
                   required
-                  className="mt-0.5 h-4 w-4 flex-none accent-[#e4572e]"
+                  className="mt-0.5 h-4 w-4 flex-none accent-[#c7431f]"
                 />
                 <span className="min-w-0 flex-1">{t("dash.reactivateConsent")}</span>
               </label>
@@ -941,9 +968,11 @@ export default function DashboardPage() {
               <button
                 type="button"
                 onClick={() => {
+                  const wasReactivating = reactivating;
                   setEditingApplicationId("");
                   setReactivatingApplicationId("");
                   setApplicationConsent(false);
+                  requestAnimationFrame(() => document.getElementById(`dashboard-application-${a.id}-${wasReactivating ? "reactivate" : "edit"}-toggle`)?.focus());
                 }}
                 className="rounded-xl border border-[#e9ddc3] bg-white px-4 py-2 text-[13px] font-bold"
               >
@@ -956,6 +985,9 @@ export default function DashboardPage() {
             {canEdit && (
               <button
                 type="button"
+                id={`dashboard-application-${a.id}-edit-toggle`}
+                aria-expanded={false}
+                aria-controls={`dashboard-application-${a.id}-edit-form`}
                 onClick={() => {
                   setEditingApplicationId(a.id);
                   setReactivatingApplicationId("");
@@ -984,6 +1016,9 @@ export default function DashboardPage() {
             {a.status === "withdrawn" && (
               <button
                 type="button"
+                id={`dashboard-application-${a.id}-reactivate-toggle`}
+                aria-expanded={false}
+                aria-controls={`dashboard-application-${a.id}-edit-form`}
                 disabled={busyKey === `application:${a.id}:reactivate`}
                 onClick={() => {
                   setEditingApplicationId("");
@@ -991,7 +1026,7 @@ export default function DashboardPage() {
                   setApplicationConsent(false);
                   setApplicationForm({ creatorContact: a.creatorContact ?? "", message: a.message ?? "" });
                 }}
-                className="rounded-xl bg-[#e4572e] px-4 py-2 text-[13px] font-bold text-white disabled:opacity-50"
+                className="rounded-xl bg-[#c7431f] px-4 py-2 text-[13px] font-bold text-white disabled:opacity-50"
               >
                 {t("dash.reactivateApplication")}
               </button>
@@ -1006,12 +1041,12 @@ export default function DashboardPage() {
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
-          <p className="text-[12.5px] font-bold uppercase tracking-widest text-[#e4572e]">{t(greetingKey)}, {user.name.split(" ")[0]} 🙏</p>
+          <p className="text-[12.5px] font-bold uppercase tracking-widest text-[#c7431f]">{t(greetingKey)}, {user.name.split(" ")[0]} 🙏</p>
           <h1 className="font-display text-[30px] font-black sm:text-[40px]">{t("dash.title")}</h1>
-          <p className="text-[14.5px] text-[#78716c]">{user.email} · <span className="font-bold">{accountLabel}</span></p>
+          <p className="text-[14.5px] text-[#6f6862]">{user.email} · <span className="font-bold">{accountLabel}</span></p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link href={isBrand ? "/brands" : "/campaigns"} className="rounded-2xl bg-[#e4572e] px-5 py-3 text-[14.5px] font-bold text-white hover:bg-[#c7431f]">
+          <Link href={isBrand ? "/brands" : "/campaigns"} className="rounded-2xl bg-[#c7431f] px-5 py-3 text-[14.5px] font-bold text-white hover:bg-[#a93618]">
             {isBrand ? t("dash.newCampaign") : t("dash.findCampaigns")}
           </Link>
           <Link href="/account" className="rounded-2xl border border-[#1c1917] bg-white px-5 py-3 text-[14.5px] font-bold">{t("dash.accountSettings")}</Link>
@@ -1050,20 +1085,20 @@ export default function DashboardPage() {
 
           <form onSubmit={applyBrandFilters} className="mt-6 grid gap-2 rounded-2xl border border-[#e9ddc3] bg-white p-3 card-shadow">
             <div className="grid gap-2 md:grid-cols-[1fr_190px_190px]">
-              <label>
+              <label htmlFor="dashboard-campaign-search">
                 <span className="sr-only">{t("dash.yourCampaigns")}</span>
-                <input value={campaignDraft.q} onChange={(e) => setCampaignDraft((current) => ({ ...current, q: e.target.value }))} placeholder={t("camp.search")} className={inputClass} />
+                <input id="dashboard-campaign-search" value={campaignDraft.q} onChange={(e) => setCampaignDraft((current) => ({ ...current, q: e.target.value }))} placeholder={t("camp.search")} className={inputClass} />
               </label>
-              <label>
+              <label htmlFor="dashboard-campaign-status-filter">
                 <span className="sr-only">{t("listing.filterStatus")}</span>
-                <select value={campaignDraft.status} onChange={(e) => setCampaignDraft((current) => ({ ...current, status: e.target.value }))} className={inputClass}>
+                <select id="dashboard-campaign-status-filter" value={campaignDraft.status} onChange={(e) => setCampaignDraft((current) => ({ ...current, status: e.target.value }))} className={inputClass}>
                   <option value="">{t("listing.allStatuses")}</option>
                   {CAMPAIGN_REVIEW_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
                 </select>
               </label>
-              <label>
+              <label htmlFor="dashboard-campaign-sort">
                 <span className="sr-only">{t("listing.sort")}</span>
-                <select value={campaignDraft.sort} onChange={(e) => setCampaignDraft((current) => ({ ...current, sort: e.target.value }))} className={inputClass}>
+                <select id="dashboard-campaign-sort" value={campaignDraft.sort} onChange={(e) => setCampaignDraft((current) => ({ ...current, sort: e.target.value }))} className={inputClass}>
                   <option value="newest">{t("listing.sortNewest")}</option>
                   <option value="oldest">{t("listing.sortOldest")}</option>
                   <option value="title">{t("listing.sortTitle")}</option>
@@ -1074,20 +1109,20 @@ export default function DashboardPage() {
               </label>
             </div>
             <div className="grid gap-2 md:grid-cols-[1fr_190px_190px]">
-              <label>
+              <label htmlFor="dashboard-brand-application-search">
                 <span className="sr-only">{t("dash.applications")}</span>
-                <input value={applicationDraft.q} onChange={(e) => setApplicationDraft((current) => ({ ...current, q: e.target.value }))} placeholder={t("listing.searchItems")} className={inputClass} />
+                <input id="dashboard-brand-application-search" value={applicationDraft.q} onChange={(e) => setApplicationDraft((current) => ({ ...current, q: e.target.value }))} placeholder={t("listing.searchItems")} className={inputClass} />
               </label>
-              <label>
+              <label htmlFor="dashboard-brand-application-status-filter">
                 <span className="sr-only">{t("listing.filterStatus")}</span>
-                <select value={applicationDraft.status} onChange={(e) => setApplicationDraft((current) => ({ ...current, status: e.target.value }))} className={inputClass}>
+                <select id="dashboard-brand-application-status-filter" value={applicationDraft.status} onChange={(e) => setApplicationDraft((current) => ({ ...current, status: e.target.value }))} className={inputClass}>
                   <option value="">{t("listing.allStatuses")}</option>
                   {APPLICATION_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
                 </select>
               </label>
-              <label>
+              <label htmlFor="dashboard-brand-application-sort">
                 <span className="sr-only">{t("listing.sort")}</span>
-                <select value={applicationDraft.sort} onChange={(e) => setApplicationDraft((current) => ({ ...current, sort: e.target.value }))} className={inputClass}>
+                <select id="dashboard-brand-application-sort" value={applicationDraft.sort} onChange={(e) => setApplicationDraft((current) => ({ ...current, sort: e.target.value }))} className={inputClass}>
                   <option value="newest">{t("listing.sortNewest")}</option>
                   <option value="oldest">{t("listing.sortOldest")}</option>
                   <option value="updated">{t("listing.sortUpdated")}</option>
@@ -1120,7 +1155,7 @@ export default function DashboardPage() {
               ) : (
                 <div className="rounded-2xl border border-dashed border-[#e9ddc3] bg-white p-8 text-center">
                   <p className="text-[15px] font-bold">{t("dash.noCampaigns")}</p>
-                  <p className="mt-1 text-[14px] text-[#78716c]">{t("dash.noCampaignsSub")}</p>
+                  <p className="mt-1 text-[14px] text-[#6f6862]">{t("dash.noCampaignsSub")}</p>
                   <Link href="/brands" className="mt-4 inline-block rounded-xl bg-[#1c1917] px-5 py-2.5 text-[14px] font-bold text-white">{t("dash.create")}</Link>
                 </div>
               )
@@ -1135,7 +1170,7 @@ export default function DashboardPage() {
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="text-[16px] font-extrabold">{c.title}</p>
-                      <p className="text-[13px] text-[#78716c]">{[c.businessName, c.location, opt(c.language), opt(c.format)].filter(Boolean).join(" · ")}</p>
+                      <p className="text-[13px] text-[#6f6862]">{[c.businessName, c.location, opt(c.language), opt(c.format)].filter(Boolean).join(" · ")}</p>
                     </div>
                     <div className="flex gap-2">
                       <span className="rounded-full bg-[#fff4de] px-3 py-1 text-[12.5px] font-bold">🔒 {formatCurrency(c.budget || 0)}</span>
@@ -1162,6 +1197,9 @@ export default function DashboardPage() {
                   <div className="mt-4 flex flex-wrap gap-2">
                     <button
                       type="button"
+                      id={`dashboard-campaign-${c.id}-edit-toggle`}
+                      aria-expanded={editingCampaignId === c.id}
+                      aria-controls={`dashboard-campaign-${c.id}-edit-form`}
                       onClick={() => {
                         setEditingCampaignId(c.id);
                         setCampaignForm(campaignToForm(c));
@@ -1214,9 +1252,9 @@ export default function DashboardPage() {
                   {renderCampaignEdit(c)}
 
                   <div className="mt-4 rounded-xl border border-[#f0e6cc] bg-[#fffbf1] p-3">
-                    <p className="text-[12px] font-bold uppercase tracking-widest text-[#a8a29e]">{formatNumber(campaignApplicationCount)} {t("dash.applications")}</p>
+                    <p className="text-[12px] font-bold uppercase tracking-widest text-[#6f6862]">{formatNumber(campaignApplicationCount)} {t("dash.applications")}</p>
                     {apps.length === 0 ? (
-                      <p className="mt-1 text-[13.5px] text-[#78716c]">{t("dash.noApps")}</p>
+                      <p className="mt-1 text-[13.5px] text-[#6f6862]">{t("dash.noApps")}</p>
                     ) : (
                       <div className="mt-2 grid gap-2">{apps.map(renderBrandApplication)}</div>
                     )}
@@ -1271,12 +1309,12 @@ export default function DashboardPage() {
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="text-[16px] font-extrabold">{profile.name}</p>
-                          <p className="text-[13px] text-[#78716c]">{[platformLabel(profile.platform), opt(profile.category), opt(profile.languages), profile.location].filter(Boolean).join(" · ")}</p>
+                          <p className="text-[13px] text-[#6f6862]">{[platformLabel(profile.platform), opt(profile.category), opt(profile.languages), profile.location].filter(Boolean).join(" · ")}</p>
                           <p className="mt-1 text-[13px] font-semibold text-[#57534e]">
                             {profile.verifiedFollowers != null ? t("dash.verifiedFollowers") : t("dash.claimedFollowers")}: {formatNumber(followerCount)}
                           </p>
                           {profileLink && (
-                            <a href={profileLink} target="_blank" rel="noopener noreferrer" className="mt-1 block break-all text-[13px] font-semibold text-[#e4572e]">{profileLink}</a>
+                            <a href={profileLink} target="_blank" rel="noopener noreferrer" className="mt-1 block break-all text-[13px] font-semibold text-[#c7431f]">{profileLink}</a>
                           )}
                         </div>
                         <span className={`rounded-full px-3 py-1 text-[12.5px] font-bold ${statusPillClass(profile.status)}`}>{statusLabel(profile.status)}</span>
@@ -1299,6 +1337,9 @@ export default function DashboardPage() {
                       <div className="mt-4 flex flex-wrap gap-2">
                         <button
                           type="button"
+                          id={`dashboard-profile-${profile.id}-edit-toggle`}
+                          aria-expanded={editingProfileId === profile.id}
+                          aria-controls={`dashboard-profile-${profile.id}-edit-form`}
                           onClick={() => {
                             setEditingProfileId(profile.id);
                             setProfileForm(profileToForm(profile));
@@ -1345,21 +1386,21 @@ export default function DashboardPage() {
             <div>
               <h2 className="text-[19px] font-extrabold">{t("dash.yourApps")}</h2>
               <form onSubmit={applyCreatorApplicationFilters} className="mt-3 grid gap-2 rounded-2xl border border-[#e9ddc3] bg-white p-3">
-                <label>
+                <label htmlFor="dashboard-creator-application-search">
                   <span className="sr-only">{t("listing.searchLabel")}</span>
-                  <input value={applicationDraft.q} onChange={(e) => setApplicationDraft((current) => ({ ...current, q: e.target.value }))} placeholder={t("listing.searchItems")} className={inputClass} />
+                  <input id="dashboard-creator-application-search" value={applicationDraft.q} onChange={(e) => setApplicationDraft((current) => ({ ...current, q: e.target.value }))} placeholder={t("listing.searchItems")} className={inputClass} />
                 </label>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <label>
+                  <label htmlFor="dashboard-creator-application-status-filter">
                     <span className="sr-only">{t("listing.filterStatus")}</span>
-                    <select value={applicationDraft.status} onChange={(e) => setApplicationDraft((current) => ({ ...current, status: e.target.value }))} className={inputClass}>
+                    <select id="dashboard-creator-application-status-filter" value={applicationDraft.status} onChange={(e) => setApplicationDraft((current) => ({ ...current, status: e.target.value }))} className={inputClass}>
                       <option value="">{t("listing.allStatuses")}</option>
                       {APPLICATION_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
                     </select>
                   </label>
-                  <label>
+                  <label htmlFor="dashboard-creator-application-sort">
                     <span className="sr-only">{t("listing.sort")}</span>
-                    <select value={applicationDraft.sort} onChange={(e) => setApplicationDraft((current) => ({ ...current, sort: e.target.value }))} className={inputClass}>
+                    <select id="dashboard-creator-application-sort" value={applicationDraft.sort} onChange={(e) => setApplicationDraft((current) => ({ ...current, sort: e.target.value }))} className={inputClass}>
                       <option value="newest">{t("listing.sortNewest")}</option>
                       <option value="oldest">{t("listing.sortOldest")}</option>
                       <option value="updated">{t("listing.sortUpdated")}</option>
@@ -1382,14 +1423,14 @@ export default function DashboardPage() {
                 {data.applications.length === 0 && (
                   creatorApplicationHasFilters ? (
                     <div className="rounded-2xl border border-dashed border-[#e9ddc3] bg-white p-6 text-center">
-                      <p className="text-[14px] font-bold text-[#78716c]">{t("listing.noMatches")}</p>
+                      <p className="text-[14px] font-bold text-[#6f6862]">{t("listing.noMatches")}</p>
                       <button type="button" onClick={clearCreatorApplicationFilters} className="mt-3 rounded-xl border border-[#1c1917] px-4 py-2 text-[13px] font-bold">
                         {t("listing.clearFilters")}
                       </button>
                     </div>
                   ) : (
-                    <p className="rounded-2xl border border-dashed border-[#e9ddc3] bg-white p-6 text-[14px] text-[#78716c]">
-                      {t("dash.noAppsYet")} <Link href="/campaigns" className="font-bold text-[#e4572e]">{t("dash.browse")}</Link>
+                    <p className="rounded-2xl border border-dashed border-[#e9ddc3] bg-white p-6 text-[14px] text-[#6f6862]">
+                      {t("dash.noAppsYet")} <Link href="/campaigns" className="font-bold text-[#c7431f]">{t("dash.browse")}</Link>
                     </p>
                   )
                 )}
@@ -1406,9 +1447,9 @@ export default function DashboardPage() {
             <div>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-[19px] font-extrabold">{t("dash.fresh")}</h2>
-                <label>
+                <label htmlFor="dashboard-open-campaign-sort">
                   <span className="sr-only">{t("listing.sort")}</span>
-                  <select value={openSort} onChange={(e) => changeOpenSort(e.target.value)} className="rounded-xl border border-[#e9ddc3] bg-white px-3 py-2 text-[13px] font-bold outline-none">
+                  <select id="dashboard-open-campaign-sort" value={openSort} onChange={(e) => changeOpenSort(e.target.value)} className="rounded-xl border border-[#e9ddc3] bg-white px-3 py-2 text-[13px] font-bold outline-none">
                     <option value="newest">{t("listing.sortNewest")}</option>
                     <option value="oldest">{t("listing.sortOldest")}</option>
                     <option value="title">{t("listing.sortTitle")}</option>
@@ -1420,11 +1461,11 @@ export default function DashboardPage() {
                 {(data.openCampaigns ?? []).map((c) => (
                   <Link key={c.id} href="/campaigns" className="rounded-2xl border border-[#e9ddc3] bg-white p-4 transition hover:-translate-y-0.5 hover:border-[#1c1917]">
                     <p className="text-[15px] font-extrabold">{c.title}</p>
-                    <p className="text-[13px] text-[#78716c]">{[c.businessName, c.location, opt(c.language), opt(c.format)].filter(Boolean).join(" · ")}</p>
+                    <p className="text-[13px] text-[#6f6862]">{[c.businessName, c.location, opt(c.language), opt(c.format)].filter(Boolean).join(" · ")}</p>
                   </Link>
                 ))}
                 {(data.openCampaigns ?? []).length === 0 && (
-                  <p className="rounded-2xl border border-dashed border-[#e9ddc3] bg-white p-6 text-[14px] text-[#78716c]">{t("dash.freshEmpty")}</p>
+                  <p className="rounded-2xl border border-dashed border-[#e9ddc3] bg-white p-6 text-[14px] text-[#6f6862]">{t("dash.freshEmpty")}</p>
                 )}
               </div>
               <ListingPagination

@@ -270,32 +270,33 @@ export default function CampaignsPage() {
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
-          <p className="text-[12.5px] font-bold uppercase tracking-widest text-[#e4572e]">{t("camp.eyebrow")}</p>
+          <p className="text-[12.5px] font-bold uppercase tracking-widest text-[#c7431f]">{t("camp.eyebrow")}</p>
           <h1 className="font-display text-[34px] font-black sm:text-[48px]">{t("camp.title")}</h1>
           <p className="text-[15.5px] text-[#57534e]">{t("camp.sub")}</p>
         </div>
-        <Link href="/brands" className="w-fit rounded-2xl bg-[#e4572e] px-6 py-3 text-[15px] font-bold text-white hover:bg-[#c7431f]">{t("camp.post")}</Link>
+        <Link href="/brands" className="w-fit rounded-2xl bg-[#c7431f] px-6 py-3 text-[15px] font-bold text-white hover:bg-[#a93618]">{t("camp.post")}</Link>
       </div>
 
       <div className="mt-6 flex flex-col gap-2 rounded-2xl border border-[#e9ddc3] bg-white p-3 sm:flex-row">
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("camp.search")} className="min-w-0 flex-1 rounded-xl bg-[#fffbf1] border border-[#f0e6cc] px-4 py-3 outline-none" />
-        <label className="relative block sm:w-48">
+        <label htmlFor="campaign-search" className="sr-only">{t("listing.searchLabel")}</label>
+        <input id="campaign-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("camp.search")} className="min-w-0 flex-1 rounded-xl bg-[#fffbf1] border border-[#f0e6cc] px-4 py-3 outline-none" />
+        <label className="relative block sm:w-48" htmlFor="campaign-language-filter">
           <span className="sr-only">{t("browse.filterLang")}</span>
-          <select value={lang} onChange={(e) => setLang(e.target.value)} className="w-full min-w-0 appearance-none truncate rounded-xl border border-[#f0e6cc] bg-[#fffbf1] py-3 pl-4 pr-9 text-[15px] font-semibold text-[#1c1917] outline-none focus:border-[#1c1917]">
+          <select id="campaign-language-filter" value={lang} onChange={(e) => setLang(e.target.value)} className="w-full min-w-0 appearance-none truncate rounded-xl border border-[#f0e6cc] bg-[#fffbf1] py-3 pl-4 pr-9 text-[15px] font-semibold text-[#1c1917] outline-none focus:border-[#1c1917]">
             <option value="">{t("browse.allLang")}</option>
             {LANGUAGES.map((l) => <option key={l} value={l}>{opt(l)}</option>)}
           </select>
-          <span aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[11px] text-[#78716c]">▼</span>
+          <span aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[11px] text-[#6f6862]">▼</span>
         </label>
-        <label className="relative block sm:w-48">
+        <label className="relative block sm:w-48" htmlFor="campaign-sort">
           <span className="sr-only">{t("listing.sort")}</span>
-          <select value={sort} onChange={(e) => setSort(e.target.value)} className="w-full min-w-0 appearance-none truncate rounded-xl border border-[#f0e6cc] bg-[#fffbf1] py-3 pl-4 pr-9 text-[15px] font-semibold text-[#1c1917] outline-none focus:border-[#1c1917]">
+          <select id="campaign-sort" value={sort} onChange={(e) => setSort(e.target.value)} className="w-full min-w-0 appearance-none truncate rounded-xl border border-[#f0e6cc] bg-[#fffbf1] py-3 pl-4 pr-9 text-[15px] font-semibold text-[#1c1917] outline-none focus:border-[#1c1917]">
             <option value="newest">{t("listing.sortNewest")}</option>
             <option value="oldest">{t("listing.sortOldest")}</option>
             <option value="title">{t("listing.sortTitle")}</option>
             <option value="business">{t("listing.sortBusiness")}</option>
           </select>
-          <span aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[11px] text-[#78716c]">▼</span>
+          <span aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[11px] text-[#6f6862]">▼</span>
         </label>
         <button onClick={load} className="rounded-xl bg-[#1c1917] px-5 py-3 text-[14px] font-bold text-white">{t("camp.refresh")}</button>
       </div>
@@ -329,7 +330,7 @@ export default function CampaignsPage() {
           <h3 className="font-display mt-2 text-[24px] font-black">
             {hasActiveFilters ? t("listing.noCampaignMatches") : t("home.noCampaigns")}
           </h3>
-          <p className="mt-1 text-[15px] text-[#78716c]">{t("camp.emptyBody")}</p>
+          <p className="mt-1 text-[15px] text-[#6f6862]">{t("camp.emptyBody")}</p>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             {hasActiveFilters && (
               <button
@@ -340,7 +341,7 @@ export default function CampaignsPage() {
                 {t("listing.clearFilters")}
               </button>
             )}
-            <Link href="/brands" className="rounded-2xl bg-[#e4572e] px-6 py-3 text-[14.5px] font-bold text-white">{t("camp.emptyPost")}</Link>
+            <Link href="/brands" className="rounded-2xl bg-[#c7431f] px-6 py-3 text-[14.5px] font-bold text-white">{t("camp.emptyPost")}</Link>
             <Link href="/creators" className="rounded-2xl border border-[#1c1917] px-6 py-3 text-[14.5px] font-bold">{t("camp.emptyJoin")}</Link>
           </div>
         </div>
@@ -359,7 +360,7 @@ export default function CampaignsPage() {
                 {c.verificationStatus === "verified" && <span className="rounded-full bg-green-50 border border-green-200 px-3 py-1 text-[12px] font-bold text-green-800">{t("listing.reviewed")}</span>}
               </div>
               <h3 className="mt-3 text-[18px] font-extrabold leading-snug">{c.title}</h3>
-              <p className="mt-1 text-[13.5px] font-semibold text-[#78716c]">{c.businessName} • {c.location}</p>
+              <p className="mt-1 text-[13.5px] font-semibold text-[#6f6862]">{c.businessName} • {c.location}</p>
               <p className="mt-3 line-clamp-3 text-[14px] leading-relaxed text-[#57534e]">{c.description || t("camp.noDesc")}</p>
               <div className="mt-3 flex flex-wrap gap-1.5 text-[12px] font-bold">
                 <span className="rounded-full bg-[#fffbf1] border border-[#f0e6cc] px-2.5 py-1">{opt(c.language)}</span>
@@ -370,7 +371,7 @@ export default function CampaignsPage() {
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#f5edd8] pt-4">
                   <div>
                     <p className="text-[13.5px] font-bold text-[#17452e]">{t("camp.yourApplication")}: {t(`status.${ownApplication.status || "applied"}`)}</p>
-                    {ownApplication.creatorContact && <p className="mt-0.5 break-all text-[12.5px] font-semibold text-[#78716c]">{ownApplication.creatorContact}</p>}
+                    {ownApplication.creatorContact && <p className="mt-0.5 break-all text-[12.5px] font-semibold text-[#6f6862]">{ownApplication.creatorContact}</p>}
                   </div>
                   <Link href="/dashboard" className="rounded-xl border border-[#1c1917] px-4 py-2.5 text-[13px] font-bold text-[#1c1917] hover:bg-stone-50">{t("camp.manageApplication")}</Link>
                 </div>
@@ -387,6 +388,10 @@ export default function CampaignsPage() {
                     <p className="text-[13.5px] font-bold text-[#17452e]">{t("camp.paid")}</p>
                     <button
                       type="button"
+                      id={`application-toggle-${c.id}`}
+                      {...(ownApplicationsStatus !== "error"
+                        ? { "aria-expanded": applyId === c.id, "aria-controls": `application-form-${c.id}` }
+                        : {})}
                       disabled={ownApplicationsStatus === "loading"}
                       onClick={() => {
                         if (ownApplicationsStatus === "error") {
@@ -416,14 +421,27 @@ export default function CampaignsPage() {
                     </button>
                   </div>
                   {applyId === c.id && (
-                    <div className="mt-3 grid gap-2 rounded-2xl bg-[#fffbf1] border border-[#f0e6cc] p-4">
+                    <div
+                      id={`application-form-${c.id}`}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Escape") return;
+                        event.preventDefault();
+                        document.getElementById(`application-toggle-${c.id}`)?.focus();
+                        setApplyId(null);
+                      }}
+                      className="mt-3 grid gap-2 rounded-2xl bg-[#fffbf1] border border-[#f0e6cc] p-4"
+                    >
                       <PrivacyNotice textKey="camp.applySharingNotice" compact />
                       {creatorProfile?.completed && (
                         <p className="rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-2.5 text-[13.5px] text-[#57534e]">
                           {t("camp.applyingAs")}: <strong className="text-[#1c1917]">{creatorProfile.name}</strong>
                         </p>
                       )}
+                      <label htmlFor={`application-contact-${c.id}`} className="sr-only">{t("camp.applyContact")}</label>
                       <input
+                        autoFocus
+                        id={`application-contact-${c.id}`}
+                        aria-describedby={`application-contact-note-${c.id}`}
                         value={applyForm.contact}
                         onChange={(e) => setApplyForm({ ...applyForm, contact: e.target.value })}
                         required
@@ -435,8 +453,9 @@ export default function CampaignsPage() {
                       <datalist id={`application-contacts-${c.id}`}>
                         {contactOptions.map((option) => <option key={option} value={option} />)}
                       </datalist>
-                      <p className="text-[12.5px] font-semibold leading-relaxed text-[#78716c]">{t("camp.contactMustBeYours")}</p>
-                      <textarea value={applyForm.message} onChange={(e) => setApplyForm({ ...applyForm, message: e.target.value })} rows={2} placeholder={t("camp.applyPhMsg")} className="rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-2.5 text-[14px] outline-none" />
+                      <p id={`application-contact-note-${c.id}`} className="text-[12.5px] font-semibold leading-relaxed text-[#6f6862]">{t("camp.contactMustBeYours")}</p>
+                      <label htmlFor={`application-message-${c.id}`} className="sr-only">{t("camp.applyPhMsg")}</label>
+                      <textarea id={`application-message-${c.id}`} value={applyForm.message} onChange={(e) => setApplyForm({ ...applyForm, message: e.target.value })} rows={2} placeholder={t("camp.applyPhMsg")} className="rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-2.5 text-[14px] outline-none" />
                       <label htmlFor={`application-consent-${c.id}`} className="flex w-full min-w-0 cursor-pointer items-start gap-3 rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-3 text-[13px] font-semibold leading-relaxed text-[#57534e]">
                         <input
                           id={`application-consent-${c.id}`}
@@ -444,7 +463,7 @@ export default function CampaignsPage() {
                           checked={applyConsent}
                           onChange={(e) => setApplyConsent(e.target.checked)}
                           required
-                          className="mt-0.5 h-4 w-4 flex-none accent-[#e4572e]"
+                          className="mt-0.5 h-4 w-4 flex-none accent-[#c7431f]"
                         />
                         <span className="min-w-0 flex-1">{t("camp.applySharingConsent")}</span>
                       </label>
@@ -464,7 +483,7 @@ export default function CampaignsPage() {
                           )}
                         </div>
                       )}
-                      <button onClick={() => apply(c.id)} disabled={applyingId === c.id || ownApplicationsStatus === "loading" || ownApplicationsStatus === "error"} className="rounded-xl bg-[#e4572e] py-2.5 text-[14px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-60">{applyingId === c.id ? t("camp.applySending") : t("camp.applySend")}</button>
+                      <button onClick={() => apply(c.id)} disabled={applyingId === c.id || ownApplicationsStatus === "loading" || ownApplicationsStatus === "error"} className="rounded-xl bg-[#c7431f] py-2.5 text-[14px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-60">{applyingId === c.id ? t("camp.applySending") : t("camp.applySend")}</button>
                     </div>
                   )}
                 </>

@@ -2,18 +2,19 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LANGS, useLang, type Lang } from "@/frontend/i18n";
 import { ApiResponseError, fetchJsonObject } from "@/frontend/api-json";
 
 export function Logo({ dark = false }: { dark?: boolean }) {
+  const { t } = useLang();
   return (
-    <Link href="/" className="flex items-center gap-2">
-      <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#1c1917] text-[20px] font-black text-[#ffc53d]">
+    <Link href="/" aria-label={t("nav.home")} className="flex items-center gap-2">
+      <span aria-hidden="true" className="grid h-9 w-9 place-items-center rounded-xl bg-[#1c1917] text-[20px] font-black text-[#ffc53d]">
         ਯਾ
       </span>
-      <span className={`text-[22px] font-extrabold tracking-tight ${dark ? "text-white" : "text-[#1c1917]"}`}>
-        yaar<span className="text-[#e4572e]">link</span>
+      <span aria-hidden="true" className={`text-[22px] font-extrabold tracking-tight ${dark ? "text-white" : "text-[#1c1917]"}`}>
+        yaar<span className="text-[#c7431f]">link</span>
       </span>
     </Link>
   );
@@ -29,6 +30,7 @@ export default function Navbar() {
   const [sessionStatus, setSessionStatus] = useState<"loading" | "ready" | "error">("loading");
   const [sessionCheckId, setSessionCheckId] = useState(0);
   const [completedSessionCheck, setCompletedSessionCheck] = useState("");
+  const [lastPathname, setLastPathname] = useState(pathname);
   const sessionCheckKey = `${pathname ?? ""}:${sessionCheckId}`;
   const sessionCheckComplete = completedSessionCheck === sessionCheckKey;
   const sessionChecking = !sessionCheckComplete || sessionStatus === "loading";
@@ -37,6 +39,78 @@ export default function Navbar() {
   const retrySessionCheck = () => {
     setSessionStatus("loading");
     setSessionCheckId((value) => value + 1);
+  };
+
+  const languageButtonRef = useRef<HTMLButtonElement>(null);
+  const languageOptionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const mobileMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const [languageFocusIndex, setLanguageFocusIndex] = useState(0);
+  const currentLanguageIndex = Math.max(0, LANGS.findIndex((l) => l.code === lang));
+  const currentLanguageLabel = LANGS[currentLanguageIndex]?.label;
+
+  const closeLanguageMenu = (returnFocus = false) => {
+    if (returnFocus) languageButtonRef.current?.focus();
+    setLangOpen(false);
+  };
+
+  const toggleLanguageMenu = () => {
+    if (langOpen) {
+      closeLanguageMenu(true);
+      return;
+    }
+    setLanguageFocusIndex(currentLanguageIndex);
+    setLangOpen(true);
+  };
+
+  const closeMobileMenu = (returnFocus = false) => {
+    if (returnFocus) mobileMenuButtonRef.current?.focus();
+    setOpen(false);
+  };
+
+  if (lastPathname !== pathname) {
+    setLastPathname(pathname);
+    setOpen(false);
+    setLangOpen(false);
+  }
+
+  useEffect(() => {
+    if (!langOpen) return;
+    languageOptionRefs.current[languageFocusIndex]?.focus();
+  }, [langOpen, languageFocusIndex]);
+
+  useEffect(() => {
+    if (!open && !langOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      if (langOpen) {
+        languageButtonRef.current?.focus();
+        setLangOpen(false);
+      } else {
+        mobileMenuButtonRef.current?.focus();
+        setOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, langOpen]);
+
+  const onLanguageMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Tab") {
+      event.preventDefault();
+      closeLanguageMenu(true);
+      return;
+    }
+    const lastIndex = LANGS.length - 1;
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowDown") nextIndex = languageFocusIndex === lastIndex ? 0 : languageFocusIndex + 1;
+    if (event.key === "ArrowUp") nextIndex = languageFocusIndex === 0 ? lastIndex : languageFocusIndex - 1;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = lastIndex;
+    if (nextIndex !== null) {
+      event.preventDefault();
+      setLanguageFocusIndex(nextIndex);
+    }
   };
 
   useEffect(() => {
@@ -84,14 +158,22 @@ export default function Navbar() {
   };
 
   return (
+    <>
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-full focus:bg-[#1c1917] focus:px-4 focus:py-2 focus:font-bold focus:text-white"
+      >
+        {t("a11y.skipToContent")}
+      </a>
     <header className="sticky top-0 z-50 border-b border-[#e9ddc3] bg-[#fffbf1]/95 backdrop-blur">
       <div className="mx-auto flex h-[68px] max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
         <Logo />
-        <nav className="hidden items-center gap-1 lg:flex">
+        <nav aria-label={t("nav.primary")} className="hidden items-center gap-1 lg:flex">
           {links.map((l) => (
             <Link
               key={l.href}
               href={l.href}
+              aria-current={pathname === l.href ? "page" : undefined}
               className={`rounded-full px-3.5 py-2 text-[14.5px] font-semibold transition ${
                 pathname === l.href ? "bg-[#1c1917] text-white" : "text-[#44403c] hover:bg-[#fff4de] hover:text-[#1c1917]"
               }`}
@@ -104,36 +186,54 @@ export default function Navbar() {
           {/* Language */}
           <div className="relative">
             <button
-              onClick={() => setLangOpen((v) => !v)}
-              aria-label={t("nav.chooseLanguage")}
+              ref={languageButtonRef}
+              type="button"
+              onClick={toggleLanguageMenu}
+              aria-label={`${t("nav.chooseLanguage")}: ${currentLanguageLabel}`}
               aria-expanded={langOpen}
-              aria-haspopup="true"
+              aria-haspopup="listbox"
+              aria-controls="language-menu"
               className="flex items-center gap-1.5 rounded-full border border-[#e9ddc3] bg-white px-3 py-2 text-[13.5px] font-bold text-[#1c1917]"
             >
-              <span>🌐</span>
-              <span>{LANGS.find((l) => l.code === lang)?.label}</span>
-              <span className="text-[#a8a29e]">▾</span>
+              <span aria-hidden="true">🌐</span>
+              <span>{currentLanguageLabel}</span>
+              <span aria-hidden="true" className="text-[#6f6862]">▾</span>
             </button>
             {langOpen && (
               <>
-                <div className="fixed inset-0 z-40" onClick={() => setLangOpen(false)} />
+                <div aria-hidden="true" className="fixed inset-0 z-40" onClick={() => closeLanguageMenu(true)} />
                 <div className="absolute right-0 z-50 mt-2 w-44 overflow-hidden rounded-2xl border border-[#e9ddc3] bg-white shadow-xl">
-                  {LANGS.map((l) => (
+                  <div
+                    id="language-menu"
+                    role="listbox"
+                    aria-label={t("nav.chooseLanguage")}
+                    onKeyDown={onLanguageMenuKeyDown}
+                  >
+                  {LANGS.map((l, index) => (
                     <button
                       key={l.code}
+                      ref={(element) => {
+                        languageOptionRefs.current[index] = element;
+                      }}
+                      type="button"
+                      role="option"
+                      aria-selected={lang === l.code}
+                      tabIndex={index === languageFocusIndex ? 0 : -1}
+                      onMouseEnter={() => setLanguageFocusIndex(index)}
                       onClick={() => {
                         setLang(l.code as Lang);
-                        setLangOpen(false);
+                        closeLanguageMenu(true);
                       }}
                       className={`flex w-full items-center justify-between px-4 py-3 text-left text-[14px] font-semibold hover:bg-[#fff4de] ${
-                        lang === l.code ? "bg-[#fff4de] text-[#e4572e]" : "text-[#1c1917]"
+                        lang === l.code ? "bg-[#fff4de] text-[#c7431f]" : "text-[#1c1917]"
                       }`}
                     >
                       <span>{l.code === "en" ? "🇬🇧 English" : l.code === "hi" ? "🇮🇳 हिन्दी" : "🟠 ਪੰਜਾਬੀ"}</span>
-                      {lang === l.code && <span>✓</span>}
+                      {lang === l.code && <span aria-hidden="true">✓</span>}
                     </button>
                   ))}
-                  <p className="border-t border-[#f0e6cc] bg-[#fffbf1] px-4 py-2 text-[11px] text-[#78716c]">
+                  </div>
+                  <p className="border-t border-[#f0e6cc] bg-[#fffbf1] px-4 py-2 text-[11px] text-[#6f6862]">
                     {t("nav.moreLanguages")}
                   </p>
                 </div>
@@ -141,7 +241,7 @@ export default function Navbar() {
             )}
           </div>
 
-          <div className="hidden items-center gap-2 sm:flex">
+          <div aria-busy={sessionChecking && !user} className="hidden min-w-[196px] items-center justify-end gap-2 sm:flex">
             {user ? (
               <>
                 {sessionFailed && (
@@ -149,7 +249,7 @@ export default function Navbar() {
                     type="button"
                     onClick={retrySessionCheck}
                     title={t("session.unavailable")}
-                    aria-label={t("session.unavailable")}
+                    aria-label={`${t("common.retry")}: ${t("session.unavailable")}`}
                     className="rounded-full border border-red-200 bg-red-50 px-3 py-2 text-[12.5px] font-bold text-red-700"
                   >
                     {t("common.retry")}
@@ -169,14 +269,16 @@ export default function Navbar() {
                 </Link>
                 <button
                   onClick={logout}
-                  className="rounded-full border border-[#e9ddc3] bg-white px-3 py-2 text-[13px] font-bold text-[#78716c]"
+                  className="rounded-full border border-[#e9ddc3] bg-white px-3 py-2 text-[13px] font-bold text-[#6f6862]"
                 >
                   {t("nav.logout")}
                 </button>
               </>
             ) : sessionChecking ? (
-              <span role="status" aria-live="polite" className="max-w-[180px] truncate px-2 text-[12.5px] font-semibold text-[#78716c]">
-                {t("session.checking")}
+              <span role="status" aria-live="polite" className="flex items-center gap-2" data-testid="nav-session-loading">
+                <span className="sr-only">{t("session.checking")}</span>
+                <span aria-hidden="true" className="h-9 w-[76px] animate-pulse rounded-full bg-[#f0e6cc] motion-reduce:animate-none" />
+                <span aria-hidden="true" className="h-10 w-[112px] animate-pulse rounded-full bg-[#e9ddc3] motion-reduce:animate-none" />
               </span>
             ) : sessionFailed ? (
               <>
@@ -198,7 +300,7 @@ export default function Navbar() {
                 </Link>
                 <Link
                   href="/signup"
-                  className="rounded-full bg-[#e4572e] px-4 py-2.5 text-[14px] font-bold text-white hover:bg-[#c7431f]"
+                  className="rounded-full bg-[#c7431f] px-4 py-2.5 text-[14px] font-bold text-white hover:bg-[#a93618]"
                 >
                   {t("nav.signup")}
                 </Link>
@@ -207,22 +309,26 @@ export default function Navbar() {
           </div>
 
           <button
-            onClick={() => setOpen((v) => !v)}
+            ref={mobileMenuButtonRef}
+            type="button"
+            onClick={() => (open ? closeMobileMenu(true) : setOpen(true))}
             className="grid h-10 w-10 place-items-center rounded-full border border-[#e9ddc3] bg-white text-[18px] lg:hidden"
-            aria-label={t("nav.menu")}
+            aria-label={t(open ? "nav.closeMenu" : "nav.openMenu")}
             aria-expanded={open}
+            aria-controls="mobile-navigation"
           >
-            {open ? "✕" : "☰"}
+            <span aria-hidden="true">{open ? "✕" : "☰"}</span>
           </button>
         </div>
       </div>
       {open && (
-        <div className="border-t border-[#e9ddc3] bg-[#fffbf1] px-4 pb-5 pt-2 lg:hidden">
+        <nav id="mobile-navigation" aria-label={t("nav.primary")} className="border-t border-[#e9ddc3] bg-[#fffbf1] px-4 pb-5 pt-2 lg:hidden">
           <div className="grid gap-1">
             {links.map((l) => (
               <Link
                 key={l.href}
                 href={l.href}
+                aria-current={pathname === l.href ? "page" : undefined}
                 onClick={() => setOpen(false)}
                 className={`rounded-xl px-4 py-3 text-[15px] font-bold ${
                   pathname === l.href ? "bg-[#1c1917] text-white" : "bg-white text-[#1c1917] border border-[#f0e6cc]"
@@ -265,7 +371,7 @@ export default function Navbar() {
                   </Link>
                 </>
               ) : sessionChecking ? (
-                <p role="status" aria-live="polite" className="col-span-2 rounded-xl border border-[#e9ddc3] bg-white px-4 py-3 text-center text-[14px] font-semibold text-[#78716c]">
+                <p role="status" aria-live="polite" className="col-span-2 rounded-xl border border-[#e9ddc3] bg-white px-4 py-3 text-center text-[14px] font-semibold text-[#6f6862]">
                   {t("session.checking")}
                 </p>
               ) : sessionFailed ? (
@@ -291,7 +397,7 @@ export default function Navbar() {
                   <Link
                     href="/signup"
                     onClick={() => setOpen(false)}
-                    className="rounded-xl bg-[#e4572e] px-4 py-3 text-center text-[15px] font-bold text-white"
+                    className="rounded-xl bg-[#c7431f] px-4 py-3 text-center text-[15px] font-bold text-white"
                   >
                     {t("nav.signup")}
                   </Link>
@@ -299,8 +405,9 @@ export default function Navbar() {
               )}
             </div>
           </div>
-        </div>
+        </nav>
       )}
     </header>
+    </>
   );
 }

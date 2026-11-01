@@ -82,15 +82,17 @@ export default function VerifyEmailPage() {
               <h2 className="text-[18px] font-black text-red-800">{t("auth.verifyInvalidTitle")}</h2>
               <p className="mt-2 text-[14px] leading-relaxed text-red-700">{t("auth.verifyInvalidBody")}</p>
             </div>
-            <Link href="/signup" className="mt-5 block rounded-2xl bg-[#e4572e] py-3.5 text-center text-[15.5px] font-extrabold text-white hover:bg-[#c7431f]">
+            <Link href="/signup" className="mt-5 block rounded-2xl bg-[#c7431f] py-3.5 text-center text-[15.5px] font-extrabold text-white hover:bg-[#a93618]">
               {t("auth.signupAgain")}
             </Link>
           </div>
         ) : (
           <>
-            <p className="mt-1 text-[14.5px] leading-relaxed text-[#78716c]">{t("auth.verifySub")}</p>
+            <p className="mt-1 text-[14.5px] leading-relaxed text-[#6f6862]">{t("auth.verifySub")}</p>
             <form onSubmit={submit} className="mt-5 grid gap-3">
+              <label htmlFor="verify-email-password" className="sr-only">{t("auth.password")}</label>
               <input
+                id="verify-email-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -109,12 +111,12 @@ export default function VerifyEmailPage() {
           </>
         )}
 
-        <p className="mt-5 text-center text-[14px] text-[#78716c]">
-          {t("auth.alreadyFinished")} <Link href="/login" className="font-bold text-[#e4572e]">{t("auth.login")}</Link>
+        <p className="mt-5 text-center text-[14px] text-[#6f6862]">
+          {t("auth.alreadyFinished")} <Link href="/login" className="font-bold text-[#c7431f]">{t("auth.login")}</Link>
         </p>
         {!invalidToken && !success && (
-          <p className="mt-2 text-center text-[14px] text-[#78716c]">
-            <Link href="/signup" className="font-bold text-[#e4572e]">{t("auth.signupAgain")}</Link>
+          <p className="mt-2 text-center text-[14px] text-[#6f6862]">
+            <Link href="/signup" className="font-bold text-[#c7431f]">{t("auth.signupAgain")}</Link>
           </p>
         )}
       </div>

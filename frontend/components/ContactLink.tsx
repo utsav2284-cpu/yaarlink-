@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { useLang } from "@/frontend/i18n";
 
@@ -69,6 +69,17 @@ export default function ContactLink({ kind, href, value, title, webHref, classNa
   const [reason, setReason] = useState<"frame" | "desktop">("frame");
   const [qr, setQr] = useState("");
   const [copied, setCopied] = useState(false);
+  const triggerRef = useRef<HTMLAnchorElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const dialogId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const dialogTitleId = `contact-dialog-${dialogId}-title`;
+  const dialogDescriptionId = `contact-dialog-${dialogId}-description`;
+
+  const closeModal = () => {
+    triggerRef.current?.focus();
+    setOpen(false);
+  };
 
   useEffect(() => {
     if (!open || qr) return;
@@ -79,9 +90,52 @@ export default function ContactLink({ kind, href, value, title, webHref, classNa
 
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const focusFrame = requestAnimationFrame(() => closeButtonRef.current?.focus());
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        triggerRef.current?.focus();
+        setOpen(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      const focusable = Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((element) => element.offsetParent !== null || element === document.activeElement);
+
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (event.shiftKey && (active === first || !dialog.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (active === last || !dialog.contains(active))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      cancelAnimationFrame(focusFrame);
+      window.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
   }, [open]);
 
   const onClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
@@ -122,6 +176,7 @@ export default function ContactLink({ kind, href, value, title, webHref, classNa
   return (
     <>
       <a
+        ref={triggerRef}
         href={href}
         onClick={onClick}
         aria-label={ariaLabel}
@@ -134,26 +189,33 @@ export default function ContactLink({ kind, href, value, title, webHref, classNa
       {open && (
         <div
           className="fixed inset-0 z-[100] grid place-items-center bg-black/55 p-4"
-          onClick={() => setOpen(false)}
-          role="dialog"
-          aria-modal="true"
-          aria-label={title}
+          onClick={(event) => {
+            if (event.target === event.currentTarget) closeModal();
+          }}
         >
           <div
-            className="w-full max-w-sm rounded-[24px] bg-white p-6 text-center text-[#1c1917] shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={dialogTitleId}
+            aria-describedby={dialogDescriptionId}
+            tabIndex={-1}
+            data-testid="contact-dialog"
+            className="max-h-[calc(100dvh-2rem)] w-full max-w-sm overflow-y-auto rounded-[24px] bg-white p-6 text-center text-[#1c1917] shadow-2xl"
           >
             <div className="flex items-start justify-between gap-3 text-left">
               <div className="min-w-0">
-                <p className="text-[20px] font-extrabold">{title}</p>
-                <p className="break-all text-[16px] font-bold text-[#e4572e]">{value}</p>
+                <h2 id={dialogTitleId} className="text-[20px] font-extrabold">{title}</h2>
+                <p className="break-all text-[16px] font-bold text-[#c7431f]">{value}</p>
               </div>
               <button
-                onClick={() => setOpen(false)}
+                ref={closeButtonRef}
+                type="button"
+                onClick={closeModal}
                 className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#e9ddc3] text-[16px]"
                 aria-label={t("common.close")}
               >
-                ✕
+                <span aria-hidden="true">✕</span>
               </button>
             </div>
 
@@ -162,13 +224,15 @@ export default function ContactLink({ kind, href, value, title, webHref, classNa
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={qr} alt={t("contactLink.qrAlt").replace("{value}", value)} className="h-full w-full" />
               ) : (
-                <span className="text-[13px] text-[#a8a29e]">{t("common.loading")}</span>
+                <span role="status" className="text-[13px] text-[#6f6862]">{t("common.loading")}</span>
               )}
             </div>
-            <p className="mt-3 text-[14px] font-semibold text-[#57534e]">{scanLabel}</p>
+            <p id={dialogDescriptionId} className="mt-3 text-[14px] font-semibold text-[#57534e]">{scanLabel}</p>
 
             <button
+              type="button"
               onClick={doCopy}
+              aria-live="polite"
               className="mt-4 w-full rounded-xl bg-[#1c1917] py-3 text-[15px] font-extrabold text-white hover:bg-black"
             >
               {copied
@@ -183,11 +247,11 @@ export default function ContactLink({ kind, href, value, title, webHref, classNa
             </button>
 
             {reason === "frame" ? (
-              <p className="mt-3 rounded-xl bg-[#fff4de] px-3 py-2.5 text-[12.5px] leading-snug text-[#78716c]">
+              <p className="mt-3 rounded-xl bg-[#fff4de] px-3 py-2.5 text-[12.5px] leading-snug text-[#6f6862]">
                 {t("contactLink.frameNote")}
               </p>
             ) : (
-              <a href={href} className="mt-3 block text-[13.5px] font-bold text-[#e4572e]">
+              <a href={href} className="mt-3 block text-[13.5px] font-bold text-[#c7431f]">
                 {t("contactLink.desktopCall")}
               </a>
             )}
