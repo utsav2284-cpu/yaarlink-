@@ -737,6 +737,11 @@ export default function DashboardPage() {
         {a.decisionNote && <p className="mt-2 rounded-lg bg-[#fffbf1] p-2 text-[12.5px] text-[#57534e]"><b>{t("dash.brandNote")}:</b> {a.decisionNote}</p>}
         {actionable && (
           <div className="mt-3 grid gap-2">
+            {a.status === "hired" && (
+              <p role="note" className="rounded-lg bg-[#faf6ed] px-3 py-2 text-[12.5px] font-semibold leading-relaxed text-[#9a3412]">
+                {t("dash.offPlatformHiredNote")}
+              </p>
+            )}
             <label className="grid gap-1 text-[12.5px] font-bold">
               {t("dash.decisionNote")}
               <textarea
@@ -855,6 +860,11 @@ export default function DashboardPage() {
           </p>
         )}
         {a.decisionNote && <p className="mt-2 rounded-xl bg-[#fffbf1] p-3 text-[13px] text-[#57534e]"><b>{t("dash.brandNote")}:</b> {a.decisionNote}</p>}
+        {a.status === "hired" && (
+          <p role="note" className="mt-3 rounded-lg bg-[#faf6ed] px-3 py-2 text-[12.5px] font-semibold leading-relaxed text-[#9a3412]">
+            {t("dash.offPlatformHiredNote")}
+          </p>
+        )}
 
         {applicationFormOpen ? (
           <form
