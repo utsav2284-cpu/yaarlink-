@@ -1,6 +1,10 @@
 {
   "name": "nextjs-postgresql-template",
   "private": true,
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.9.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -9,31 +13,34 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@opennextjs/cloudflare": "^1.20.7",
-    "@types/bcryptjs": "^2.4.6",
-    "@types/qrcode": "^1.5.6",
-    "bcryptjs": "^3.0.3",
-    "dotenv": "17.3.1",
-    "drizzle-orm": "0.45.2",
-    "next": "^16.3.8",
-    "pg": "8.20.0",
-    "pg-cloudflare": "^1.4.1",
-    "qrcode": "^1.5.4",
+    "bcryptjs": "3.0.3",
+    "drizzle-orm": "0.45.4",
+    "next": "16.4.3",
+    "pg": "8.23.1",
+    "qrcode": "1.5.4",
     "react": "19.2.6",
-    "react-dom": "19.2.6",
-    "wrangler": "^4.146.0"
+    "react-dom": "19.2.6"
   },
   "devDependencies": {
+    "@opennextjs/cloudflare": "1.20.15",
     "@tailwindcss/postcss": "4.1.17",
     "@types/node": "22.19.15",
-    "@types/pg": "8.18.0",
+    "@types/pg": "8.23.1",
+    "@types/qrcode": "1.5.6",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
-    "drizzle-kit": "0.31.10",
+    "drizzle-kit": "0.31.11",
     "eslint": "9.39.4",
-    "eslint-config-next": "^16.3.8",
-    "postcss": "8.5.8",
+    "eslint-config-next": "16.4.3",
+    "postcss": "8.5.32",
     "tailwindcss": "4.1.17",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "wrangler": "4.156.0"
+  },
+  "overrides": {
+    "esbuild": "0.28.2",
+    "glob": "14.0.3",
+    "minimatch": "11.0.3",
+    "postcss": "8.5.32"
   }
 }

@@ -24,7 +24,7 @@ See [`docs/STRUCTURE.md`](docs/STRUCTURE.md) for the full map.
 Download the project, unzip it into a folder called `yaarlink`, open a terminal in that folder, then:
 
 ```bash
-npm install
+npm ci
 git init
 git add .
 git commit -m "YaarLink launch"
@@ -119,7 +119,7 @@ Logs: Cloudflare → Workers & Pages → `yaarlink` → **Logs**.
 
 ```bash
 cp .env.example .env     # fill in DATABASE_URL and generate fresh auth secrets; placeholders refuse to start
-npm install
+npm ci
 npm run dev              # http://localhost:3000
 ```
 
