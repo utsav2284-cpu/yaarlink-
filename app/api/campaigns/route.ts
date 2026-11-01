@@ -1,11 +1,25 @@
 import { db } from "@/backend/db";
 import { campaigns, type Campaign } from "@/backend/db/schema";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { getSessionUser, type SessionUser } from "@/backend/auth";
 import { createVerificationCode, isUuid } from "@/backend/moderation";
 import { getClientKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
 import { normalizeProfileUrl } from "@/backend/social-url";
 import { normalizeCategory, normalizeContentType, normalizeLanguage, normalizePromotionType } from "@/shared/constants";
+import {
+  allConditions,
+  cursorCondition,
+  decodeCursor,
+  isListingQueryError,
+  paginateRows,
+  parseListingParams,
+  parseNormalizedParam,
+  scopeFrom,
+  searchCondition,
+  sortOrder,
+  textExpression,
+  type SortKey,
+} from "@/backend/pagination";
 
 export const dynamic = "force-dynamic";
 
@@ -141,33 +155,136 @@ async function requireBrand() {
   return { user };
 }
 
+const PUBLIC_CAMPAIGN_SORTS = ["newest", "oldest", "title", "business"] as const;
+
+type PublicCampaignSortRow = {
+  id: string;
+  title: string;
+  businessName: string;
+  createdAt: Date;
+};
+
+function publicCampaignSortKeys(sort: string): Array<SortKey<PublicCampaignSortRow>> {
+  switch (sort) {
+    case "oldest":
+      return [
+        { expression: sql`${campaigns.createdAt}`, direction: "asc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`${campaigns.id}`, direction: "asc", kind: "uuid", value: (row) => row.id },
+      ];
+    case "title":
+      return [
+        { expression: sql`lower(${campaigns.title})`, direction: "asc", kind: "string", value: (row) => row.title.toLocaleLowerCase("en-US") },
+        { expression: sql`${campaigns.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`${campaigns.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
+      ];
+    case "business":
+      return [
+        { expression: sql`lower(${campaigns.businessName})`, direction: "asc", kind: "string", value: (row) => row.businessName.toLocaleLowerCase("en-US") },
+        { expression: sql`${campaigns.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`${campaigns.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
+      ];
+    default:
+      return [
+        { expression: sql`${campaigns.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`${campaigns.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
+      ];
+  }
+}
+
 // Public listing: budget and brand contact details are owner-only and never sent to users.
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const rows = await db
-      .select({
-        id: campaigns.id,
-        businessName: campaigns.businessName,
-        title: campaigns.title,
-        promotionType: campaigns.promotionType,
-        category: campaigns.category,
-        description: campaigns.description,
-        location: campaigns.location,
-        language: campaigns.language,
-        targetAudience: campaigns.targetAudience,
-        format: campaigns.format,
-        website: campaigns.website,
-        status: campaigns.status,
-        verificationStatus: campaigns.verificationStatus,
-        createdAt: campaigns.createdAt,
-      })
-      .from(campaigns)
+    const params = new URL(req.url).searchParams;
+    const listing = parseListingParams(params, {
+      defaultLimit: 50,
+      defaultSort: "newest",
+      allowedSorts: PUBLIC_CAMPAIGN_SORTS,
+    });
+    const language = parseNormalizedParam(params, "language", normalizeLanguage, { aliases: ["lang"] });
+    const category = parseNormalizedParam(params, "category", normalizeCategory);
+    const promotionType = parseNormalizedParam(params, "promotionType", normalizePromotionType, { aliases: ["type"] });
+    const format = parseNormalizedParam(params, "format", normalizeContentType, { aliases: ["contentType"] });
+
+    const textSearch = searchCondition(
+      [
+        textExpression(sql`${campaigns.title}`),
+        textExpression(sql`${campaigns.businessName}`),
+        textExpression(sql`${campaigns.description}`),
+        textExpression(sql`${campaigns.location}`),
+        textExpression(sql`${campaigns.targetAudience}`),
+        textExpression(sql`${campaigns.promotionType}`),
+        textExpression(sql`${campaigns.category}`),
+        textExpression(sql`${campaigns.language}`),
+        textExpression(sql`${campaigns.format}`),
+        textExpression(sql`${campaigns.website}`),
+      ],
+      listing.q,
+    );
+    const aliasSearch = [
+      normalizePromotionType(listing.q) ? eq(campaigns.promotionType, normalizePromotionType(listing.q)!) : undefined,
+      normalizeCategory(listing.q) ? eq(campaigns.category, normalizeCategory(listing.q)!) : undefined,
+      normalizeLanguage(listing.q) ? eq(campaigns.language, normalizeLanguage(listing.q)!) : undefined,
+      normalizeContentType(listing.q) ? eq(campaigns.format, normalizeContentType(listing.q)!) : undefined,
+    ].filter(Boolean);
+    const search = textSearch && aliasSearch.length
+      ? sql`(${textSearch} or ${sql.join(aliasSearch.map((condition) => sql`${condition}`), sql` or `)})`
+      : textSearch;
+
+    const scope = scopeFrom({
+      listing: "public-campaigns",
+      q: listing.q,
+      language,
+      category,
+      promotionType,
+      format,
+    });
+    const keys = publicCampaignSortKeys(listing.sort);
+    const cursorValues = decodeCursor(listing.cursor, { sort: listing.sort, scope, keys });
+    const baseWhere = allConditions([
       // Fail closed: pending, paused, rejected, suspended, closed, and
       // unverified campaigns stay private.
-      .where(and(eq(campaigns.status, "open"), eq(campaigns.verificationStatus, "verified")))
-      .orderBy(desc(campaigns.createdAt))
-      .limit(50);
-    const canonicalRows = rows.map((row) => ({
+      eq(campaigns.status, "open"),
+      eq(campaigns.verificationStatus, "verified"),
+      language ? eq(campaigns.language, language) : undefined,
+      category ? eq(campaigns.category, category) : undefined,
+      promotionType ? eq(campaigns.promotionType, promotionType) : undefined,
+      format ? eq(campaigns.format, format) : undefined,
+      search,
+    ]);
+    const pageWhere = allConditions([baseWhere, cursorCondition(keys, cursorValues)]);
+
+    const [[totalRow], rowsWithExtra] = await Promise.all([
+      db.select({ count: sql<number>`count(*)::int` }).from(campaigns).where(baseWhere),
+      db
+        .select({
+          id: campaigns.id,
+          businessName: campaigns.businessName,
+          title: campaigns.title,
+          promotionType: campaigns.promotionType,
+          category: campaigns.category,
+          description: campaigns.description,
+          location: campaigns.location,
+          language: campaigns.language,
+          targetAudience: campaigns.targetAudience,
+          format: campaigns.format,
+          website: campaigns.website,
+          status: campaigns.status,
+          verificationStatus: campaigns.verificationStatus,
+          createdAt: campaigns.createdAt,
+        })
+        .from(campaigns)
+        .where(pageWhere)
+        .orderBy(...sortOrder(keys))
+        .limit(listing.limit + 1),
+    ]);
+    const { items, pagination } = paginateRows(rowsWithExtra, {
+      limit: listing.limit,
+      total: Number(totalRow?.count ?? 0),
+      sort: listing.sort,
+      scope,
+      keys,
+    });
+    const canonicalRows = items.map((row) => ({
       ...row,
       promotionType: normalizePromotionType(row.promotionType) ?? row.promotionType,
       category: normalizeCategory(row.category) ?? row.category,
@@ -176,8 +293,11 @@ export async function GET() {
     }));
     // Campaign openness is application-critical state; never let a browser
     // or intermediary reuse a stale public listing after pause/close.
-    return Response.json({ campaigns: canonicalRows }, { headers: NO_STORE });
+    return Response.json({ campaigns: canonicalRows, pagination }, { headers: NO_STORE });
   } catch (e) {
+    if (isListingQueryError(e)) {
+      return Response.json({ error: e.message, code: e.code }, { status: e.status, headers: NO_STORE });
+    }
     console.error(e);
     return Response.json(
       { error: "Could not load campaigns", code: "load_failed" },

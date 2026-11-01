@@ -3,9 +3,9 @@
 import { useLang } from "@/frontend/i18n";
 
 import Link from "next/link";
-import { Suspense, useCallback, useEffect, useState } from "react";
-import { ApiResponseError, fetchJsonList } from "@/frontend/api-json";
-import { ListingError, ListingLoading } from "@/frontend/components/ListingState";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { ApiResponseError, appendUniqueById, fetchJsonPage, type ListPagination } from "@/frontend/api-json";
+import { ListingError, ListingLoading, ListingPagination } from "@/frontend/components/ListingState";
 import { useSearchParams } from "next/navigation";
 import { CATEGORIES, LANGUAGES, CONTENT_TYPES, PROMOTION_TYPES, normalizePromotionType } from "@/shared/constants";
 import ContactLink from "@/frontend/components/ContactLink";
@@ -13,6 +13,29 @@ import PrivacyNotice from "@/frontend/components/PrivacyNotice";
 import ReportButton from "@/frontend/components/ReportButton";
 import { SITE, instagramDmLink, whatsappWithText } from "@/config/site";
 
+
+const CREATOR_PAGE_SIZE = 8;
+
+function creatorListUrl({
+  q,
+  lang,
+  category,
+  sort,
+  cursor,
+}: {
+  q: string;
+  lang: string;
+  category: string;
+  sort: string;
+  cursor?: string | null;
+}) {
+  const params = new URLSearchParams({ limit: String(CREATOR_PAGE_SIZE), sort });
+  if (q) params.set("q", q);
+  if (lang) params.set("language", lang);
+  if (category) params.set("category", category);
+  if (cursor) params.set("cursor", cursor);
+  return `/api/creators?${params.toString()}`;
+}
 
 function BrandInner() {
   const params = useSearchParams();
@@ -22,6 +45,12 @@ function BrandInner() {
   const [creatorsStatus, setCreatorsStatus] = useState<"loading" | "success" | "error">("loading");
   const [creatorsErrorKey, setCreatorsErrorKey] = useState("listing.loadFailed");
   const [filter, setFilter] = useState({ lang: "", category: "" });
+  const [creatorQ, setCreatorQ] = useState("");
+  const [creatorSearchQ, setCreatorSearchQ] = useState("");
+  const [creatorSort, setCreatorSort] = useState("newest");
+  const [creatorPagination, setCreatorPagination] = useState<ListPagination | null>(null);
+  const [loadingMoreCreators, setLoadingMoreCreators] = useState(false);
+  const creatorRequestRef = useRef(0);
   const [form, setForm] = useState({
     businessName: "",
     contactName: "",
@@ -46,47 +75,57 @@ function BrandInner() {
     if (preset) setForm((f) => ({ ...f, promotionType: preset }));
   }, [preset]);
 
-  const requestCreators = useCallback(
-    () => fetchJsonList<any>("/api/creators", "creators", { cache: "no-store" }),
-    [],
+  const handleCreatorsError = useCallback(
+    (error: unknown) => {
+      setCreatorsErrorKey(
+        error instanceof ApiResponseError ? apiErrorKey(error.status, error.code, "listing.loadFailed") : "api.network",
+      );
+      setCreatorsStatus("error");
+    },
+    [apiErrorKey],
   );
-  const handleCreatorsSuccess = useCallback((rows: any[]) => {
-    setCreators(rows);
-    setCreatorsStatus("success");
-  }, []);
-  const handleCreatorsError = useCallback((error: unknown) => {
-    setCreatorsErrorKey(
-      error instanceof ApiResponseError ? apiErrorKey(error.status, error.code, "listing.loadFailed") : "api.network",
-    );
-    setCreatorsStatus("error");
-  }, [apiErrorKey]);
 
-  const fetchCreators = useCallback(async () => {
-    try {
-      handleCreatorsSuccess(await requestCreators());
-    } catch (error) {
-      handleCreatorsError(error);
-    }
-  }, [handleCreatorsError, handleCreatorsSuccess, requestCreators]);
+  const fetchCreatorPage = useCallback(
+    async ({ append = false, cursor = null }: { append?: boolean; cursor?: string | null } = {}) => {
+      const requestId = ++creatorRequestRef.current;
+      if (append) setLoadingMoreCreators(true);
+      else setCreatorsStatus("loading");
+      try {
+        const page = await fetchJsonPage<any>(
+          creatorListUrl({ q: creatorSearchQ, lang: filter.lang, category: filter.category, sort: creatorSort, cursor }),
+          "creators",
+          { cache: "no-store" },
+        );
+        if (requestId !== creatorRequestRef.current) return;
+        setCreators((current) => (append ? appendUniqueById(current, page.items) : page.items));
+        setCreatorPagination(page.pagination);
+        setCreatorsStatus("success");
+      } catch (error) {
+        if (requestId === creatorRequestRef.current) handleCreatorsError(error);
+      } finally {
+        if (append && requestId === creatorRequestRef.current) setLoadingMoreCreators(false);
+      }
+    },
+    [creatorSearchQ, creatorSort, filter.category, filter.lang, handleCreatorsError],
+  );
 
   const loadCreators = useCallback(async () => {
-    setCreatorsStatus("loading");
-    await fetchCreators();
-  }, [fetchCreators]);
+    await fetchCreatorPage();
+  }, [fetchCreatorPage]);
+
+  const loadMoreCreators = useCallback(() => {
+    if (!creatorPagination?.nextCursor || loadingMoreCreators) return;
+    void fetchCreatorPage({ append: true, cursor: creatorPagination.nextCursor });
+  }, [creatorPagination, fetchCreatorPage, loadingMoreCreators]);
 
   useEffect(() => {
-    let alive = true;
-    requestCreators()
-      .then((rows) => {
-        if (alive) handleCreatorsSuccess(rows);
-      })
-      .catch((error: unknown) => {
-        if (alive) handleCreatorsError(error);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [handleCreatorsError, handleCreatorsSuccess, requestCreators]);
+    const timeout = window.setTimeout(() => setCreatorSearchQ(creatorQ.trim()), 350);
+    return () => window.clearTimeout(timeout);
+  }, [creatorQ]);
+
+  useEffect(() => {
+    void Promise.resolve().then(() => fetchCreatorPage());
+  }, [fetchCreatorPage]);
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -131,11 +170,7 @@ function BrandInner() {
     }
   };
 
-  const filtered = creators.filter((c) => {
-    if (filter.lang && !(c.languages || "").toLowerCase().includes(filter.lang.toLowerCase())) return false;
-    if (filter.category && c.category !== filter.category) return false;
-    return true;
-  });
+  const hasActiveCreatorFilters = Boolean(creatorSearchQ || filter.lang || filter.category || creatorSort !== "newest");
 
   if (done) {
     return (
@@ -324,7 +359,16 @@ function BrandInner() {
             <div className="rounded-[24px] bg-[#17452e] p-6 text-white">
               <p className="text-[12.5px] font-bold uppercase tracking-widest text-[#ffc53d]">{t("browse.title")}</p>
               <h3 className="font-display mt-1 text-[22px] font-black">{t("browse.heading")}</h3>
-              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+              <label className="mt-3 block">
+                <span className="sr-only">{t("listing.searchLabel")}</span>
+                <input
+                  value={creatorQ}
+                  onChange={(e) => setCreatorQ(e.target.value)}
+                  placeholder={t("listing.searchCreators")}
+                  className="w-full min-w-0 rounded-xl border border-white/25 bg-white/10 px-3.5 py-3 text-[14px] font-semibold text-white outline-none placeholder:text-white/55 focus:border-[#ffc53d]"
+                />
+              </label>
+              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
                 <label className="relative block">
                   <span className="sr-only">{t("browse.filterLang")}</span>
                   <select value={filter.lang} onChange={(e) => setFilter((f) => ({ ...f, lang: e.target.value }))} className="w-full min-w-0 appearance-none truncate rounded-xl border border-white/25 bg-white/10 py-3 pl-3.5 pr-9 text-[14px] font-bold text-white outline-none focus:border-[#ffc53d] [&>option]:bg-white [&>option]:text-[#1c1917]">
@@ -342,6 +386,17 @@ function BrandInner() {
                   <span aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[11px] text-[#ffc53d]">▼</span>
                 </label>
               </div>
+              <label className="relative mt-2 block">
+                <span className="sr-only">{t("listing.sort")}</span>
+                <select value={creatorSort} onChange={(e) => setCreatorSort(e.target.value)} className="w-full min-w-0 appearance-none truncate rounded-xl border border-white/25 bg-white/10 py-3 pl-3.5 pr-9 text-[14px] font-bold text-white outline-none focus:border-[#ffc53d] [&>option]:bg-white [&>option]:text-[#1c1917]">
+                  <option value="newest">{t("listing.sortNewest")}</option>
+                  <option value="oldest">{t("listing.sortOldest")}</option>
+                  <option value="name">{t("listing.sortName")}</option>
+                  <option value="followers_desc">{t("listing.sortFollowersDesc")}</option>
+                  <option value="followers_asc">{t("listing.sortFollowersAsc")}</option>
+                </select>
+                <span aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[11px] text-[#ffc53d]">▼</span>
+              </label>
               <div className="mt-3 grid max-h-[420px] gap-2 overflow-y-auto">
                 {creatorsStatus === "loading" && creators.length === 0 ? (
                   <ListingLoading
@@ -366,13 +421,13 @@ function BrandInner() {
                         buttonClassName="mt-3 rounded-xl bg-[#ffc53d] px-4 py-2 text-[13px] font-extrabold text-[#1c1917] hover:bg-[#ffb703]"
                       />
                     )}
-                    {filtered.length === 0 && (
+                    {creators.length === 0 && (
                       <p className="rounded-xl bg-white/10 p-4 text-[13.5px]">
-                        {creators.length === 0 ? t("listing.noCreators") : t("listing.noCreatorMatches")}{" "}
+                        {hasActiveCreatorFilters ? t("listing.noCreatorMatches") : t("listing.noCreators")}{" "}
                         <Link href="/creators" className="font-bold text-[#ffc53d]">{t("browse.inviteCreators")}</Link>
                       </p>
                     )}
-                    {filtered.slice(0, 8).map((c) => (
+                    {creators.map((c) => (
                   <div key={c.id} className="grid gap-2 rounded-2xl bg-white/10 border border-white/10 p-3">
                     <div className="flex items-center gap-3">
                       <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#ffc53d] text-[15px] font-black text-black">{(c.name || "?").charAt(0).toUpperCase()}</span>
@@ -387,6 +442,16 @@ function BrandInner() {
                     </div>
                   </div>
                 ))}
+                    <ListingPagination
+                      loaded={creators.length}
+                      total={creatorPagination?.total ?? creators.length}
+                      hasMore={Boolean(creatorPagination?.hasMore)}
+                      loading={loadingMoreCreators}
+                      onLoadMore={loadMoreCreators}
+                      className="flex flex-col items-center gap-2 py-2"
+                      textClassName="text-[12.5px] font-semibold text-white/70"
+                      buttonClassName="rounded-xl bg-[#ffc53d] px-5 py-2.5 text-[13px] font-extrabold text-[#1c1917] hover:bg-[#ffb703] disabled:cursor-not-allowed disabled:opacity-60"
+                    />
                   </>
                 )}
               </div>

@@ -1,12 +1,67 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLang } from "@/frontend/i18n";
+import { ListingPagination } from "@/frontend/components/ListingState";
+import { appendUniqueById, isListPagination, type ListPagination } from "@/frontend/api-json";
+import {
+  APPLICATION_STATUSES,
+  CAMPAIGN_REVIEW_STATUSES,
+  CREATOR_REVIEW_STATUSES,
+  VERIFICATION_STATUSES,
+} from "@/shared/constants";
 
 type Tab = "campaigns" | "creators" | "reports" | "applications" | "contacts" | "audit";
 type ModerationEntity = "campaign" | "creator" | "report" | "application" | "contact";
 
-const emptyAdminData = () => ({ campaigns: [], creators: [], applications: [], contacts: [], reports: [], auditLogs: [] });
+interface AdminCounts {
+  campaigns: number;
+  creators: number;
+  applications: number;
+  contacts: number;
+  reports: number;
+  auditLogs: number;
+  pendingCampaigns: number;
+  pendingCreators: number;
+  pendingReviews: number;
+  openReports: number;
+}
+
+type AdminQuery = { q: string; filter: string; verificationStatus: string; sort: string };
+type AdminListState = AdminQuery & { rows: any[]; pagination: ListPagination | null; loaded: boolean };
+
+const ADMIN_PAGE_SIZE = 50;
+const DEFAULT_ADMIN_SORT: Record<Tab, string> = {
+  campaigns: "review",
+  creators: "review",
+  reports: "triage",
+  applications: "newest",
+  contacts: "newest",
+  audit: "newest",
+};
+const emptyAdminCounts = (): AdminCounts => ({
+  campaigns: 0,
+  creators: 0,
+  applications: 0,
+  contacts: 0,
+  reports: 0,
+  auditLogs: 0,
+  pendingCampaigns: 0,
+  pendingCreators: 0,
+  pendingReviews: 0,
+  openReports: 0,
+});
+const emptyAdminQuery = (tab: Tab): AdminQuery => ({ q: "", filter: "", verificationStatus: "", sort: DEFAULT_ADMIN_SORT[tab] });
+const emptyAdminListState = (): Record<Tab, AdminListState> => ({
+  campaigns: { ...emptyAdminQuery("campaigns"), rows: [], pagination: null, loaded: false },
+  creators: { ...emptyAdminQuery("creators"), rows: [], pagination: null, loaded: false },
+  reports: { ...emptyAdminQuery("reports"), rows: [], pagination: null, loaded: false },
+  applications: { ...emptyAdminQuery("applications"), rows: [], pagination: null, loaded: false },
+  contacts: { ...emptyAdminQuery("contacts"), rows: [], pagination: null, loaded: false },
+  audit: { ...emptyAdminQuery("audit"), rows: [], pagination: null, loaded: false },
+});
+const adminEntityForTab = (tab: Tab) => (tab === "audit" ? "auditLogs" : tab);
+const adminFilterParamForTab = (tab: Tab) => (tab === "contacts" ? "kind" : tab === "audit" ? "outcome" : "status");
 
 function statusClass(status?: string | null, isReport = false) {
   if (isReport && status === "open") return "bg-red-100 text-red-800";
@@ -94,8 +149,11 @@ function ProfileLinks({ links }: { links: Array<string | null | undefined> }) {
 
 export default function AdminPage() {
   const { t, opt, promo, platform, apiErrorKey, formatNumber, formatCurrency, formatDateTime } = useLang();
-  const [data, setData] = useState<any>(emptyAdminData);
+  const [listState, setListState] = useState<Record<Tab, AdminListState>>(emptyAdminListState);
+  const [counts, setCounts] = useState<AdminCounts>(emptyAdminCounts);
   const [tab, setTab] = useState<Tab>("campaigns");
+  const [adminDraft, setAdminDraft] = useState<AdminQuery>(() => emptyAdminQuery("campaigns"));
+  const adminRequestRef = useRef<Record<string, number>>({});
   const [key, setKey] = useState("");
   const [totp, setTotp] = useState("");
   const [authed, setAuthed] = useState(false);
@@ -106,7 +164,9 @@ export default function AdminPage() {
   const [verifiedFollowers, setVerifiedFollowers] = useState<Record<string, string>>({});
 
   const clearAdminState = () => {
-    setData(emptyAdminData());
+    setListState(emptyAdminListState());
+    setCounts(emptyAdminCounts());
+    setAdminDraft(emptyAdminQuery("campaigns"));
     setVerifiedFollowers({});
     setTab("campaigns");
     setKey("");
@@ -116,29 +176,98 @@ export default function AdminPage() {
     setAuthed(false);
   };
 
-  const load = async () => {
+  const load = async (
+    targetTab: Tab = tab,
+    {
+      append = false,
+      cursor = null,
+      query,
+    }: { append?: boolean; cursor?: string | null; query?: AdminQuery } = {},
+  ) => {
+    const requestId = (adminRequestRef.current[targetTab] = (adminRequestRef.current[targetTab] ?? 0) + 1);
+    const activeQuery = query ?? listState[targetTab];
+    const entity = adminEntityForTab(targetTab);
+    const params = new URLSearchParams({ entity, limit: String(ADMIN_PAGE_SIZE), sort: activeQuery.sort });
+    if (activeQuery.q.trim()) params.set("q", activeQuery.q.trim());
+    if (activeQuery.filter) params.set(adminFilterParamForTab(targetTab), activeQuery.filter);
+    if ((targetTab === "campaigns" || targetTab === "creators") && activeQuery.verificationStatus) {
+      params.set("verificationStatus", activeQuery.verificationStatus);
+    }
+    if (cursor) params.set("cursor", cursor);
+
     setLoading(true);
     setErrKey("");
     try {
-      const res = await fetch("/api/admin/data", { credentials: "include", cache: "no-store" });
+      const res = await fetch(`/api/admin/data?${params.toString()}`, { credentials: "include", cache: "no-store" });
       const d = await res.json().catch(() => ({}));
+      if (adminRequestRef.current[targetTab] !== requestId) return;
       if (!res.ok) {
         const nextErrorKey = apiErrorKey(res.status, d?.code, "api.loadFailed");
-        clearAdminState();
+        if (res.status === 401 || !authed) {
+          clearAdminState();
+        }
         setErrKey(nextErrorKey);
         return;
       }
-      setData({ ...emptyAdminData(), ...d });
+      const rows = Array.isArray(d?.[entity]) ? d[entity] : null;
+      if (!rows || !isListPagination(d?.pagination) || !d?.counts || typeof d.counts !== "object") {
+        setErrKey("api.loadFailed");
+        return;
+      }
+      setCounts({ ...emptyAdminCounts(), ...d.counts });
+      setListState((current) => ({
+        ...current,
+        [targetTab]: {
+          ...current[targetTab],
+          ...activeQuery,
+          q: activeQuery.q.trim(),
+          rows: append ? appendUniqueById(current[targetTab].rows, rows) : rows,
+          pagination: d.pagination,
+          loaded: true,
+        },
+      }));
       setAuthed(true);
     } catch {
-      clearAdminState();
+      if (adminRequestRef.current[targetTab] !== requestId) return;
+      if (!authed) clearAdminState();
       setErrKey("api.loadFailed");
     } finally {
-      setLoading(false);
+      if (adminRequestRef.current[targetTab] === requestId) setLoading(false);
     }
   };
 
-  useEffect(() => { load(); }, []);
+  const switchTab = (nextTab: Tab) => {
+    setTab(nextTab);
+    const nextQuery = listState[nextTab];
+    setAdminDraft({
+      q: nextQuery.q,
+      filter: nextQuery.filter,
+      verificationStatus: nextQuery.verificationStatus,
+      sort: nextQuery.sort,
+    });
+    if (authed) void load(nextTab);
+  };
+
+  const applyAdminFilters = (event: React.FormEvent) => {
+    event.preventDefault();
+    const query = { ...adminDraft, q: adminDraft.q.trim() };
+    setAdminDraft(query);
+    void load(tab, { query });
+  };
+
+  const clearAdminFilters = () => {
+    const query = emptyAdminQuery(tab);
+    setAdminDraft(query);
+    void load(tab, { query });
+  };
+
+  const loadMoreAdminRows = () => {
+    const cursor = listState[tab].pagination?.nextCursor;
+    if (!cursor || loading) return;
+    void load(tab, { append: true, cursor });
+  };
+
+  useEffect(() => { void Promise.resolve().then(() => load("campaigns")); }, []);
 
   const moderate = async (entity: ModerationEntity, id: string, action: string, extra: Record<string, unknown> = {}) => {
     if (action === "delete") {
@@ -205,7 +334,9 @@ export default function AdminPage() {
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setData(emptyAdminData());
+        setListState(emptyAdminListState());
+        setCounts(emptyAdminCounts());
+        setAdminDraft(emptyAdminQuery("campaigns"));
         setVerifiedFollowers({});
         setTotp("");
         setAuthed(false);
@@ -217,7 +348,9 @@ export default function AdminPage() {
       setTotp("");
       await load();
     } catch {
-      setData(emptyAdminData());
+      setListState(emptyAdminListState());
+      setCounts(emptyAdminCounts());
+      setAdminDraft(emptyAdminQuery("campaigns"));
       setVerifiedFollowers({});
       setTotp("");
       setAuthed(false);
@@ -282,18 +415,17 @@ export default function AdminPage() {
     );
   }
 
-  const campaigns = data.campaigns ?? [];
-  const creators = data.creators ?? [];
-  const applications = data.applications ?? [];
-  const contacts = data.contacts ?? [];
-  const reports = data.reports ?? [];
-  const auditLogs = data.auditLogs ?? [];
-  const pendingReviews =
-    campaigns.filter((c: any) => c.status === "pending").length +
-    creators.filter((c: any) => c.status === "pending").length;
-  const openReports = reports.filter((r: any) => r.status === "open").length;
-  const activeRows =
-    tab === "campaigns" ? campaigns : tab === "creators" ? creators : tab === "reports" ? reports : tab === "applications" ? applications : tab === "audit" ? auditLogs : contacts;
+  const campaigns = listState.campaigns.rows;
+  const creators = listState.creators.rows;
+  const applications = listState.applications.rows;
+  const contacts = listState.contacts.rows;
+  const reports = listState.reports.rows;
+  const auditLogs = listState.audit.rows;
+  const pendingReviews = counts.pendingReviews;
+  const openReports = counts.openReports;
+  const activeList = listState[tab];
+  const activeRows = activeList.rows;
+  const activeHasFilters = Boolean(activeList.q || activeList.filter || activeList.verificationStatus || activeList.sort !== DEFAULT_ADMIN_SORT[tab]);
 
   const formatDate = formatDateTime;
   const statusLabel = (status?: string | null) => {
@@ -375,6 +507,71 @@ export default function AdminPage() {
     }
   };
 
+  const adminFilterOptions =
+    tab === "campaigns"
+      ? CAMPAIGN_REVIEW_STATUSES.map((value) => ({ value, label: statusLabel(value) }))
+      : tab === "creators"
+        ? CREATOR_REVIEW_STATUSES.map((value) => ({ value, label: statusLabel(value) }))
+        : tab === "reports"
+          ? ["open", "resolved", "dismissed"].map((value) => ({ value, label: statusLabel(value) }))
+          : tab === "applications"
+            ? APPLICATION_STATUSES.map((value) => ({ value, label: statusLabel(value) }))
+            : tab === "contacts"
+              ? ["brand", "creator", "other"].map((value) => ({ value, label: contactKindLabel(value) }))
+              : ["success", "failure"].map((value) => ({ value, label: statusLabel(value) }));
+  const adminSortOptions =
+    tab === "campaigns"
+      ? [
+          { value: "review", label: t("listing.sortReview") },
+          { value: "newest", label: t("listing.sortNewest") },
+          { value: "oldest", label: t("listing.sortOldest") },
+          { value: "title", label: t("listing.sortTitle") },
+          { value: "budget_desc", label: t("listing.sortBudgetDesc") },
+          { value: "budget_asc", label: t("listing.sortBudgetAsc") },
+          { value: "status", label: t("listing.sortStatus") },
+        ]
+      : tab === "creators"
+        ? [
+            { value: "review", label: t("listing.sortReview") },
+            { value: "newest", label: t("listing.sortNewest") },
+            { value: "oldest", label: t("listing.sortOldest") },
+            { value: "name", label: t("listing.sortName") },
+            { value: "followers_desc", label: t("listing.sortFollowersDesc") },
+            { value: "followers_asc", label: t("listing.sortFollowersAsc") },
+            { value: "status", label: t("listing.sortStatus") },
+          ]
+        : tab === "reports"
+          ? [
+              { value: "triage", label: t("listing.sortTriage") },
+              { value: "newest", label: t("listing.sortNewest") },
+              { value: "oldest", label: t("listing.sortOldest") },
+              { value: "status", label: t("listing.sortStatus") },
+            ]
+          : tab === "applications"
+            ? [
+                { value: "newest", label: t("listing.sortNewest") },
+                { value: "oldest", label: t("listing.sortOldest") },
+                { value: "updated", label: t("listing.sortUpdated") },
+                { value: "status", label: t("listing.sortStatus") },
+              ]
+            : tab === "contacts"
+              ? [
+                  { value: "newest", label: t("listing.sortNewest") },
+                  { value: "oldest", label: t("listing.sortOldest") },
+                  { value: "name", label: t("listing.sortName") },
+                  { value: "kind", label: t("admin.type") },
+                ]
+              : [
+                  { value: "newest", label: t("listing.sortNewest") },
+                  { value: "oldest", label: t("listing.sortOldest") },
+                  { value: "action", label: t("admin.action") },
+                  { value: "outcome", label: t("admin.outcome") },
+                ];
+  const adminDraftHasFilters = Boolean(
+    adminDraft.q || adminDraft.filter || adminDraft.verificationStatus || adminDraft.sort !== DEFAULT_ADMIN_SORT[tab],
+  );
+  const adminControlClass = "w-full min-w-0 rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-3.5 py-2.5 text-[13.5px] font-semibold outline-none focus:border-[#1c1917]";
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
       <div className="mb-2 flex justify-end">
@@ -392,10 +589,10 @@ export default function AdminPage() {
 
       <div className="mt-6 grid gap-3 sm:grid-cols-3 xl:grid-cols-6">
         {[
-          { a: campaigns.length, b: t("admin.campaigns") },
-          { a: creators.length, b: t("admin.creators") },
-          { a: applications.length, b: t("admin.applications") },
-          { a: contacts.length, b: t("admin.messages") },
+          { a: counts.campaigns, b: t("admin.campaigns") },
+          { a: counts.creators, b: t("admin.creators") },
+          { a: counts.applications, b: t("admin.applications") },
+          { a: counts.contacts, b: t("admin.messages") },
           { a: pendingReviews, b: t("admin.pendingReviews") },
           { a: openReports, b: t("admin.openReports") },
         ].map((s) => (
@@ -421,7 +618,7 @@ export default function AdminPage() {
         ] as Array<{ id: Tab; label: string }>).map((item) => (
           <button
             key={item.id}
-            onClick={() => setTab(item.id)}
+            onClick={() => switchTab(item.id)}
             aria-pressed={tab === item.id}
             className={`shrink-0 rounded-full px-5 py-2.5 text-[14px] font-bold ${tab === item.id ? "bg-[#1c1917] text-white" : "bg-white border border-[#e9ddc3]"}`}
           >
@@ -429,6 +626,45 @@ export default function AdminPage() {
           </button>
         ))}
       </div>
+
+      <form onSubmit={applyAdminFilters} className="mt-4 grid gap-2 rounded-2xl border border-[#e9ddc3] bg-white p-3 md:grid-cols-2 xl:grid-cols-[1fr_190px_190px_190px_auto]">
+        <label>
+          <span className="sr-only">{t("listing.searchLabel")}</span>
+          <input value={adminDraft.q} onChange={(e) => setAdminDraft((current) => ({ ...current, q: e.target.value }))} placeholder={t("listing.searchItems")} className={adminControlClass} />
+        </label>
+        <label>
+          <span className="sr-only">{tab === "contacts" ? t("admin.type") : tab === "audit" ? t("admin.outcome") : t("listing.filterStatus")}</span>
+          <select value={adminDraft.filter} onChange={(e) => setAdminDraft((current) => ({ ...current, filter: e.target.value }))} className={adminControlClass}>
+            <option value="">{tab === "contacts" ? t("admin.type") : tab === "audit" ? t("admin.outcome") : t("listing.allStatuses")}</option>
+            {adminFilterOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        {(tab === "campaigns" || tab === "creators") && (
+          <label>
+            <span className="sr-only">{t("admin.verification")}</span>
+            <select value={adminDraft.verificationStatus} onChange={(e) => setAdminDraft((current) => ({ ...current, verificationStatus: e.target.value }))} className={adminControlClass}>
+              <option value="">{t("listing.allVerification")}</option>
+              {VERIFICATION_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
+            </select>
+          </label>
+        )}
+        <label>
+          <span className="sr-only">{t("listing.sort")}</span>
+          <select value={adminDraft.sort} onChange={(e) => setAdminDraft((current) => ({ ...current, sort: e.target.value }))} className={adminControlClass}>
+            {adminSortOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <div className="flex flex-wrap gap-2">
+          <button type="submit" disabled={loading} className="rounded-xl bg-[#1c1917] px-5 py-2.5 text-[13.5px] font-bold text-white disabled:opacity-50">
+            {loading ? t("common.loading") : t("listing.searchLabel")}
+          </button>
+          {(adminDraftHasFilters || activeHasFilters) && (
+            <button type="button" disabled={loading} onClick={clearAdminFilters} className="rounded-xl border border-[#e9ddc3] px-4 py-2.5 text-[13.5px] font-bold disabled:opacity-50">
+              {t("listing.clearFilters")}
+            </button>
+          )}
+        </div>
+      </form>
 
       {noticeKey && <p role="status" className="mt-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-[13.5px] font-bold text-green-800">{t(noticeKey)}</p>}
       {errKey && <p role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13.5px] font-bold text-red-700">{t(errKey)}</p>}
@@ -772,8 +1008,17 @@ export default function AdminPage() {
             </tbody>
           </table>
         )}
-        {activeRows.length === 0 && <p className="p-8 text-center text-[14px] text-[#a8a29e]">{t("admin.empty")}</p>}
+        {activeRows.length === 0 && (
+          <p className="p-8 text-center text-[14px] text-[#a8a29e]">{loading ? t("common.loading") : activeHasFilters ? t("listing.noMatches") : t("admin.empty")}</p>
+        )}
       </div>
+      <ListingPagination
+        loaded={activeRows.length}
+        total={activeList.pagination?.total ?? activeRows.length}
+        hasMore={Boolean(activeList.pagination?.hasMore)}
+        loading={loading}
+        onLoadMore={loadMoreAdminRows}
+      />
     </div>
   );
 }
