@@ -10,6 +10,7 @@ import {
   CREATOR_REVIEW_STATUSES,
   VERIFICATION_STATUSES,
 } from "@/shared/constants";
+import { normalizeInstagramUrl, normalizeProfileUrl, normalizeYouTubeUrl } from "@/shared/social-url";
 
 type Tab = "campaigns" | "creators" | "reports" | "applications" | "contacts" | "audit";
 type ModerationEntity = "campaign" | "creator" | "report" | "application" | "contact";
@@ -133,16 +134,40 @@ function ActionButton({
   );
 }
 
-function ProfileLinks({ links }: { links: Array<string | null | undefined> }) {
-  const uniqueLinks = [...new Set(links.filter(Boolean) as string[])];
+function ProfileLinks({
+  links,
+  platform,
+}: {
+  links: Array<{ value?: string | null; kind: "profile" | "instagram" | "youtube" }>;
+  platform?: string | null;
+}) {
+  const uniqueLinks = [
+    ...new Map(
+      links
+        .filter((link): link is { value: string; kind: "profile" | "instagram" | "youtube" } => Boolean(link.value))
+        .map((link) => [link.value, link] as const),
+    ).values(),
+  ];
   if (uniqueLinks.length === 0) return <span className="text-stone-600">—</span>;
   return (
     <div className="grid max-w-[230px] gap-1">
-      {uniqueLinks.map((link) => (
-        <a key={link} href={link} target="_blank" rel="noopener noreferrer" className="break-all text-[12px] font-semibold text-[#c7431f] hover:underline">
-          {link}
-        </a>
-      ))}
+      {uniqueLinks.map(({ value: link, kind }) => {
+        const safeLink =
+          kind === "instagram"
+            ? normalizeInstagramUrl(link)
+            : kind === "youtube"
+              ? normalizeYouTubeUrl(link)
+              : normalizeProfileUrl(link, platform ?? undefined);
+        return safeLink ? (
+          <a key={link} href={safeLink} target="_blank" rel="noopener noreferrer" className="break-all text-[12px] font-semibold text-[#c7431f] hover:underline">
+            {link}
+          </a>
+        ) : (
+          <span key={link} className="break-all text-[12px] font-semibold text-stone-600">
+            {link}
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -687,6 +712,7 @@ export default function AdminPage() {
             <tbody>
               {campaigns.map((c: any) => {
                 const busy = busyKey.startsWith(`campaign:${c.id}:`);
+                const websiteLink = c.website ? normalizeProfileUrl(c.website, "Instagram") : null;
                 return (
                   <tr key={c.id} className="border-b border-[#faf3e0] align-top">
                     <td className="max-w-[260px] p-4">
@@ -699,9 +725,13 @@ export default function AdminPage() {
                       {c.contactName && <p>{c.contactName}</p>}
                       <p className="break-all text-[12px] text-[#6f6862]">{c.phone || ""}{c.phone && c.email ? <br /> : null}{c.email || ""}</p>
                       {c.website && (
-                        <a href={c.website} target="_blank" rel="noopener noreferrer" className="mt-1 block break-all text-[12px] font-semibold text-[#c7431f] hover:underline">
-                          {c.website}
-                        </a>
+                        websiteLink ? (
+                          <a href={websiteLink} target="_blank" rel="noopener noreferrer" className="mt-1 block break-all text-[12px] font-semibold text-[#c7431f] hover:underline">
+                            {c.website}
+                          </a>
+                        ) : (
+                          <span className="mt-1 block break-all text-[12px] font-semibold text-stone-600">{c.website}</span>
+                        )
                       )}
                     </td>
                     <td className="p-4">
@@ -768,7 +798,7 @@ export default function AdminPage() {
                       <p className="break-all text-[12px] text-[#6f6862]">{c.phone || ""}{c.phone && c.email ? <br /> : null}{c.email || ""}</p>
                       <p className="mt-1 text-[11.5px] text-[#6f6862]">{formatDate(c.createdAt)}</p>
                     </td>
-                    <td className="p-4"><ProfileLinks links={[c.profileUrl, c.instagram, c.youtube]} /></td>
+                    <td className="p-4"><ProfileLinks links={[{ value: c.profileUrl, kind: "profile" }, { value: c.instagram, kind: "instagram" }, { value: c.youtube, kind: "youtube" }]} platform={c.platform} /></td>
                     <td className="max-w-[260px] p-4">
                       <p>{[c.platform ? platform(c.platform) : "", c.category ? opt(c.category) : "", c.languages ? opt(c.languages) : "", c.location, c.contentTypes ? opt(c.contentTypes) : ""].filter(Boolean).join(" • ")}</p>
                       {c.bio && <p className="mt-1 line-clamp-3 text-[12.5px] text-[#6f6862]">{c.bio}</p>}
