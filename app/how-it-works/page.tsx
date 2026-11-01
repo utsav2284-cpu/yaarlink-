@@ -35,6 +35,32 @@ export default function HowItWorks() {
         </div>
       </section>
 
+      <section className="mx-auto max-w-5xl px-4 pb-8 sm:px-6" aria-labelledby="workflow-scope-heading">
+        <div className="rounded-[24px] border border-[#e9ddc3] bg-white p-6 sm:p-8">
+          <h2 id="workflow-scope-heading" className="font-display text-[24px] font-black">
+            {t("howp.scopeTitle")}
+          </h2>
+          <div className="mt-5 grid gap-6 md:grid-cols-2">
+            <div>
+              <h3 className="text-[15px] font-extrabold text-[#17452e]">{t("howp.scopeOnTitle")}</h3>
+              <ul className="mt-3 grid gap-2 text-[14.5px] leading-relaxed text-[#57534e]">
+                <li>✓ {t("howp.scopeOn1")}</li>
+                <li>✓ {t("howp.scopeOn2")}</li>
+                <li>✓ {t("howp.scopeOn3")}</li>
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-[15px] font-extrabold text-[#9a3412]">{t("howp.scopeOffTitle")}</h3>
+              <ul className="mt-3 grid gap-2 text-[14.5px] leading-relaxed text-[#57534e]">
+                <li>• {t("howp.scopeOff1")}</li>
+                <li>• {t("howp.scopeOff2")}</li>
+                <li>• {t("howp.scopeOff3")}</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section className="mx-auto max-w-5xl px-4 pb-16 sm:px-6">
         <div className="grid gap-4 md:grid-cols-2">
           <div className="rounded-[24px] bg-[#1c1917] p-8 text-white">

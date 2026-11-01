@@ -217,6 +217,9 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
             "A creator chooses one phone, email or social contact saved on their account or completed creator profile. By confirming submission, the creator authorises YaarLink to show the creator-profile name, selected contact and message to that campaign's brand.",
             "A brand may use applicant information only to evaluate and manage that application or campaign and related agreed work. The brand must not sell, rent, publish, spam or use it for unrelated marketing.",
             "An application or status on YaarLink does not by itself create employment, agency, partnership or a payment guarantee. Brands and creators should confirm deliverables, usage rights, dates, price and payment method before work starts.",
+            "YaarLink does not currently provide in-app chat, draft or content approval, posting-link or proof collection, content scheduling, or campaign-performance analytics. Exchange briefs, drafts, post links, screenshots and results through an agreed off-platform channel and keep your own records.",
+            "A brand-set “completed” status records the brand’s off-platform confirmation; it is not YaarLink verification that a post was published or that views, clicks, enquiries or sales occurred.",
+            "Dashboard notifications cover application received, withdrawn and status-change activity. Marketplace email notifications are best effort; YaarLink does not send new-campaign alerts.",
           ],
         },
         {
@@ -582,6 +585,9 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
             "क्रिएटर अपने अकाउंट या पूरी क्रिएटर प्रोफाइल में सेव एक फोन, ईमेल या सोशल संपर्क चुनता है। भेजने की पुष्टि करके क्रिएटर YaarLink को क्रिएटर प्रोफाइल का नाम, चुना गया संपर्क और संदेश उस कैंपेन के ब्रांड को दिखाने की अनुमति देता है।",
             "ब्रांड आवेदक जानकारी सिर्फ़ उस आवेदन या कैंपेन तथा संबंधित सहमत काम का मूल्यांकन और संचालन करने के लिए उपयोग कर सकता है। वह उसे बेच, किराए पर दे, प्रकाशित, स्पैम या असंबंधित मार्केटिंग के लिए उपयोग नहीं कर सकता।",
             "YaarLink पर आवेदन या स्थिति अपने आप रोजगार, एजेंसी, साझेदारी या पेमेंट गारंटी नहीं बनाती। काम शुरू होने से पहले ब्रांड और क्रिएटर डिलीवरेबल, उपयोग अधिकार, तिथि, कीमत और पेमेंट तरीका पुष्ट करें।",
+            "YaarLink वर्तमान में इन-ऐप चैट, ड्राफ़्ट या कंटेंट अप्रूवल, पोस्टिंग लिंक या प्रमाण संग्रह, कंटेंट शेड्यूलिंग, या कैंपेन परफ़ॉर्मेंस एनालिटिक्स नहीं देता। ब्रीफ़, ड्राफ़्ट, पोस्ट लिंक, स्क्रीनशॉट और नतीजे तय प्लेटफ़ॉर्म-बाहर चैनल से साझा करें और अपने रिकॉर्ड रखें।",
+            "ब्रांड द्वारा दर्ज “पूरा” स्थिति ब्रांड की प्लेटफ़ॉर्म-बाहर पुष्टि दर्शाती है; यह YaarLink की तरफ़ से पोस्ट प्रकाशित होने या व्यू, क्लिक, पूछताछ या बिक्री होने का सत्यापन नहीं है।",
+            "डैशबोर्ड सूचनाएँ आवेदन प्राप्त, वापस और स्थिति-बदलाव गतिविधि कवर करती हैं। मार्केटप्लेस ईमेल सूचनाएँ सर्वोत्तम प्रयास पर हैं; YaarLink नए कैंपेन अलर्ट नहीं भेजता।",
           ],
         },
         {
@@ -947,6 +953,9 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
             "ਕ੍ਰਿਏਟਰ ਆਪਣੇ ਅਕਾਊਂਟ ਜਾਂ ਪੂਰੀ ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਵਿੱਚ ਸੇਵ ਇੱਕ ਫੋਨ, ਈਮੇਲ ਜਾਂ ਸੋਸ਼ਲ ਸੰਪਰਕ ਚੁਣਦਾ ਹੈ। ਭੇਜਣ ਦੀ ਪੁਸ਼ਟੀ ਕਰਕੇ ਕ੍ਰਿਏਟਰ YaarLink ਨੂੰ ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਦਾ ਨਾਮ, ਚੁਣਿਆ ਸੰਪਰਕ ਅਤੇ ਸੁਨੇਹਾ ਉਸ ਕੈਂਪੇਨ ਦੇ ਬ੍ਰਾਂਡ ਨੂੰ ਦਿਖਾਉਣ ਦੀ ਇਜਾਜ਼ਤ ਦਿੰਦਾ ਹੈ।",
             "ਬ੍ਰਾਂਡ ਬਿਨੈਕਾਰ ਜਾਣਕਾਰੀ ਸਿਰਫ਼ ਉਸ ਅਰਜ਼ੀ ਜਾਂ ਕੈਂਪੇਨ ਅਤੇ ਸੰਬੰਧਿਤ ਸਹਿਮਤ ਕੰਮ ਦਾ ਮੁਲਾਂਕਣ ਤੇ ਸੰਚਾਲਨ ਕਰਨ ਲਈ ਵਰਤ ਸਕਦਾ ਹੈ। ਉਹ ਉਸ ਨੂੰ ਵੇਚ, ਕਿਰਾਏ 'ਤੇ, ਪ੍ਰਕਾਸ਼ਿਤ, ਸਪੈਮ ਜਾਂ ਅਸੰਬੰਧਿਤ ਮਾਰਕੀਟਿੰਗ ਲਈ ਨਹੀਂ ਵਰਤ ਸਕਦਾ।",
             "YaarLink 'ਤੇ ਅਰਜ਼ੀ ਜਾਂ ਸਥਿਤੀ ਆਪਣੇ ਆਪ ਰੁਜ਼ਗਾਰ, ਏਜੰਸੀ, ਭਾਈਵਾਲੀ ਜਾਂ ਪੇਮੈਂਟ ਗਾਰੰਟੀ ਨਹੀਂ ਬਣਾਉਂਦੀ। ਕੰਮ ਸ਼ੁਰੂ ਹੋਣ ਤੋਂ ਪਹਿਲਾਂ ਬ੍ਰਾਂਡ ਅਤੇ ਕ੍ਰਿਏਟਰ ਡਿਲੀਵਰੇਬਲ, ਵਰਤੋਂ ਹੱਕ, ਤਾਰੀਖਾਂ, ਕੀਮਤ ਅਤੇ ਪੇਮੈਂਟ ਤਰੀਕਾ ਪੁਸ਼ਟ ਕਰਨ।",
+            "YaarLink ਮੌਜੂਦਾ ਸਮੇਂ ਵਿੱਚ ਇਨ-ਐਪ ਚੈਟ, ਡਰਾਫਟ ਜਾਂ ਕੰਟੈਂਟ ਮਨਜ਼ੂਰੀ, ਪੋਸਟਿੰਗ ਲਿੰਕ ਜਾਂ ਸਬੂਤ ਸੰਗ੍ਰਹਿ, ਕੰਟੈਂਟ ਸ਼ਡਿਊਲਿੰਗ, ਜਾਂ ਕੈਂਪੇਨ ਪਰਫ਼ਾਮੈਂਸ ਐਨਾਲਿਟਿਕਸ ਨਹੀਂ ਦਿੰਦਾ। ਬ੍ਰੀਫ਼, ਡਰਾਫਟ, ਪੋਸਟ ਲਿੰਕ, ਸਕ੍ਰੀਨਸ਼ਾਟ ਅਤੇ ਨਤੀਜੇ ਤੈਅ ਕੀਤੇ ਪਲੇਟਫਾਰਮ-ਬਾਹਰ ਚੈਨਲ ਰਾਹੀਂ ਸਾਂਝੇ ਕਰੋ ਅਤੇ ਆਪਣੇ ਰਿਕਾਰਡ ਰੱਖੋ।",
+            "ਬ੍ਰਾਂਡ ਵੱਲੋਂ ਦਰਜ “ਪੂਰਾ” ਸਥਿਤੀ ਬ੍ਰਾਂਡ ਦੀ ਪਲੇਟਫਾਰਮ-ਬਾਹਰ ਪੁਸ਼ਟੀ ਦਰਸਾਉਂਦੀ ਹੈ; ਇਹ YaarLink ਵੱਲੋਂ ਪੋਸਟ ਪ੍ਰਕਾਸ਼ਿਤ ਹੋਣ ਜਾਂ ਵਿਊ, ਕਲਿੱਕ, ਪੁੱਛਗਿੱਛ ਜਾਂ ਵਿਕਰੀ ਹੋਣ ਦੀ ਤਸਦੀਕ ਨਹੀਂ ਹੈ।",
+            "ਡੈਸ਼ਬੋਰਡ ਸੂਚਨਾਵਾਂ ਅਰਜ਼ੀ ਪ੍ਰਾਪਤ, ਵਾਪਸ ਅਤੇ ਸਥਿਤੀ-ਬਦਲਾਅ ਗਤੀਵਿਧੀ ਕਵਰ ਕਰਦੀਆਂ ਹਨ। ਮਾਰਕੀਟਪਲੇਸ ਈਮੇਲ ਸੂਚਨਾਵਾਂ ਸੰਭਵ ਕੋਸ਼ਿਸ਼ ਨਾਲ ਹਨ; YaarLink ਨਵੇਂ ਕੈਂਪੇਨ ਅਲਰਟ ਨਹੀਂ ਭੇਜਦਾ।",
           ],
         },
         {
