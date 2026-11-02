@@ -1,7 +1,9 @@
 import { db } from "@/backend/db";
-import { adminAuditLogs, applications, campaigns, contacts, creators, reports } from "@/backend/db/schema";
+import { adminAuditLogs, applications, brands, campaigns, contacts, creators, reports, userSessions, users } from "@/backend/db/schema";
 import { adminSessionUnavailableResponse, isAdmin, isAdminSessionUnavailableError, logAdminSessionUnavailable } from "@/backend/admin";
-import { and, eq, sql } from "drizzle-orm";
+import { logAdminAudit } from "@/backend/admin-audit";
+import { attachApplicationStatusHistory } from "@/backend/application-history";
+import { and, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import {
   APPLICATION_STATUSES,
   CAMPAIGN_REVIEW_STATUSES,
@@ -32,13 +34,15 @@ import {
   sortOrder,
   textExpression,
   tokenListCondition,
+  type PaginationMeta,
   type SortKey,
 } from "@/backend/pagination";
+import { USER_ROLES } from "@/shared/user-roles";
 
 export const dynamic = "force-dynamic";
 
 const NO_STORE = { "Cache-Control": "private, no-store" };
-const ADMIN_ENTITIES = ["campaigns", "creators", "applications", "contacts", "reports", "auditLogs"] as const;
+const ADMIN_ENTITIES = ["campaigns", "creators", "applications", "contacts", "reports", "auditLogs", "users", "brands"] as const;
 type AdminEntity = (typeof ADMIN_ENTITIES)[number];
 
 const CAMPAIGN_SORTS = ["review", "newest", "oldest", "title", "budget_desc", "budget_asc", "status"] as const;
@@ -47,6 +51,8 @@ const APPLICATION_SORTS = ["newest", "oldest", "updated", "status"] as const;
 const CONTACT_SORTS = ["newest", "oldest", "name", "kind"] as const;
 const REPORT_SORTS = ["triage", "newest", "oldest", "status"] as const;
 const AUDIT_SORTS = ["newest", "oldest", "action", "outcome"] as const;
+const USER_SORTS = ["newest", "oldest", "name", "email", "role"] as const;
+const BRAND_SORTS = ["newest", "oldest", "name", "status"] as const;
 const REPORT_STATUSES = ["open", "resolved", "dismissed"] as const;
 const REPORT_TARGET_TYPES = ["campaign", "creator"] as const;
 const CONTACT_KINDS = ["brand", "creator", "other"] as const;
@@ -58,6 +64,8 @@ type ApplicationSortRow = { application: { id: string; status: string; createdAt
 type ContactSortRow = { id: string; name: string; kind: string; createdAt: Date };
 type ReportSortRow = { report: { id: string; status: string; createdAt: Date } };
 type AuditSortRow = { id: string; action: string; outcome: string; createdAt: Date };
+type UserSortRow = { id: string; name: string; email: string; role: string; createdAt: Date };
+type BrandSortRow = { brand: { id: string; name: string; status: string; createdAt: Date } };
 
 function canonicalCampaign<T extends { promotionType: string; category: string | null; language: string; format: string }>(row: T) {
   return {
@@ -87,6 +95,8 @@ async function loadAdminCounts() {
     [contactsRow],
     [reportsRow],
     [auditLogsRow],
+    [usersRow],
+    [brandsRow],
     [pendingCampaignsRow],
     [pendingCreatorsRow],
     [openReportsRow],
@@ -97,6 +107,8 @@ async function loadAdminCounts() {
     db.select({ count: sql<number>`count(*)::int` }).from(contacts),
     db.select({ count: sql<number>`count(*)::int` }).from(reports),
     db.select({ count: sql<number>`count(*)::int` }).from(adminAuditLogs),
+    db.select({ count: sql<number>`count(*)::int` }).from(users),
+    db.select({ count: sql<number>`count(*)::int` }).from(brands),
     db.select({ count: sql<number>`count(*)::int` }).from(campaigns).where(eq(campaigns.status, "pending")),
     db.select({ count: sql<number>`count(*)::int` }).from(creators).where(eq(creators.status, "pending")),
     db.select({ count: sql<number>`count(*)::int` }).from(reports).where(eq(reports.status, "open")),
@@ -110,6 +122,8 @@ async function loadAdminCounts() {
     contacts: Number(contactsRow?.count ?? 0),
     reports: Number(reportsRow?.count ?? 0),
     auditLogs: Number(auditLogsRow?.count ?? 0),
+    users: Number(usersRow?.count ?? 0),
+    brands: Number(brandsRow?.count ?? 0),
     pendingCampaigns,
     pendingCreators,
     pendingReviews: pendingCampaigns + pendingCreators,
@@ -399,12 +413,14 @@ async function loadApplications(params: URLSearchParams) {
   ]);
   const page = paginateRows(rowsWithExtra, { limit: listing.limit, total: Number(totalRow?.count ?? 0), sort: listing.sort, scope, keys });
   return {
-    rows: page.items.map(({ application, campaignTitle, campaignBusinessName, creatorLabel }) => ({
-      ...application,
-      campaignLabel: campaignTitle ? `${campaignTitle} (${campaignBusinessName ?? ""})` : null,
-      campaignMissing: campaignTitle === null,
-      creatorLabel: creatorLabel ?? application.creatorName,
-    })),
+    rows: await attachApplicationStatusHistory(
+      page.items.map(({ application, campaignTitle, campaignBusinessName, creatorLabel }) => ({
+        ...application,
+        campaignLabel: campaignTitle ? `${campaignTitle} (${campaignBusinessName ?? ""})` : null,
+        campaignMissing: campaignTitle === null,
+        creatorLabel: creatorLabel ?? application.creatorName,
+      })),
+    ),
     pagination: page.pagination,
   };
 }
@@ -627,6 +643,321 @@ async function loadAuditLogs(params: URLSearchParams) {
   return { rows: page.items, pagination: page.pagination };
 }
 
+function userSortKeys(sort: string): Array<SortKey<UserSortRow>> {
+  switch (sort) {
+    case "oldest":
+      return [
+        { expression: sql`${users.createdAt}`, direction: "asc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`${users.id}`, direction: "asc", kind: "uuid", value: (row) => row.id },
+      ];
+    case "name":
+      return [
+        { expression: sql`lower(${users.name})`, direction: "asc", kind: "string", value: (row) => row.name.toLocaleLowerCase("en-US") },
+        { expression: sql`${users.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`${users.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
+      ];
+    case "email":
+      return [
+        { expression: sql`lower(${users.email})`, direction: "asc", kind: "string", value: (row) => row.email.toLocaleLowerCase("en-US") },
+        { expression: sql`${users.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`${users.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
+      ];
+    case "role":
+      return [
+        { expression: sql`${users.role}`, direction: "asc", kind: "string", value: (row) => row.role },
+        { expression: sql`${users.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`${users.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
+      ];
+    default:
+      return [
+        { expression: sql`${users.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`${users.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
+      ];
+  }
+}
+
+async function loadUsers(params: URLSearchParams) {
+  const listing = parseListingParams(params, { defaultLimit: 50, defaultSort: "newest", allowedSorts: USER_SORTS });
+  const role = parseEnumParam(params, "role", USER_ROLES, { aliases: ["filter"] });
+  const emailVerification = parseEnumParam(params, "verificationStatus", ["verified", "unverified"], { aliases: ["emailVerified"] });
+  const scope = scopeFrom({ listing: "admin-users", q: listing.q, role, emailVerification });
+  const keys = userSortKeys(listing.sort);
+  const cursorValues = decodeCursor(listing.cursor, { sort: listing.sort, scope, keys });
+  const search = searchCondition(
+    [
+      textExpression(sql`${users.id}`),
+      textExpression(sql`${users.name}`),
+      textExpression(sql`${users.email}`),
+      textExpression(sql`${users.phone}`),
+      textExpression(sql`${users.role}`),
+    ],
+    listing.q,
+  );
+  const baseWhere = allConditions([
+    role ? eq(users.role, role) : undefined,
+    emailVerification === "verified" ? sql`${users.emailVerifiedAt} is not null` : undefined,
+    emailVerification === "unverified" ? isNull(users.emailVerifiedAt) : undefined,
+    search,
+  ]);
+  const pageWhere = allConditions([baseWhere, cursorCondition(keys, cursorValues)]);
+  const [[totalRow], rowsWithExtra] = await Promise.all([
+    db.select({ count: sql<number>`count(*)::int` }).from(users).where(baseWhere),
+    db
+      .select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        phone: users.phone,
+        role: users.role,
+        emailVerifiedAt: users.emailVerifiedAt,
+        createdAt: users.createdAt,
+      })
+      .from(users)
+      .where(pageWhere)
+      .orderBy(...sortOrder(keys))
+      .limit(listing.limit + 1),
+  ]);
+  const page = paginateRows(rowsWithExtra, { limit: listing.limit, total: Number(totalRow?.count ?? 0), sort: listing.sort, scope, keys });
+  const ids = page.items.map((row) => row.id);
+  if (ids.length === 0) return { rows: [], pagination: page.pagination };
+
+  const now = new Date();
+  const [campaignCounts, applicationCounts, sessionCounts, brandRows, creatorRows] = await Promise.all([
+    db.select({ userId: campaigns.ownerId, count: sql<number>`count(*)::int` }).from(campaigns).where(inArray(campaigns.ownerId, ids)).groupBy(campaigns.ownerId),
+    db.select({ userId: applications.userId, count: sql<number>`count(*)::int` }).from(applications).where(inArray(applications.userId, ids)).groupBy(applications.userId),
+    db
+      .select({ userId: userSessions.userId, count: sql<number>`count(*)::int` })
+      .from(userSessions)
+      .where(and(inArray(userSessions.userId, ids), isNull(userSessions.revokedAt), gt(userSessions.expiresAt, now)))
+      .groupBy(userSessions.userId),
+    db.select({ id: brands.id, userId: brands.userId, status: brands.status }).from(brands).where(inArray(brands.userId, ids)),
+    db
+      .select({ id: creators.id, userId: creators.userId, status: creators.status, verificationStatus: creators.verificationStatus })
+      .from(creators)
+      .where(inArray(creators.userId, ids)),
+  ]);
+  const campaignCountByUser = new Map(campaignCounts.map((row) => [row.userId, Number(row.count ?? 0)]));
+  const applicationCountByUser = new Map(applicationCounts.map((row) => [row.userId, Number(row.count ?? 0)]));
+  const sessionCountByUser = new Map(sessionCounts.map((row) => [row.userId, Number(row.count ?? 0)]));
+  const brandByUser = new Map(brandRows.map((row) => [row.userId, row]));
+  const creatorByUser = new Map(creatorRows.map((row) => [row.userId, row]));
+
+  return {
+    rows: page.items.map((row) => {
+      const brand = brandByUser.get(row.id);
+      const creator = creatorByUser.get(row.id);
+      return {
+        ...row,
+        campaignCount: campaignCountByUser.get(row.id) ?? 0,
+        applicationCount: applicationCountByUser.get(row.id) ?? 0,
+        activeSessionCount: sessionCountByUser.get(row.id) ?? 0,
+        hasBrandProfile: Boolean(brand),
+        brandProfileId: brand?.id ?? null,
+        brandStatus: brand?.status ?? null,
+        creatorProfile: creator ? { id: creator.id, status: creator.status, verificationStatus: creator.verificationStatus } : null,
+      };
+    }),
+    pagination: page.pagination,
+  };
+}
+
+function brandSortKeys(sort: string): Array<SortKey<BrandSortRow>> {
+  switch (sort) {
+    case "oldest":
+      return [
+        { expression: sql`${brands.createdAt}`, direction: "asc", kind: "date", value: (row) => row.brand.createdAt },
+        { expression: sql`${brands.id}`, direction: "asc", kind: "uuid", value: (row) => row.brand.id },
+      ];
+    case "name":
+      return [
+        { expression: sql`lower(${brands.name})`, direction: "asc", kind: "string", value: (row) => row.brand.name.toLocaleLowerCase("en-US") },
+        { expression: sql`${brands.createdAt}`, direction: "desc", kind: "date", value: (row) => row.brand.createdAt },
+        { expression: sql`${brands.id}`, direction: "desc", kind: "uuid", value: (row) => row.brand.id },
+      ];
+    case "status":
+      return [
+        { expression: sql`${brands.status}`, direction: "asc", kind: "string", value: (row) => row.brand.status },
+        { expression: sql`${brands.createdAt}`, direction: "desc", kind: "date", value: (row) => row.brand.createdAt },
+        { expression: sql`${brands.id}`, direction: "desc", kind: "uuid", value: (row) => row.brand.id },
+      ];
+    default:
+      return [
+        { expression: sql`${brands.createdAt}`, direction: "desc", kind: "date", value: (row) => row.brand.createdAt },
+        { expression: sql`${brands.id}`, direction: "desc", kind: "uuid", value: (row) => row.brand.id },
+      ];
+  }
+}
+
+async function loadBrands(params: URLSearchParams) {
+  const listing = parseListingParams(params, { defaultLimit: 50, defaultSort: "newest", allowedSorts: BRAND_SORTS });
+  const status = parseEnumParam(params, "status", ["active"]);
+  const scope = scopeFrom({ listing: "admin-brands", q: listing.q, status });
+  const keys = brandSortKeys(listing.sort);
+  const cursorValues = decodeCursor(listing.cursor, { sort: listing.sort, scope, keys });
+  const search = searchCondition(
+    [
+      textExpression(sql`${brands.id}`),
+      textExpression(sql`${brands.userId}`),
+      textExpression(sql`${brands.name}`),
+      textExpression(sql`${brands.email}`),
+      textExpression(sql`${brands.phone}`),
+      textExpression(sql`${brands.status}`),
+      textExpression(sql`${users.name}`),
+      textExpression(sql`${users.email}`),
+      textExpression(sql`${users.phone}`),
+      textExpression(sql`${users.role}`),
+    ],
+    listing.q,
+  );
+  const baseWhere = allConditions([status ? eq(brands.status, status) : undefined, search]);
+  const pageWhere = allConditions([baseWhere, cursorCondition(keys, cursorValues)]);
+  const [[totalRow], rowsWithExtra] = await Promise.all([
+    db.select({ count: sql<number>`count(distinct ${brands.id})::int` }).from(brands).innerJoin(users, eq(brands.userId, users.id)).where(baseWhere),
+    db
+      .select({
+        brand: brands,
+        accountName: users.name,
+        accountEmail: users.email,
+        accountPhone: users.phone,
+        accountRole: users.role,
+        accountEmailVerifiedAt: users.emailVerifiedAt,
+        accountCreatedAt: users.createdAt,
+      })
+      .from(brands)
+      .innerJoin(users, eq(brands.userId, users.id))
+      .where(pageWhere)
+      .orderBy(...sortOrder(keys))
+      .limit(listing.limit + 1),
+  ]);
+  const page = paginateRows(rowsWithExtra, { limit: listing.limit, total: Number(totalRow?.count ?? 0), sort: listing.sort, scope, keys });
+  const userIds = [...new Set(page.items.map((row) => row.brand.userId))];
+  if (userIds.length === 0) return { rows: [], pagination: page.pagination };
+
+  const [campaignCounts, receivedCounts] = await Promise.all([
+    db.select({ userId: campaigns.ownerId, count: sql<number>`count(*)::int` }).from(campaigns).where(inArray(campaigns.ownerId, userIds)).groupBy(campaigns.ownerId),
+    db
+      .select({ userId: campaigns.ownerId, count: sql<number>`count(distinct ${applications.id})::int` })
+      .from(applications)
+      .innerJoin(campaigns, eq(applications.campaignId, campaigns.id))
+      .where(inArray(campaigns.ownerId, userIds))
+      .groupBy(campaigns.ownerId),
+  ]);
+  const campaignCountByUser = new Map(campaignCounts.map((row) => [row.userId, Number(row.count ?? 0)]));
+  const receivedCountByUser = new Map(receivedCounts.map((row) => [row.userId, Number(row.count ?? 0)]));
+
+  return {
+    rows: page.items.map(({ brand, ...account }) => ({
+      ...brand,
+      ...account,
+      campaignCount: campaignCountByUser.get(brand.userId) ?? 0,
+      applicationsReceivedCount: receivedCountByUser.get(brand.userId) ?? 0,
+    })),
+    pagination: page.pagination,
+  };
+}
+
+type AdminPage = { rows: Array<Record<string, unknown>>; pagination: PaginationMeta };
+
+async function loadAdminEntity(entity: AdminEntity, params: URLSearchParams): Promise<AdminPage> {
+  const page =
+    entity === "campaigns"
+      ? await loadCampaigns(params)
+      : entity === "creators"
+        ? await loadCreators(params)
+        : entity === "applications"
+          ? await loadApplications(params)
+          : entity === "contacts"
+            ? await loadContacts(params)
+            : entity === "reports"
+              ? await loadReports(params)
+              : entity === "users"
+                ? await loadUsers(params)
+                : entity === "brands"
+                  ? await loadBrands(params)
+                  : await loadAuditLogs(params);
+  return page as AdminPage;
+}
+
+const EXPORT_MAX_ROWS = 10_000;
+const EXPORT_PAGE_SIZE = 100;
+
+function csvValue(value: unknown): string {
+  let text: string;
+  if (value == null) text = "";
+  else if (value instanceof Date) text = value.toISOString();
+  else if (typeof value === "string") text = value;
+  else if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") text = String(value);
+  else text = JSON.stringify(value) ?? "";
+  // Neutralize spreadsheet formulas in user-controlled text. A leading
+  // apostrophe is visible in the CSV but keeps Excel/Sheets from executing
+  // the cell as a formula when an admin opens the export.
+  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function rowsToCsv(rows: Array<Record<string, unknown>>): string {
+  const columns: string[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    for (const key of Object.keys(row)) {
+      if (!seen.has(key)) {
+        seen.add(key);
+        columns.push(key);
+      }
+    }
+  }
+  if (columns.length === 0) return "\uFEFF";
+  const lines = [columns.map(csvValue).join(",")];
+  for (const row of rows) lines.push(columns.map((column) => csvValue(row[column])).join(","));
+  return `\uFEFF${lines.join("\r\n")}\r\n`;
+}
+
+async function exportAdminEntity(req: Request, entity: AdminEntity, params: URLSearchParams): Promise<Response> {
+  const pageParams = new URLSearchParams(params);
+  pageParams.delete("format");
+  pageParams.set("limit", String(EXPORT_PAGE_SIZE));
+  pageParams.delete("cursor");
+
+  const rows: Array<Record<string, unknown>> = [];
+  let total = 0;
+  let cursor: string | null = null;
+  for (let pageIndex = 0; pageIndex < EXPORT_MAX_ROWS / EXPORT_PAGE_SIZE; pageIndex += 1) {
+    if (cursor) pageParams.set("cursor", cursor);
+    else pageParams.delete("cursor");
+    const page = await loadAdminEntity(entity, pageParams);
+    total = page.pagination.total;
+    if (total > EXPORT_MAX_ROWS) {
+      return Response.json(
+        { error: "This export is too large. Narrow the search or filters and try again.", code: "export_too_large" },
+        { status: 413, headers: NO_STORE },
+      );
+    }
+    rows.push(...page.rows);
+    if (!page.pagination.hasMore || !page.pagination.nextCursor) break;
+    cursor = page.pagination.nextCursor;
+  }
+  if (rows.length < total) {
+    return Response.json(
+      { error: "This export is too large. Narrow the search or filters and try again.", code: "export_too_large" },
+      { status: 413, headers: NO_STORE },
+    );
+  }
+
+  await logAdminAudit(req, {
+    action: "admin.export",
+    entity,
+    details: { rows: rows.length, total, format: "csv" },
+  });
+  const date = new Date().toISOString().slice(0, 10);
+  return new Response(rowsToCsv(rows), {
+    headers: {
+      ...NO_STORE,
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="yaarlink-admin-${entity}-${date}.csv"`,
+    },
+  });
+}
+
 // Owner-only: one bounded, searchable admin collection per request plus exact
 // aggregate counts for every collection. Full rows include budgets/contacts.
 export async function GET(req: Request) {
@@ -637,18 +968,13 @@ export async function GET(req: Request) {
     const entity = (rawEntity === "audit" ? "auditLogs" : rawEntity) as AdminEntity;
     if (!ADMIN_ENTITIES.includes(entity)) throw new ListingQueryError("invalid_filter", "Please choose a valid filter.");
 
-    const page =
-      entity === "campaigns"
-        ? await loadCampaigns(params)
-        : entity === "creators"
-          ? await loadCreators(params)
-          : entity === "applications"
-            ? await loadApplications(params)
-            : entity === "contacts"
-              ? await loadContacts(params)
-              : entity === "reports"
-                ? await loadReports(params)
-                : await loadAuditLogs(params);
+    const format = params.get("format")?.trim().toLowerCase();
+    if (format) {
+      if (format !== "csv") throw new ListingQueryError("invalid_filter", "Please choose a valid filter.");
+      return await exportAdminEntity(req, entity, params);
+    }
+
+    const page = await loadAdminEntity(entity, params);
     const counts = await loadAdminCounts();
     return Response.json({ entity, [entity]: page.rows, pagination: page.pagination, counts }, { headers: NO_STORE });
   } catch (e) {

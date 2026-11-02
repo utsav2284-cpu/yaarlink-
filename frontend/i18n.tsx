@@ -134,6 +134,12 @@ const ENTITY_KEYS: Readonly<Record<string, TranslationKey>> = {
   applications: "admin.entityApplication",
   contact: "admin.entityContact",
   contacts: "admin.entityContact",
+  user: "admin.entityUser",
+  users: "admin.entityUser",
+  brand: "admin.entityBrand",
+  brands: "admin.entityBrand",
+  audit: "admin.auditLog",
+  auditlogs: "admin.auditLog",
   listing: "admin.entityListing",
 };
 
@@ -245,6 +251,9 @@ const API_ERROR_KEYS: Record<string, TranslationKey> = {
   admin_session_revoke_failed: "api.adminSessionRevokeFailed",
   admin_login_failed: "api.adminLoginFailed",
   moderation_failed: "api.moderationFailed",
+  export_too_large: "api.exportTooLarge",
+  user_not_found: "api.userNotFound",
+  brand_not_found: "api.brandNotFound",
 };
 
 function apiErrorKeyFor(status?: number | null, code?: string | null, fallbackKey: TranslationKey = "api.requestFailed"): TranslationKey {

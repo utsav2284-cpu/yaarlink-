@@ -1,6 +1,7 @@
 import { applicationContactOptions, isCompletedCreatorProfile } from "@/backend/application-contact";
 import { db } from "@/backend/db";
-import { applications, campaigns, creators, notifications } from "@/backend/db/schema";
+import { applications, brands, campaigns, creators, notifications } from "@/backend/db/schema";
+import { attachApplicationStatusHistory } from "@/backend/application-history";
 import { getSessionUser, isSessionUnavailableError, logSessionUnavailable, sessionSecretProblem, sessionUnavailableResponse } from "@/backend/auth";
 import { and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import {
@@ -423,6 +424,23 @@ async function loadBrandCounts(userId: string) {
   };
 }
 
+async function loadBrandProfile(userId: string) {
+  const [brandProfile] = await db
+    .select({
+      id: brands.id,
+      userId: brands.userId,
+      name: brands.name,
+      email: brands.email,
+      phone: brands.phone,
+      status: brands.status,
+      createdAt: brands.createdAt,
+    })
+    .from(brands)
+    .where(eq(brands.userId, userId))
+    .limit(1);
+  return brandProfile ?? null;
+}
+
 async function loadCreatorCounts(userId: string) {
   const [[profileRow], profileRows, [applicationRow], [openRow]] = await Promise.all([
     db.select({ count: sql<number>`count(*)::int` }).from(creators).where(eq(creators.userId, userId)),
@@ -547,13 +565,82 @@ type BrandApplicationRow = {
   createdAt: Date;
   updatedAt: Date;
   profileName: string | null;
+  profilePlatform: string | null;
+  profileCategory: string | null;
+  profileLanguages: string | null;
+  profileLocation: string | null;
+  profileContentTypes: string | null;
+  profileBio: string | null;
+  profileFollowers: number | null;
+  profileVerifiedFollowers: number | null;
+  profileStatus: string | null;
+  profileVerificationStatus: string | null;
+  profileUrl: string | null;
+  profileInstagram: string | null;
+  profileYoutube: string | null;
 };
 
 function outputBrandApplication(row: BrandApplicationRow) {
-  const { profileName, ...application } = row;
+  const {
+    profileName,
+    profilePlatform,
+    profileCategory,
+    profileLanguages,
+    profileLocation,
+    profileContentTypes,
+    profileBio,
+    profileFollowers,
+    profileVerifiedFollowers,
+    profileStatus,
+    profileVerificationStatus,
+    profileUrl,
+    profileInstagram,
+    profileYoutube,
+    ...application
+  } = row;
+
+  const profileCandidate = {
+    name: profileName ?? application.creatorName,
+    status: profileStatus,
+    platform: profilePlatform,
+    category: profileCategory,
+    languages: profileLanguages ?? "",
+    contentTypes: profileContentTypes ?? "",
+    followers: profileFollowers,
+    verifiedFollowers: profileVerifiedFollowers,
+    instagram: profileInstagram,
+    youtube: profileYoutube,
+    profileUrl,
+  };
+  // Application consent shares only the creator-profile name, selected
+  // contact, and message with this campaign's brand. A fuller applicant
+  // profile is therefore included only when that same profile is already
+  // public under the approved + verified + completed gate.
+  const publicProfile =
+    profileStatus === "approved" && profileVerificationStatus === "verified" && isCompletedCreatorProfile(profileCandidate);
+  const creatorProfile = publicProfile
+    ? canonicalProfile({
+        id: application.creatorId,
+        name: profileCandidate.name,
+        platform: profilePlatform ?? "",
+        category: profileCategory,
+        languages: profileLanguages ?? "",
+        location: profileLocation,
+        contentTypes: profileContentTypes ?? "",
+        bio: profileBio,
+        followers: profileFollowers ?? 0,
+        verifiedFollowers: profileVerifiedFollowers,
+        status: profileStatus,
+        verificationStatus: profileVerificationStatus,
+        profileUrl,
+        instagram: profileInstagram,
+        youtube: profileYoutube,
+      })
+    : null;
+
   // Show the linked creator profile's current name, not a legacy free-text
   // snapshot stored on older applications.
-  return { ...application, creatorName: profileName || application.creatorName };
+  return { ...application, creatorName: profileName || application.creatorName, creatorProfile };
 }
 
 async function loadBrandApplicationsForCampaignPage(userId: string, campaignIds: string[], params: URLSearchParams) {
@@ -594,6 +681,19 @@ async function loadBrandApplicationsForCampaignPage(userId: string, campaignIds:
       createdAt: applications.createdAt,
       updatedAt: applications.updatedAt,
       profileName: creators.name,
+      profilePlatform: creators.platform,
+      profileCategory: creators.category,
+      profileLanguages: creators.languages,
+      profileLocation: creators.location,
+      profileContentTypes: creators.contentTypes,
+      profileBio: creators.bio,
+      profileFollowers: creators.followers,
+      profileVerifiedFollowers: creators.verifiedFollowers,
+      profileStatus: sql<string | null>`${creators.status}`.as("profile_status"),
+      profileVerificationStatus: creators.verificationStatus,
+      profileUrl: creators.profileUrl,
+      profileInstagram: creators.instagram,
+      profileYoutube: creators.youtube,
       rowNumber: sql<number>`row_number() over (partition by ${applications.campaignId} order by ${sql.join(sortOrder(keys), sql`, `)})`.as("row_number"),
     })
     .from(applications)
@@ -644,7 +744,11 @@ async function loadBrandApplicationsForCampaignPage(userId: string, campaignIds:
           : null,
     };
   }
-  return { applications: output, applicationCountsByCampaign, applicationPaginationByCampaign };
+  return {
+    applications: await attachApplicationStatusHistory(output),
+    applicationCountsByCampaign,
+    applicationPaginationByCampaign,
+  };
 }
 
 async function loadBrandApplicationsForCampaign(userId: string, params: URLSearchParams) {
@@ -697,6 +801,19 @@ async function loadBrandApplicationsForCampaign(userId: string, params: URLSearc
         createdAt: applications.createdAt,
         updatedAt: applications.updatedAt,
         profileName: creators.name,
+        profilePlatform: creators.platform,
+        profileCategory: creators.category,
+        profileLanguages: creators.languages,
+        profileLocation: creators.location,
+        profileContentTypes: creators.contentTypes,
+        profileBio: creators.bio,
+        profileFollowers: creators.followers,
+        profileVerifiedFollowers: creators.verifiedFollowers,
+        profileStatus: creators.status,
+        profileVerificationStatus: creators.verificationStatus,
+        profileUrl: creators.profileUrl,
+        profileInstagram: creators.instagram,
+        profileYoutube: creators.youtube,
       })
       .from(applications)
       .innerJoin(campaigns, eq(applications.campaignId, campaigns.id))
@@ -714,7 +831,7 @@ async function loadBrandApplicationsForCampaign(userId: string, params: URLSearc
   });
   return {
     campaignId,
-    applications: page.items.map(outputBrandApplication),
+    applications: await attachApplicationStatusHistory(page.items.map(outputBrandApplication)),
     pagination: page.pagination,
     applicationCountsByCampaign: { [campaignId]: page.pagination.total },
     applicationPaginationByCampaign: { [campaignId]: page.pagination },
@@ -862,7 +979,9 @@ async function loadCreatorApplications(userId: string, params: URLSearchParams) 
     keys,
   });
   return {
-    applications: page.items.map((row) => ({ ...row, format: normalizeContentType(row.format) ?? row.format })),
+    applications: await attachApplicationStatusHistory(
+      page.items.map((row) => ({ ...row, format: normalizeContentType(row.format) ?? row.format })),
+    ),
     pagination: page.pagination,
   };
 }
@@ -1013,8 +1132,9 @@ export async function GET(req: Request) {
       if (section === "profiles" || section === "openCampaigns") {
         throw new ListingQueryError("invalid_filter", "Please choose a valid filter.");
       }
+      const [brandCounts, brandProfile] = await Promise.all([loadBrandCounts(user.id), loadBrandProfile(user.id)]);
       const counts = {
-        ...(await loadBrandCounts(user.id)),
+        ...brandCounts,
         notifications: notificationData.notificationTotal,
         unreadNotifications: notificationData.unreadNotificationCount,
       };
@@ -1023,6 +1143,7 @@ export async function GET(req: Request) {
           {
             user,
             activeView,
+            brandProfile,
             counts,
             notifications: notificationData.notifications,
             unreadNotificationCount: notificationData.unreadNotificationCount,
@@ -1040,6 +1161,7 @@ export async function GET(req: Request) {
           {
             user,
             activeView,
+            brandProfile,
             counts,
             applications: applicationPage.applications,
             applicationCountsByCampaign: applicationPage.applicationCountsByCampaign,
@@ -1061,6 +1183,7 @@ export async function GET(req: Request) {
         {
           user,
           activeView,
+          brandProfile,
           counts,
           campaigns: campaignPage.campaigns,
           applications: groupedApplications.applications,

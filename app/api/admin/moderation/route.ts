@@ -1,12 +1,12 @@
 import { db } from "@/backend/db";
-import { applications, campaigns, contacts, creators, reports } from "@/backend/db/schema";
+import { applications, brands, campaigns, contacts, creators, reports, userSessions, users } from "@/backend/db/schema";
 import { adminSessionUnavailableResponse, isAdmin, isAdminSessionUnavailableError, logAdminSessionUnavailable } from "@/backend/admin";
 import { logAdminAudit } from "@/backend/admin-audit";
 import { createVerificationCode, normalizeReviewStatus } from "@/backend/moderation";
 import { MAX_FOLLOWERS, hasField, parseIntegerField, parseOptionalText, parseUuid, readJsonObject } from "@/backend/validation";
 import { normalizeInstagramUrl, normalizeProfileUrl, normalizeYouTubeUrl } from "@/backend/social-url";
 import { isCompletedCreatorProfile } from "@/backend/application-contact";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +51,7 @@ export async function POST(req: Request) {
     const note = parsedNote.value;
     const now = new Date();
 
-    if (entity !== "creator" && entity !== "campaign" && entity !== "report" && entity !== "application" && entity !== "contact") {
+    if (entity !== "creator" && entity !== "campaign" && entity !== "report" && entity !== "application" && entity !== "contact" && entity !== "user" && entity !== "brand") {
       return invalidTarget();
     }
     if (!id) return invalidTarget();
@@ -63,6 +63,55 @@ export async function POST(req: Request) {
         entityId: id,
         details,
       });
+
+    if (entity === "user") {
+      const [existing] = await db
+        .select({ id: users.id, role: users.role, tokenVersion: users.tokenVersion })
+        .from(users)
+        .where(eq(users.id, id))
+        .limit(1);
+      if (!existing) return Response.json({ error: "User not found", code: "user_not_found" }, { status: 404, headers: NO_STORE });
+      if (action !== "revoke_sessions") return Response.json({ error: "Invalid user action", code: "invalid_action" }, { status: 400, headers: NO_STORE });
+
+      const revoked = await db.transaction(async (tx) => {
+        const [user] = await tx.select({ tokenVersion: users.tokenVersion }).from(users).where(eq(users.id, id)).limit(1).for("update");
+        if (!user) return null;
+        await tx.update(users).set({ tokenVersion: user.tokenVersion + 1 }).where(eq(users.id, id));
+        const sessions = await tx
+          .update(userSessions)
+          .set({ revokedAt: now })
+          .where(and(eq(userSessions.userId, id), isNull(userSessions.revokedAt)))
+          .returning({ id: userSessions.id });
+        return { count: sessions.length, tokenVersion: user.tokenVersion + 1 };
+      });
+      if (!revoked) return Response.json({ error: "User not found", code: "user_not_found" }, { status: 404, headers: NO_STORE });
+      await auditModeration({ sessionsRevoked: revoked.count, sessionVersion: revoked.tokenVersion });
+      return Response.json({ ok: true, user: { id, revokedSessions: revoked.count } }, { headers: NO_STORE });
+    }
+
+    if (entity === "brand") {
+      const [existing] = await db.select().from(brands).where(eq(brands.id, id)).limit(1);
+      if (!existing) return Response.json({ error: "Brand record not found", code: "brand_not_found" }, { status: 404, headers: NO_STORE });
+      if (action !== "sync") return Response.json({ error: "Invalid brand action", code: "invalid_action" }, { status: 400, headers: NO_STORE });
+
+      const [account] = await db
+        .select({ email: users.email, phone: users.phone })
+        .from(users)
+        .where(eq(users.id, existing.userId))
+        .limit(1);
+      if (!account) return Response.json({ error: "User not found", code: "user_not_found" }, { status: 404, headers: NO_STORE });
+
+      const [brand] = await db
+        .update(brands)
+        .set({ email: account.email, phone: account.phone, status: "active" })
+        .where(eq(brands.id, id))
+        .returning({ id: brands.id, userId: brands.userId, name: brands.name, email: brands.email, phone: brands.phone, status: brands.status, createdAt: brands.createdAt });
+      await auditModeration({
+        emailChanged: existing.email !== account.email,
+        phoneChanged: existing.phone !== account.phone,
+      });
+      return Response.json({ ok: true, brand }, { headers: NO_STORE });
+    }
 
     if (entity === "creator") {
       const [existing] = await db.select().from(creators).where(eq(creators.id, id)).limit(1);

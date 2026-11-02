@@ -226,6 +226,14 @@ export async function changeUserPhone({
       .set({ phone })
       .where(eq(users.id, user.id))
       .returning({ phone: users.phone });
+    // The one-to-one brand record is an account-contact snapshot. Keep it in
+    // sync when it was still using the old account phone (or had none), while
+    // leaving a deliberately different brand contact untouched. Campaign and
+    // creator-profile contact fields remain separately editable.
+    await tx
+      .update(brands)
+      .set({ phone })
+      .where(and(eq(brands.userId, user.id), user.phone ? eq(brands.phone, user.phone) : isNull(brands.phone)));
     return { kind: "changed", phone: updated.phone } as const;
   });
 }

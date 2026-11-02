@@ -16,6 +16,7 @@ import {
   type ValidationResult,
 } from "@/backend/validation";
 import { createApplicationNotification, sendApplicationNotificationEmailBestEffort } from "@/backend/notifications";
+import { attachApplicationStatusHistory } from "@/backend/application-history";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { getClientKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
 import { APPLICATION_STATUSES, type ApplicationStatus, type NotificationKind } from "@/shared/constants";
@@ -217,12 +218,14 @@ export async function GET(req: Request) {
     });
     return Response.json(
       {
-        applications: items.map(({ application, campaignTitle, campaignBusinessName, creatorLabel }) => ({
-          ...application,
-          campaignLabel: campaignTitle ? `${campaignTitle} (${campaignBusinessName ?? ""})` : null,
-          campaignMissing: campaignTitle === null,
-          creatorLabel: creatorLabel ?? application.creatorName,
-        })),
+        applications: await attachApplicationStatusHistory(
+          items.map(({ application, campaignTitle, campaignBusinessName, creatorLabel }) => ({
+            ...application,
+            campaignLabel: campaignTitle ? `${campaignTitle} (${campaignBusinessName ?? ""})` : null,
+            campaignMissing: campaignTitle === null,
+            creatorLabel: creatorLabel ?? application.creatorName,
+          })),
+        ),
         pagination,
       },
       { headers: NO_STORE },

@@ -11,9 +11,11 @@ import {
   VERIFICATION_STATUSES,
 } from "@/shared/constants";
 import { normalizeInstagramUrl, normalizeProfileUrl, normalizeYouTubeUrl } from "@/shared/social-url";
+import { contactLinks } from "@/shared/contact-links";
+import { USER_ROLES } from "@/shared/user-roles";
 
-type Tab = "campaigns" | "creators" | "reports" | "applications" | "contacts" | "audit";
-type ModerationEntity = "campaign" | "creator" | "report" | "application" | "contact";
+type Tab = "campaigns" | "creators" | "reports" | "applications" | "contacts" | "audit" | "users" | "brands";
+type ModerationEntity = "campaign" | "creator" | "report" | "application" | "contact" | "user" | "brand";
 
 interface AdminCounts {
   campaigns: number;
@@ -22,6 +24,8 @@ interface AdminCounts {
   contacts: number;
   reports: number;
   auditLogs: number;
+  users: number;
+  brands: number;
   pendingCampaigns: number;
   pendingCreators: number;
   pendingReviews: number;
@@ -39,6 +43,8 @@ const DEFAULT_ADMIN_SORT: Record<Tab, string> = {
   applications: "newest",
   contacts: "newest",
   audit: "newest",
+  users: "newest",
+  brands: "newest",
 };
 const AUDIT_ACTION_KEYS: Readonly<Record<string, TranslationKey>> = {
   approve: "admin.auditAction.approve",
@@ -50,6 +56,8 @@ const AUDIT_ACTION_KEYS: Readonly<Record<string, TranslationKey>> = {
   resolve: "admin.auditAction.resolve",
   dismiss: "admin.auditAction.dismiss",
   reopen: "admin.auditAction.reopen",
+  revoke_sessions: "admin.auditAction.revoke_sessions",
+  sync: "admin.auditAction.sync",
 };
 
 const AUDIT_DETAIL_KEYS: Readonly<Record<string, TranslationKey>> = {
@@ -67,6 +75,12 @@ const AUDIT_DETAIL_KEYS: Readonly<Record<string, TranslationKey>> = {
   priorFailures: "admin.auditDetail.priorFailures",
   sessionVersion: "admin.auditDetail.sessionVersion",
   revokedAllSessions: "admin.auditDetail.revokedAllSessions",
+  sessionsRevoked: "admin.auditDetail.sessionsRevoked",
+  emailChanged: "admin.auditDetail.emailChanged",
+  phoneChanged: "admin.auditDetail.phoneChanged",
+  rows: "admin.auditDetail.rows",
+  total: "admin.auditDetail.total",
+  format: "admin.auditDetail.format",
 };
 
 const AUDIT_REASON_KEYS: Readonly<Record<string, TranslationKey>> = {
@@ -83,6 +97,8 @@ const emptyAdminCounts = (): AdminCounts => ({
   contacts: 0,
   reports: 0,
   auditLogs: 0,
+  users: 0,
+  brands: 0,
   pendingCampaigns: 0,
   pendingCreators: 0,
   pendingReviews: 0,
@@ -96,9 +112,12 @@ const emptyAdminListState = (): Record<Tab, AdminListState> => ({
   applications: { ...emptyAdminQuery("applications"), rows: [], pagination: null, loaded: false },
   contacts: { ...emptyAdminQuery("contacts"), rows: [], pagination: null, loaded: false },
   audit: { ...emptyAdminQuery("audit"), rows: [], pagination: null, loaded: false },
+  users: { ...emptyAdminQuery("users"), rows: [], pagination: null, loaded: false },
+  brands: { ...emptyAdminQuery("brands"), rows: [], pagination: null, loaded: false },
 });
 const adminEntityForTab = (tab: Tab) => (tab === "audit" ? "auditLogs" : tab);
-const adminFilterParamForTab = (tab: Tab) => (tab === "contacts" ? "kind" : tab === "audit" ? "outcome" : "status");
+const adminFilterParamForTab = (tab: Tab) =>
+  tab === "contacts" ? "kind" : tab === "audit" ? "outcome" : tab === "users" ? "role" : "status";
 
 function statusClass(status?: string | null, isReport = false) {
   if (isReport && status === "open") return "bg-red-100 text-red-800";
@@ -206,6 +225,45 @@ function ProfileLinks({
   );
 }
 
+function ContactValue({ value, platform }: { value?: string | null; platform?: string | null }) {
+  const { t } = useLang();
+  const links = contactLinks(value, platform);
+  if (!links.display) return <span className="text-stone-600">—</span>;
+  const primaryHref =
+    links.kind === "whatsapp"
+      ? links.whatsappHref
+      : links.kind === "phone"
+        ? links.telHref
+        : links.mailtoHref ?? links.profileHref;
+  const external = Boolean(links.profileHref || links.kind === "whatsapp");
+  const actionClass = "rounded-md border border-[#e9ddc3] bg-white px-2 py-0.5 text-[11px] font-bold text-[#1c1917] hover:bg-[#fff4de]";
+  return (
+    <div>
+      {primaryHref ? (
+        <a
+          href={primaryHref}
+          {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+          className="break-all text-[12px] font-semibold text-[#c7431f] hover:underline"
+        >
+          {links.display}
+        </a>
+      ) : (
+        <span className="break-all text-[12px] font-semibold text-stone-700">{links.display}</span>
+      )}
+      {(links.kind === "phone" || links.kind === "whatsapp") && (links.telHref || links.whatsappHref) && (
+        <span className="mt-1 flex flex-wrap gap-1">
+          {links.telHref && <a href={links.telHref} className={actionClass}>{t("contact.call")}</a>}
+          {links.whatsappHref && (
+            <a href={links.whatsappHref} target="_blank" rel="noopener noreferrer" className={actionClass}>
+              {t("contact.whatsapp")}
+            </a>
+          )}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const {
     t,
@@ -232,6 +290,7 @@ export default function AdminPage() {
   const [errKey, setErrKey] = useState<TranslationKey | "">("");
   const [noticeKey, setNoticeKey] = useState<TranslationKey | "">("");
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [busyKey, setBusyKey] = useState("");
   const [verifiedFollowers, setVerifiedFollowers] = useState<Record<string, string>>({});
 
@@ -245,6 +304,7 @@ export default function AdminPage() {
     setTotp("");
     setNoticeKey("");
     setBusyKey("");
+    setExporting(false);
     setAuthed(false);
   };
 
@@ -262,7 +322,7 @@ export default function AdminPage() {
     const params = new URLSearchParams({ entity, limit: String(ADMIN_PAGE_SIZE), sort: activeQuery.sort });
     if (activeQuery.q.trim()) params.set("q", activeQuery.q.trim());
     if (activeQuery.filter) params.set(adminFilterParamForTab(targetTab), activeQuery.filter);
-    if ((targetTab === "campaigns" || targetTab === "creators") && activeQuery.verificationStatus) {
+    if ((targetTab === "campaigns" || targetTab === "creators" || targetTab === "users") && activeQuery.verificationStatus) {
       params.set("verificationStatus", activeQuery.verificationStatus);
     }
     if (cursor) params.set("cursor", cursor);
@@ -339,6 +399,53 @@ export default function AdminPage() {
     void load(tab, { append: true, cursor });
   };
 
+  const openAdminTabWithSearch = (nextTab: Tab, q: string) => {
+    const query = { ...emptyAdminQuery(nextTab), q };
+    setTab(nextTab);
+    setAdminDraft(query);
+    if (authed) void load(nextTab, { query });
+  };
+
+  const exportAdminRows = async () => {
+    if (exporting || loading) return;
+    const entity = adminEntityForTab(tab);
+    const query = { ...adminDraft, q: adminDraft.q.trim() };
+    const params = new URLSearchParams({ entity, format: "csv", sort: query.sort });
+    if (query.q) params.set("q", query.q);
+    if (query.filter) params.set(adminFilterParamForTab(tab), query.filter);
+    if ((tab === "campaigns" || tab === "creators" || tab === "users") && query.verificationStatus) {
+      params.set("verificationStatus", query.verificationStatus);
+    }
+
+    setExporting(true);
+    setErrKey("");
+    setNoticeKey("");
+    try {
+      const res = await fetch(`/api/admin/data?${params.toString()}`, { credentials: "include", cache: "no-store" });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setErrKey(apiErrorKey(res.status, d?.code, "admin.exportFailed"));
+        return;
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition") ?? "";
+      const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? `yaarlink-admin-${entity}.csv`;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setNoticeKey("admin.exportReady");
+    } catch {
+      setErrKey("admin.exportFailed");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   useEffect(() => { void Promise.resolve().then(() => load("campaigns")); }, []);
 
   const moderate = async (entity: ModerationEntity, id: string, action: string, extra: Record<string, unknown> = {}) => {
@@ -359,6 +466,8 @@ export default function AdminPage() {
       );
       if (!confirmed) return;
     }
+    if (action === "revoke_sessions" && !window.confirm(t("admin.confirmRevokeSessions"))) return;
+    if (action === "sync" && !window.confirm(t("admin.confirmSyncBrand"))) return;
 
     let note: string | undefined;
     if (["reject", "suspend", "close", "review"].includes(action)) {
@@ -498,6 +607,8 @@ export default function AdminPage() {
   const contacts = listState.contacts.rows;
   const reports = listState.reports.rows;
   const auditLogs = listState.audit.rows;
+  const userRows = listState.users.rows;
+  const brandRows = listState.brands.rows;
   const pendingReviews = counts.pendingReviews;
   const openReports = counts.openReports;
   const activeList = listState[tab];
@@ -506,15 +617,18 @@ export default function AdminPage() {
 
   const formatDate = formatDateTime;
   const statusLabel = (status?: string | null) => (status ? localizeStatus(status) : "—");
+  const roleLabel = (role?: string | null) =>
+    role === "brand" ? t("dash.brandAccount") : role === "creator" ? t("dash.creatorAccount") : "—";
   const entityLabel = (entity?: string | null) =>
     entity ? localizeEntity(entity) : t("admin.adminEntity");
   const contactKindLabel = (kind?: string | null) => (kind ? localizeContactKind(kind) : "—");
   const reportReasonLabel = (reason?: string | null) =>
     reason ? localizeReportReason(reason) : "—";
-  const auditActionLabel = (action?: string | null) => {
+  const auditActionLabel = (action?: string | null, entity?: string | null) => {
     if (!action) return "—";
     if (action === "admin.login") return t("admin.auditLogin");
     if (action === "admin.logout") return t("admin.auditLogout");
+    if (action === "admin.export") return t("admin.auditExport", { entity: entityLabel(entity) });
     const match = /^moderation\.([^.]+)\.([^.]+)$/.exec(action);
     if (!match) return t("admin.auditAction.unknown");
     const actionKey = AUDIT_ACTION_KEYS[match[2]];
@@ -560,7 +674,11 @@ export default function AdminPage() {
             ? APPLICATION_STATUSES.map((value) => ({ value, label: statusLabel(value) }))
             : tab === "contacts"
               ? ["brand", "creator", "other"].map((value) => ({ value, label: contactKindLabel(value) }))
-              : ["success", "failure"].map((value) => ({ value, label: statusLabel(value) }));
+              : tab === "users"
+                ? USER_ROLES.map((value) => ({ value, label: roleLabel(value) }))
+                : tab === "brands"
+                  ? ["active"].map((value) => ({ value, label: statusLabel(value) }))
+                  : ["success", "failure"].map((value) => ({ value, label: statusLabel(value) }));
   const adminSortOptions =
     tab === "campaigns"
       ? [
@@ -603,7 +721,22 @@ export default function AdminPage() {
                   { value: "name", label: t("listing.sortName") },
                   { value: "kind", label: t("admin.type") },
                 ]
-              : [
+              : tab === "users"
+                ? [
+                    { value: "newest", label: t("listing.sortNewest") },
+                    { value: "oldest", label: t("listing.sortOldest") },
+                    { value: "name", label: t("listing.sortName") },
+                    { value: "email", label: t("brand.email") },
+                    { value: "role", label: t("account.role") },
+                  ]
+                : tab === "brands"
+                  ? [
+                      { value: "newest", label: t("listing.sortNewest") },
+                      { value: "oldest", label: t("listing.sortOldest") },
+                      { value: "name", label: t("listing.sortName") },
+                      { value: "status", label: t("listing.sortStatus") },
+                    ]
+                  : [
                   { value: "newest", label: t("listing.sortNewest") },
                   { value: "oldest", label: t("listing.sortOldest") },
                   { value: "action", label: t("admin.action") },
@@ -629,8 +762,10 @@ export default function AdminPage() {
       <h1 className="font-display text-[30px] font-black sm:text-[40px]">{t("admin.overview")}</h1>
       <p className="text-[14.5px] text-[#6f6862]">{t("admin.overviewSub")}</p>
 
-      <div className="mt-6 grid gap-3 sm:grid-cols-3 xl:grid-cols-6">
+      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
         {[
+          { a: counts.users, b: t("admin.users") },
+          { a: counts.brands, b: t("admin.brands") },
           { a: counts.campaigns, b: t("admin.campaigns") },
           { a: counts.creators, b: t("admin.creators") },
           { a: counts.applications, b: t("admin.applications") },
@@ -653,6 +788,8 @@ export default function AdminPage() {
         {([
           { id: "campaigns", label: t("admin.campaigns") },
           { id: "creators", label: t("admin.creators") },
+          { id: "users", label: t("admin.users") },
+          { id: "brands", label: t("admin.brands") },
           { id: "reports", label: `${t("admin.reports")}${openReports ? ` (${formatNumber(openReports)})` : ""}` },
           { id: "applications", label: t("admin.applications") },
           { id: "contacts", label: t("admin.contacts") },
@@ -675,18 +812,18 @@ export default function AdminPage() {
           <input id="admin-search" name="q" type="search" autoComplete="off" value={adminDraft.q} onChange={(e) => setAdminDraft((current) => ({ ...current, q: e.target.value }))} placeholder={t("listing.searchItems")} className={adminControlClass} />
         </label>
         <label htmlFor="admin-filter">
-          <span className="sr-only">{tab === "contacts" ? t("admin.type") : tab === "audit" ? t("admin.outcome") : t("listing.filterStatus")}</span>
+          <span className="sr-only">{tab === "contacts" ? t("admin.type") : tab === "audit" ? t("admin.outcome") : tab === "users" ? t("account.role") : t("listing.filterStatus")}</span>
           <select id="admin-filter" name="filter" autoComplete="off" value={adminDraft.filter} onChange={(e) => setAdminDraft((current) => ({ ...current, filter: e.target.value }))} className={adminControlClass}>
-            <option value="">{tab === "contacts" ? t("admin.type") : tab === "audit" ? t("admin.outcome") : t("listing.allStatuses")}</option>
+            <option value="">{tab === "contacts" ? t("admin.type") : tab === "audit" ? t("admin.outcome") : tab === "users" ? t("admin.allRoles") : t("listing.allStatuses")}</option>
             {adminFilterOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
-        {(tab === "campaigns" || tab === "creators") && (
+        {(tab === "campaigns" || tab === "creators" || tab === "users") && (
           <label htmlFor="admin-verification-filter">
             <span className="sr-only">{t("admin.verification")}</span>
             <select id="admin-verification-filter" name="verificationStatus" autoComplete="off" value={adminDraft.verificationStatus} onChange={(e) => setAdminDraft((current) => ({ ...current, verificationStatus: e.target.value }))} className={adminControlClass}>
               <option value="">{t("listing.allVerification")}</option>
-              {VERIFICATION_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
+              {(tab === "users" ? ["verified", "unverified"] : VERIFICATION_STATUSES).map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
             </select>
           </label>
         )}
@@ -705,6 +842,9 @@ export default function AdminPage() {
               {t("listing.clearFilters")}
             </button>
           )}
+          <button type="button" disabled={loading || exporting} onClick={() => void exportAdminRows()} className="rounded-xl border border-[#1c1917] bg-white px-4 py-2.5 text-[13.5px] font-bold disabled:opacity-50">
+            {exporting ? t("admin.exporting") : t("admin.exportCsv")}
+          </button>
         </div>
       </form>
 
@@ -738,7 +878,10 @@ export default function AdminPage() {
                     <td className="max-w-[230px] p-4">
                       <p className="font-semibold">{c.businessName}</p>
                       {c.contactName && <p>{c.contactName}</p>}
-                      <p className="break-all text-[12px] text-[#6f6862]">{c.phone || ""}{c.phone && c.email ? <br /> : null}{c.email || ""}</p>
+                      <div className="grid gap-1">
+                        {c.phone && <ContactValue value={c.phone} />}
+                        {c.email && <ContactValue value={c.email} />}
+                      </div>
                       {c.website && (
                         websiteLink ? (
                           <a href={websiteLink} target="_blank" rel="noopener noreferrer" className="mt-1 block break-all text-[12px] font-semibold text-[#c7431f] hover:underline">
@@ -810,7 +953,10 @@ export default function AdminPage() {
                   <tr key={c.id} className="border-b border-[#faf3e0] align-top">
                     <td className="max-w-[220px] p-4">
                       <p className="font-bold">{c.name}</p>
-                      <p className="break-all text-[12px] text-[#6f6862]">{c.phone || ""}{c.phone && c.email ? <br /> : null}{c.email || ""}</p>
+                      <div className="grid gap-1">
+                        {c.phone && <ContactValue value={c.phone} />}
+                        {c.email && <ContactValue value={c.email} />}
+                      </div>
                       <p className="mt-1 text-[11.5px] text-[#6f6862]">{formatDate(c.createdAt)}</p>
                     </td>
                     <td className="p-4"><ProfileLinks links={[{ value: c.profileUrl, kind: "profile" }, { value: c.instagram, kind: "instagram" }, { value: c.youtube, kind: "youtube" }]} platform={c.platform} /></td>
@@ -904,7 +1050,7 @@ export default function AdminPage() {
                     </td>
                     <td className="max-w-[220px] p-4">
                       {r.reporterName && <p>{r.reporterName}</p>}
-                      {r.reporterContact && <p className="break-all text-[12px] text-[#6f6862]">{r.reporterContact}</p>}
+                      {r.reporterContact && <ContactValue value={r.reporterContact} />}
                       {!r.reporterName && !r.reporterContact && <span className="text-stone-600">{t("admin.anonymous")}</span>}
                     </td>
                     <td className="p-4">
@@ -962,13 +1108,26 @@ export default function AdminPage() {
                     </td>
                     <td className="max-w-[240px] p-4">{a.campaignLabel || (a.campaignMissing ? t("admin.deletedCampaign") : a.campaignId)}</td>
                     <td className="max-w-[300px] p-4">
-                      {a.creatorContact && <p className="break-all font-semibold">{a.creatorContact}</p>}
+                      {a.creatorContact && <ContactValue value={a.creatorContact} />}
                       {a.message && <p className="mt-1 text-[12.5px] leading-relaxed text-[#6f6862]">{a.message}</p>}
                       {a.decisionNote && <p className="mt-1 text-[12px] text-[#6f6862]">{t("dash.brandNote")}: {a.decisionNote}</p>}
                     </td>
                     <td className="p-4">
                       <StatusPill status={a.status} />
                       {a.decisionAt && <p className="mt-1 text-[11.5px] text-[#6f6862]">{t("dash.updatedOn")} {formatDate(a.decisionAt)}</p>}
+                      {Array.isArray(a.statusHistory) && a.statusHistory.length > 0 && (
+                        <div className="mt-2 min-w-[190px]">
+                          <p className="text-[10.5px] font-bold uppercase tracking-widest text-[#6f6862]">{t("dash.statusHistory")}</p>
+                          <ol className="mt-1 grid gap-1">
+                            {a.statusHistory.map((event: any, index: number) => (
+                              <li key={`${event.status}-${event.at}-${index}`} className="flex flex-wrap justify-between gap-x-2 text-[11px]">
+                                <span className="font-bold">{statusLabel(event.status)}</span>
+                                <time dateTime={event.at} className="text-[#6f6862]">{formatDate(event.at)}</time>
+                              </li>
+                            ))}
+                          </ol>
+                        </div>
+                      )}
                     </td>
                     <td className="p-4">
                       <ActionButton tone="danger" disabled={busy} onClick={() => moderate("application", a.id, "delete")}>
@@ -1003,7 +1162,13 @@ export default function AdminPage() {
                     </td>
                     <td className="p-4">{contactKindLabel(c.kind)}</td>
                     <td className="max-w-[320px] p-4">{c.message}</td>
-                    <td className="max-w-[220px] break-all p-4">{c.phone || c.email}</td>
+                    <td className="max-w-[220px] p-4">
+                      <div className="grid gap-1">
+                        {c.phone && <ContactValue value={c.phone} />}
+                        {c.email && <ContactValue value={c.email} />}
+                        {!c.phone && !c.email && <span className="text-stone-600">—</span>}
+                      </div>
+                    </td>
                     <td className="p-4">
                       <ActionButton tone="danger" disabled={busy} onClick={() => moderate("contact", c.id, "delete")}>
                         {t("admin.deleteSpam")}
@@ -1032,7 +1197,7 @@ export default function AdminPage() {
                 return (
                   <tr key={log.id} className="border-b border-[#faf3e0] align-top">
                     <td className="whitespace-nowrap p-4 text-[12.5px] text-[#6f6862]">{formatDate(log.createdAt)}</td>
-                    <td className="p-4 text-[12.5px] font-bold">{auditActionLabel(log.action)}</td>
+                    <td className="p-4 text-[12.5px] font-bold">{auditActionLabel(log.action, log.entity)}</td>
                     <td className="p-4"><StatusPill status={log.outcome} /></td>
                     <td className="max-w-[220px] p-4">
                       {log.entity ? <p className="font-semibold">{entityLabel(log.entity)}</p> : <span className="text-stone-600">{t("admin.adminEntity")}</span>}
@@ -1051,6 +1216,141 @@ export default function AdminPage() {
                       )}
                       {log.ipAddress && <p className="mt-1 text-[11.5px] text-[#6f6862]">{t("admin.ipAddress")}: {log.ipAddress}</p>}
                       {detailEntries.length === 0 && !log.ipAddress && <span className="text-stone-600">—</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+        {tab === "users" && (
+          <table className="w-full min-w-[980px] text-left text-[13.5px]">
+            <thead>
+              <tr className="border-b border-[#f0e6cc] text-[#6f6862]">
+                <th scope="col" className="p-4">{t("admin.userContact")}</th>
+                <th scope="col" className="p-4">{t("admin.account")}</th>
+                <th scope="col" className="p-4">{t("admin.activity")}</th>
+                <th scope="col" className="p-4">{t("admin.actions")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {userRows.map((u: any) => {
+                const busy = busyKey.startsWith(`user:${u.id}:`);
+                return (
+                  <tr key={u.id} className="border-b border-[#faf3e0] align-top">
+                    <td className="max-w-[250px] p-4">
+                      <p className="font-bold">{u.name}</p>
+                      <div className="mt-1 grid gap-1">
+                        <ContactValue value={u.email} />
+                        {u.phone && <ContactValue value={u.phone} />}
+                      </div>
+                      <p className="mt-1 text-[11.5px] text-[#6f6862]">{formatDate(u.createdAt)}</p>
+                      <p className="break-all text-[11px] text-[#6f6862]">{u.id}</p>
+                    </td>
+                    <td className="max-w-[260px] p-4">
+                      <p className="font-semibold">{roleLabel(u.role)}</p>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        <span className="text-[11.5px] font-bold text-[#6f6862]">{t("brand.email")}:</span>
+                        <StatusPill status={u.emailVerifiedAt ? "verified" : "unverified"} />
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        <span className="text-[11.5px] font-bold text-[#6f6862]">{t("admin.brandProfile")}:</span>
+                        {u.hasBrandProfile ? <StatusPill status={u.brandStatus || "active"} /> : <span>{t("admin.no")}</span>}
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        <span className="text-[11.5px] font-bold text-[#6f6862]">{t("admin.creatorProfile")}:</span>
+                        {u.creatorProfile ? (
+                          <>
+                            <StatusPill status={u.creatorProfile.status} />
+                            <StatusPill status={u.creatorProfile.verificationStatus} />
+                          </>
+                        ) : <span>{t("admin.no")}</span>}
+                      </div>
+                    </td>
+                    <td className="min-w-[180px] p-4">
+                      <p>{t("admin.campaignCount", { count: formatNumber(u.campaignCount || 0) })}</p>
+                      <p className="mt-1">{t("admin.applicationCount", { count: formatNumber(u.applicationCount || 0) })}</p>
+                      <p className="mt-1">{t("admin.activeSessions", { count: formatNumber(u.activeSessionCount || 0) })}</p>
+                    </td>
+                    <td className="p-4">
+                      <div className="flex max-w-[220px] flex-wrap gap-1.5">
+                        <ActionButton tone="danger" disabled={busy} onClick={() => moderate("user", u.id, "revoke_sessions")}>
+                          {t("admin.revokeSessions")}
+                        </ActionButton>
+                        {u.hasBrandProfile && (
+                          <ActionButton disabled={loading} onClick={() => openAdminTabWithSearch("brands", u.brandProfileId ?? u.id)}>
+                            {t("admin.viewBrand")}
+                          </ActionButton>
+                        )}
+                        {u.creatorProfile && (
+                          <ActionButton disabled={loading} onClick={() => openAdminTabWithSearch("creators", u.creatorProfile.id)}>
+                            {t("detail.viewCreator")}
+                          </ActionButton>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+        {tab === "brands" && (
+          <table className="w-full min-w-[980px] text-left text-[13.5px]">
+            <thead>
+              <tr className="border-b border-[#f0e6cc] text-[#6f6862]">
+                <th scope="col" className="p-4">{t("admin.brandContact")}</th>
+                <th scope="col" className="p-4">{t("admin.linkedAccount")}</th>
+                <th scope="col" className="p-4">{t("admin.activity")}</th>
+                <th scope="col" className="p-4">{t("admin.actions")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {brandRows.map((b: any) => {
+                const busy = busyKey.startsWith(`brand:${b.id}:`) || busyKey.startsWith(`user:${b.userId}:`);
+                return (
+                  <tr key={b.id} className="border-b border-[#faf3e0] align-top">
+                    <td className="max-w-[250px] p-4">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-bold">{b.name}</p>
+                        <StatusPill status={b.status} />
+                      </div>
+                      <div className="mt-1 grid gap-1">
+                        {b.phone && <ContactValue value={b.phone} />}
+                        {b.email && <ContactValue value={b.email} />}
+                        {!b.phone && !b.email && <span className="text-stone-600">—</span>}
+                      </div>
+                      <p className="mt-1 text-[11.5px] text-[#6f6862]">{formatDate(b.createdAt)}</p>
+                      <p className="break-all text-[11px] text-[#6f6862]">{b.id}</p>
+                    </td>
+                    <td className="max-w-[260px] p-4">
+                      <p className="font-semibold">{b.accountName}</p>
+                      <p className="mt-0.5 text-[12.5px] text-[#57534e]">{roleLabel(b.accountRole)}</p>
+                      <div className="mt-1 grid gap-1">
+                        <ContactValue value={b.accountEmail} />
+                        {b.accountPhone && <ContactValue value={b.accountPhone} />}
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        <span className="text-[11.5px] font-bold text-[#6f6862]">{t("brand.email")}:</span>
+                        <StatusPill status={b.accountEmailVerifiedAt ? "verified" : "unverified"} />
+                      </div>
+                    </td>
+                    <td className="min-w-[190px] p-4">
+                      <p>{t("admin.campaignCount", { count: formatNumber(b.campaignCount || 0) })}</p>
+                      <p className="mt-1">{t("admin.receivedApplicationCount", { count: formatNumber(b.applicationsReceivedCount || 0) })}</p>
+                    </td>
+                    <td className="p-4">
+                      <div className="flex max-w-[230px] flex-wrap gap-1.5">
+                        <ActionButton tone="warning" disabled={busy} onClick={() => moderate("brand", b.id, "sync")}>
+                          {t("admin.syncBrandContact")}
+                        </ActionButton>
+                        <ActionButton tone="danger" disabled={busy} onClick={() => moderate("user", b.userId, "revoke_sessions")}>
+                          {t("admin.revokeSessions")}
+                        </ActionButton>
+                        <ActionButton disabled={loading} onClick={() => openAdminTabWithSearch("users", b.userId)}>
+                          {t("admin.viewUser")}
+                        </ActionButton>
+                      </div>
                     </td>
                   </tr>
                 );
