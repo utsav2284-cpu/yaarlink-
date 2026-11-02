@@ -77,7 +77,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
   en: {
     privacy: {
       title: "Privacy Policy",
-      intro: "This policy explains what personal information YaarLink collects on theyaar.com, why we use it, when it is public or shared, and the choices you have.",
+      intro: `This policy explains what personal information YaarLink collects on ${SITE.domain}, why we use it, when it is public or shared, and the choices you have.`,
       actions: [
         { label: "Your data rights", href: "/data-rights", primary: true },
         { label: "Account & security", href: "/account" },
@@ -87,7 +87,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
         {
           heading: "1. Who we are",
           paragraphs: [
-            "YaarLink operates theyaar.com, a marketplace that helps brands and local businesses discover creators, meme pages and communities, and helps creators find campaign opportunities.",
+            `YaarLink operates ${SITE.domain}, a marketplace that helps brands and local businesses discover creators, meme pages and communities, and helps creators find campaign opportunities.`,
             "For privacy questions or grievances, contact YaarLink support using the email address or contact page shown at the end of this policy. YaarLink is based in Punjab, India.",
           ],
         },
@@ -179,7 +179,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
     },
     terms: {
       title: "Terms of Service",
-      intro: "These terms govern your use of YaarLink and theyaar.com. By creating an account or using the marketplace, you agree to these terms and the Privacy Policy.",
+      intro: `These terms govern your use of YaarLink and ${SITE.domain}. By creating an account or using the marketplace, you agree to these terms and the Privacy Policy.`,
       actions: [
         { label: "Privacy Policy", href: "/privacy", primary: true },
         { label: "Payments & Refunds", href: "/refund-policy" },
@@ -276,7 +276,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
         {
           heading: "1. No website checkout at present",
           bullets: [
-            "Creating an account, joining as a creator, posting a campaign for review and applying to a campaign do not trigger an online payment on theyaar.com.",
+            `Creating an account, joining as a creator, posting a campaign for review and applying to a campaign do not trigger an online payment on ${SITE.domain}.`,
             "The budget entered on a campaign form is the brand's intended campaign budget. It is not a payment, deposit, escrow balance, price guarantee or amount held by YaarLink. Likewise, an optional quote in a creator application is not collected, held or guaranteed by YaarLink.",
             "YaarLink does not ask for card details, bank-login details or a UPI PIN through website forms. Stop and contact support if anyone claiming to represent YaarLink asks for those secrets.",
           ],
@@ -446,7 +446,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
   hi: {
     privacy: {
       title: "प्राइवेसी नीति",
-      intro: "यह नीति बताती है कि YaarLink theyaar.com पर कौन-सी व्यक्तिगत जानकारी इकट्ठा करता है, उसका उपयोग क्यों करता है, वह कब सार्वजनिक या शेयर होती है, और आपके पास क्या विकल्प हैं।",
+      intro: `यह नीति बताती है कि YaarLink ${SITE.domain} पर कौन-सी व्यक्तिगत जानकारी इकट्ठा करता है, उसका उपयोग क्यों करता है, वह कब सार्वजनिक या शेयर होती है, और आपके पास क्या विकल्प हैं।`,
       actions: [
         { label: "आपके डेटा अधिकार", href: "/data-rights", primary: true },
         { label: "अकाउंट और सुरक्षा", href: "/account" },
@@ -456,7 +456,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
         {
           heading: "1. हम कौन हैं",
           paragraphs: [
-            "YaarLink theyaar.com चलाता है—एक मार्केटप्लेस जो ब्रांड और लोकल बिज़नेस को क्रिएटर्स, मीम पेज और कम्युनिटीज़ खोजने तथा क्रिएटर्स को कैंपेन अवसर खोजने में मदद करता है।",
+            `YaarLink ${SITE.domain} चलाता है—एक मार्केटप्लेस जो ब्रांड और लोकल बिज़नेस को क्रिएटर्स, मीम पेज और कम्युनिटीज़ खोजने तथा क्रिएटर्स को कैंपेन अवसर खोजने में मदद करता है।`,
             "प्राइवेसी प्रश्न या शिकायत के लिए इस नीति के अंत में दिए ईमेल या संपर्क पेज से YaarLink सपोर्ट से संपर्क करें। YaarLink पंजाब, भारत में स्थित है।",
           ],
         },
@@ -548,7 +548,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
     },
     terms: {
       title: "सेवा की शर्तें",
-      intro: "ये शर्तें YaarLink और theyaar.com के आपके उपयोग को नियंत्रित करती हैं। अकाउंट बनाने या मार्केटप्लेस उपयोग करने पर आप इन शर्तों और प्राइवेसी नीति से सहमत होते हैं।",
+      intro: `ये शर्तें YaarLink और ${SITE.domain} के आपके उपयोग को नियंत्रित करती हैं। अकाउंट बनाने या मार्केटप्लेस उपयोग करने पर आप इन शर्तों और प्राइवेसी नीति से सहमत होते हैं।`,
       actions: [
         { label: "प्राइवेसी नीति", href: "/privacy", primary: true },
         { label: "पेमेंट और रिफंड", href: "/refund-policy" },
@@ -645,7 +645,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
         {
           heading: "1. अभी वेबसाइट चेकआउट नहीं है",
           bullets: [
-            "अकाउंट बनाना, क्रिएटर के रूप में जुड़ना, जाँच के लिए कैंपेन पोस्ट करना और कैंपेन के लिए अप्लाई करना theyaar.com पर ऑनलाइन पेमेंट शुरू नहीं करता।",
+            `अकाउंट बनाना, क्रिएटर के रूप में जुड़ना, जाँच के लिए कैंपेन पोस्ट करना और कैंपेन के लिए अप्लाई करना ${SITE.domain} पर ऑनलाइन पेमेंट शुरू नहीं करता।`,
             "कैंपेन फॉर्म में लिखा बजट ब्रांड का इच्छित कैंपेन बजट है। यह पेमेंट, जमा, एस्क्रो बैलेंस, कीमत गारंटी या YaarLink के पास रखी राशि नहीं है। इसी तरह, क्रिएटर आवेदन में दी गई वैकल्पिक कीमत YaarLink द्वारा इकट्ठा, रखी या गारंटी नहीं दी जाती।",
             "YaarLink वेबसाइट फॉर्म के ज़रिए कार्ड विवरण, बैंक-लॉगिन विवरण या UPI PIN नहीं माँगता। यदि YaarLink का प्रतिनिधि बताकर कोई ये रहस्य माँगे तो रुकें और सपोर्ट से संपर्क करें।",
           ],
@@ -815,7 +815,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
   pa: {
     privacy: {
       title: "ਪਰਾਈਵੇਸੀ ਨੀਤੀ",
-      intro: "ਇਹ ਨੀਤੀ ਦੱਸਦੀ ਹੈ ਕਿ YaarLink theyaar.com 'ਤੇ ਕਿਹੜੀ ਨਿੱਜੀ ਜਾਣਕਾਰੀ ਇਕੱਠੀ ਕਰਦਾ ਹੈ, ਉਸ ਨੂੰ ਕਿਉਂ ਵਰਤਦਾ ਹੈ, ਉਹ ਕਦੋਂ ਜਨਤਕ ਜਾਂ ਸਾਂਝੀ ਹੁੰਦੀ ਹੈ, ਅਤੇ ਤੁਹਾਡੇ ਕੋਲ ਕੀ ਚੋਣਾਂ ਹਨ।",
+      intro: `ਇਹ ਨੀਤੀ ਦੱਸਦੀ ਹੈ ਕਿ YaarLink ${SITE.domain} 'ਤੇ ਕਿਹੜੀ ਨਿੱਜੀ ਜਾਣਕਾਰੀ ਇਕੱਠੀ ਕਰਦਾ ਹੈ, ਉਸ ਨੂੰ ਕਿਉਂ ਵਰਤਦਾ ਹੈ, ਉਹ ਕਦੋਂ ਜਨਤਕ ਜਾਂ ਸਾਂਝੀ ਹੁੰਦੀ ਹੈ, ਅਤੇ ਤੁਹਾਡੇ ਕੋਲ ਕੀ ਚੋਣਾਂ ਹਨ।`,
       actions: [
         { label: "ਤੁਹਾਡੇ ਡੇਟਾ ਹੱਕ", href: "/data-rights", primary: true },
         { label: "ਅਕਾਊਂਟ ਅਤੇ ਸੁਰੱਖਿਆ", href: "/account" },
@@ -825,7 +825,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
         {
           heading: "1. ਅਸੀਂ ਕੌਣ ਹਾਂ",
           paragraphs: [
-            "YaarLink theyaar.com ਚਲਾਉਂਦਾ ਹੈ—ਇੱਕ ਮਾਰਕੀਟਪਲੇਸ ਜੋ ਬ੍ਰਾਂਡ ਅਤੇ ਲੋਕਲ ਕਾਰੋਬਾਰਾਂ ਨੂੰ ਕ੍ਰਿਏਟਰ, ਮੀਮ ਪੇਜ ਅਤੇ ਕਮਿਊਨਿਟੀਆਂ ਲੱਭਣ ਅਤੇ ਕ੍ਰਿਏਟਰਾਂ ਨੂੰ ਕੈਂਪੇਨ ਮੌਕੇ ਲੱਭਣ ਵਿੱਚ ਮਦਦ ਕਰਦਾ ਹੈ।",
+            `YaarLink ${SITE.domain} ਚਲਾਉਂਦਾ ਹੈ—ਇੱਕ ਮਾਰਕੀਟਪਲੇਸ ਜੋ ਬ੍ਰਾਂਡ ਅਤੇ ਲੋਕਲ ਕਾਰੋਬਾਰਾਂ ਨੂੰ ਕ੍ਰਿਏਟਰ, ਮੀਮ ਪੇਜ ਅਤੇ ਕਮਿਊਨਿਟੀਆਂ ਲੱਭਣ ਅਤੇ ਕ੍ਰਿਏਟਰਾਂ ਨੂੰ ਕੈਂਪੇਨ ਮੌਕੇ ਲੱਭਣ ਵਿੱਚ ਮਦਦ ਕਰਦਾ ਹੈ।`,
             "ਪਰਾਈਵੇਸੀ ਸਵਾਲ ਜਾਂ ਸ਼ਿਕਾਇਤ ਲਈ ਇਸ ਨੀਤੀ ਦੇ ਅੰਤ ਵਿੱਚ ਦਿੱਤੀ ਈਮੇਲ ਜਾਂ ਸੰਪਰਕ ਪੇਜ ਰਾਹੀਂ YaarLink ਸਪੋਰਟ ਨਾਲ ਸੰਪਰਕ ਕਰੋ। YaarLink ਪੰਜਾਬ, ਭਾਰਤ ਵਿੱਚ ਸਥਿਤ ਹੈ।",
           ],
         },
@@ -917,7 +917,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
     },
     terms: {
       title: "ਸੇਵਾ ਦੀਆਂ ਸ਼ਰਤਾਂ",
-      intro: "ਇਹ ਸ਼ਰਤਾਂ YaarLink ਅਤੇ theyaar.com ਦੀ ਤੁਹਾਡੀ ਵਰਤੋਂ ਨੂੰ ਨਿਯੰਤਰਿਤ ਕਰਦੀਆਂ ਹਨ। ਅਕਾਊਂਟ ਬਣਾਉਣ ਜਾਂ ਮਾਰਕੀਟਪਲੇਸ ਵਰਤਣ 'ਤੇ ਤੁਸੀਂ ਇਹਨਾਂ ਸ਼ਰਤਾਂ ਅਤੇ ਪਰਾਈਵੇਸੀ ਨੀਤੀ ਨਾਲ ਸਹਿਮਤ ਹੁੰਦੇ ਹੋ।",
+      intro: `ਇਹ ਸ਼ਰਤਾਂ YaarLink ਅਤੇ ${SITE.domain} ਦੀ ਤੁਹਾਡੀ ਵਰਤੋਂ ਨੂੰ ਨਿਯੰਤਰਿਤ ਕਰਦੀਆਂ ਹਨ। ਅਕਾਊਂਟ ਬਣਾਉਣ ਜਾਂ ਮਾਰਕੀਟਪਲੇਸ ਵਰਤਣ 'ਤੇ ਤੁਸੀਂ ਇਹਨਾਂ ਸ਼ਰਤਾਂ ਅਤੇ ਪਰਾਈਵੇਸੀ ਨੀਤੀ ਨਾਲ ਸਹਿਮਤ ਹੁੰਦੇ ਹੋ।`,
       actions: [
         { label: "ਪਰਾਈਵੇਸੀ ਨੀਤੀ", href: "/privacy", primary: true },
         { label: "ਪੇਮੈਂਟ ਅਤੇ ਰਿਫੰਡ", href: "/refund-policy" },
@@ -1014,7 +1014,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
         {
           heading: "1. ਹਾਲੇ ਵੈੱਬਸਾਈਟ ਚੈੱਕਆਊਟ ਨਹੀਂ ਹੈ",
           bullets: [
-            "ਅਕਾਊਂਟ ਬਣਾਉਣਾ, ਕ੍ਰਿਏਟਰ ਵਜੋਂ ਜੁੜਨਾ, ਜਾਂਚ ਲਈ ਕੈਂਪੇਨ ਪੋਸਟ ਕਰਨਾ ਅਤੇ ਕੈਂਪੇਨ ਲਈ ਅਪਲਾਈ ਕਰਨਾ theyaar.com 'ਤੇ ਔਨਲਾਈਨ ਪੇਮੈਂਟ ਸ਼ੁਰੂ ਨਹੀਂ ਕਰਦਾ।",
+            `ਅਕਾਊਂਟ ਬਣਾਉਣਾ, ਕ੍ਰਿਏਟਰ ਵਜੋਂ ਜੁੜਨਾ, ਜਾਂਚ ਲਈ ਕੈਂਪੇਨ ਪੋਸਟ ਕਰਨਾ ਅਤੇ ਕੈਂਪੇਨ ਲਈ ਅਪਲਾਈ ਕਰਨਾ ${SITE.domain} 'ਤੇ ਔਨਲਾਈਨ ਪੇਮੈਂਟ ਸ਼ੁਰੂ ਨਹੀਂ ਕਰਦਾ।`,
             "ਕੈਂਪੇਨ ਫਾਰਮ ਵਿੱਚ ਲਿਖਿਆ ਬਜਟ ਬ੍ਰਾਂਡ ਦਾ ਇੱਛਿਤ ਕੈਂਪੇਨ ਬਜਟ ਹੈ। ਇਹ ਪੇਮੈਂਟ, ਜਮ੍ਹਾ, ਐਸਕ੍ਰੋ ਬੈਲੰਸ, ਕੀਮਤ ਗਾਰੰਟੀ ਜਾਂ YaarLink ਕੋਲ ਰੱਖੀ ਰਕਮ ਨਹੀਂ ਹੈ। ਇਸੇ ਤਰ੍ਹਾਂ, ਕ੍ਰਿਏਟਰ ਅਰਜ਼ੀ ਵਿੱਚ ਦਿੱਤੀ ਚੋਣਵੀਂ ਕੀਮਤ YaarLink ਵੱਲੋਂ ਇਕੱਠੀ, ਰੱਖੀ ਜਾਂ ਗਾਰੰਟੀ ਨਹੀਂ ਦਿੱਤੀ ਜਾਂਦੀ।",
             "YaarLink ਵੈੱਬਸਾਈਟ ਫਾਰਮ ਰਾਹੀਂ ਕਾਰਡ ਵੇਰਵੇ, ਬੈਂਕ-ਲਾਗਇਨ ਵੇਰਵੇ ਜਾਂ UPI PIN ਨਹੀਂ ਮੰਗਦਾ। ਜੇ YaarLink ਦਾ ਪ੍ਰਤਿਨਿਧੀ ਦੱਸ ਕੇ ਕੋਈ ਇਹ ਗੁਪਤ ਜਾਣਕਾਰੀ ਮੰਗੇ ਤਾਂ ਰੁਕੋ ਅਤੇ ਸਪੋਰਟ ਨਾਲ ਸੰਪਰਕ ਕਰੋ।",
           ],

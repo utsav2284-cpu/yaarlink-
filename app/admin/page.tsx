@@ -859,11 +859,13 @@ export default function AdminPage() {
         else if (detailKey === "reason") {
           const reasonKey = AUDIT_REASON_KEYS[String(rawValue)];
           value = reasonKey ? t(reasonKey) : t("common.unknown");
-        } else value = String(rawValue);
+        } else if (detailKey === "targetId" || detailKey === "campaignId") value = String(rawValue);
+        else if (detailKey === "format" && /^[a-z0-9_-]{1,20}$/i.test(String(rawValue))) value = String(rawValue).toUpperCase();
+        else value = t("common.unknown");
         return [label, value] as [string, string];
       });
     } catch {
-      return [[t("admin.details"), details]];
+      return [[t("admin.details"), t("common.unknown")]];
     }
   };
 
@@ -898,7 +900,7 @@ export default function AdminPage() {
       .filter((field): field is string => typeof field === "string")
       .map((field) => {
         const labelKey = ACTIVITY_FIELD_KEYS[field];
-        return labelKey ? t(labelKey).replace(/\s*\*$/, "") : field;
+        return labelKey ? t(labelKey).replace(/\s*\*$/, "") : t("common.unknown");
       });
   };
   const activityMetadataEntries = (metadata: unknown): Array<[string, string]> => {

@@ -537,7 +537,9 @@ export const reports = pgTable(
   ],
 );
 
-// Key/value settings for the site owner (e.g. hashed admin password).
+// Non-secret key/value platform settings (campaign expiry policy, the admin
+// session-version and TOTP replay counters). Credentials and signing secrets
+// come only from server environment variables — never from this table.
 export const settings = pgTable("settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),

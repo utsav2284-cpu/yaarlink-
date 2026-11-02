@@ -53,6 +53,10 @@ Important events include:
 
 - `startup.configuration_failed` — server secret/configuration validation
   failed during startup.
+- `startup.site_configuration_warning` — a public origin/contact/social
+  setting in `config/site.ts` is malformed. The record contains only the
+  field names and stable issue codes, never the configured values; the
+  affected link builder returns no link until the setting is fixed.
 - `request.unhandled` — Next.js reported an unhandled server request/render
   error through `onRequestError`.
 - `request.failed` — a handled route/page failure; use `route`, `component`,

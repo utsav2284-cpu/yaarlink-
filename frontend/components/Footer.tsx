@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { Logo } from "./Navbar";
 import { useLang } from "@/frontend/i18n";
-import { SITE, callLink, gmailComposeLink, instagramLink, mailtoLink, whatsappLink } from "@/config/site";
+import { SITE, callLink, gmailComposeLink, instagramLink, mailtoLink, splitSiteDomain, whatsappLink } from "@/config/site";
 import ContactLink from "./ContactLink";
 
 export default function Footer() {
   const { t, formatNumber } = useLang();
+  const domainParts = splitSiteDomain(SITE.domain);
   return (
     <footer className="bg-[#14100d] text-[#e7e5e4]">
       <div className="mx-auto max-w-6xl px-4 py-14 sm:px-6">
@@ -82,13 +83,13 @@ export default function Footer() {
         </nav>
         <a
           href={SITE.url}
-          className="font-display mt-10 block select-none whitespace-nowrap text-center text-[11vw] font-black leading-[0.9] tracking-tight text-white/45 transition hover:text-white/60 md:text-[150px]"
+          className="font-display mt-10 block select-none break-all text-center text-[11vw] font-black leading-[0.95] tracking-tight text-white/45 transition hover:text-white/60 md:text-[150px]"
           aria-label={`${SITE.domain} — ${t("nav.home")}`}
         >
-          the<span className="text-[#ffc53d]/70">yaar</span>.com
+          {domainParts.prefix}<span className="text-[#ffc53d]/70">{domainParts.highlight}</span>{domainParts.suffix}
         </a>
         <div className="mt-6 flex flex-col gap-2 border-t border-white/10 pt-6 text-[12.5px] text-[#a8a29e] sm:flex-row sm:items-center sm:justify-between">
-          <p>© {formatNumber(2026, { useGrouping: false })} YaarLink · <span className="font-bold text-[#ffc53d]">{SITE.domain}</span> · {t("foot.rights")} • {t("foot.tagline")}</p>
+          <p>© {formatNumber(new Date().getFullYear(), { useGrouping: false })} YaarLink · <span className="font-bold text-[#ffc53d]">{SITE.domain}</span> · {t("foot.rights")} • {t("foot.tagline")}</p>
           <p>{t("foot.principle")}</p>
         </div>
       </div>

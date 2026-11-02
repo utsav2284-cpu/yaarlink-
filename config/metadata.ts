@@ -20,8 +20,8 @@ function truncateDescription(value: string, maxLength = 180): string {
  * Complete, self-canonical metadata for one route.
  *
  * The path is intentionally relative: the root layout sets `metadataBase`
- * from `SITE.url`, so Next resolves it against the canonical
- * `https://www.theyaar.com` origin instead of the redirecting apex.
+ * from `SITE.url`, so Next resolves it against the canonical configured
+ * origin instead of the redirecting apex.
  * Title, description, Open Graph, and Twitter fields are all generated from
  * the route's own localized copy. Child metadata replaces parent social
  * objects during merging, so returning the full set here prevents a route
@@ -43,7 +43,7 @@ export async function canonicalMetadata(path: string): Promise<Metadata> {
       ? `YaarLink · ${SITE.domain} — ${translate("foot.tagline")}`
       : `YaarLink · ${SITE.domain}`;
   const description = truncateDescription(
-    translate(ROUTE_DESCRIPTION_KEYS[path] ?? "meta.siteDescription"),
+    translate(ROUTE_DESCRIPTION_KEYS[path] ?? "meta.siteDescription").replaceAll("{domain}", SITE.domain),
   );
   const indexable = !NO_INDEX_ROUTES.has(path);
 

@@ -1,4 +1,5 @@
 import { ImageResponse } from "next/og";
+import { SITE } from "@/config/site";
 
 export const alt = "YaarLink — simple marketing for brands, creators, and local pages";
 export const size = { width: 1200, height: 630 };
@@ -30,14 +31,19 @@ export default function OpenGraphImage() {
               justifyContent: "center",
               borderRadius: 24,
               background: "#1c1917",
-              color: "#ffc53d",
-              fontFamily: "Georgia, serif",
-              fontSize: 62,
-              fontWeight: 900,
-              lineHeight: 1,
             }}
           >
-            y
+            {/* Same vector mark as app/icon.svg — paths, not font-dependent text. */}
+            <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+              <path
+                d="M16 14 L31 35 L46 14 M31 35 L22.5 50.5 Q18.5 57.5 10.5 55.5"
+                stroke="#ffc53d"
+                strokeWidth="7"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <circle cx="47" cy="19" r="5" fill="#e4572e" />
+            </svg>
           </div>
           <div style={{ display: "flex", fontSize: 54, fontWeight: 900, letterSpacing: -2 }}>
             <span>yaar</span>
@@ -75,8 +81,8 @@ export default function OpenGraphImage() {
             fontWeight: 700,
           }}
         >
-          <span>www.theyaar.com</span>
-          <span style={{ color: "#c7431f" }}>theyaar.com</span>
+          <span>{SITE.host}</span>
+          <span style={{ color: "#c7431f" }}>{SITE.domain}</span>
         </div>
       </div>
     ),
