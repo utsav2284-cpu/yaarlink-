@@ -1,4 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { SITE } from "@/config/site";
+import { isAllowedMutationOrigin } from "@/shared/csrf";
 import { REQUEST_ID_HEADER, requestIdFromHeaders } from "@/shared/observability";
 
 const CSP_REPORT_PATH = "/api/security/csp-report";
@@ -9,14 +11,21 @@ function isHttpsRequest(request: NextRequest): boolean {
   return request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() === "https";
 }
 
-function reportEndpointUrl(request: NextRequest): string {
-  // `nextUrl.origin` can be the server's bind address (for example 0.0.0.0)
-  // behind a platform proxy. Reporting-Endpoints needs the public origin the
-  // browser used, so prefer the forwarded/request host and protocol.
-  const host =
+function effectiveRequestHost(request: NextRequest): string {
+  // `nextUrl.host` can be the server's bind address (for example 0.0.0.0)
+  // behind a platform proxy, so prefer the forwarded/request host the
+  // browser actually used.
+  return (
     request.headers.get("x-forwarded-host")?.split(",")[0]?.trim() ||
     request.headers.get("host")?.trim() ||
-    request.nextUrl.host;
+    request.nextUrl.host
+  );
+}
+
+function reportEndpointUrl(request: NextRequest): string {
+  // Reporting-Endpoints needs the public origin the browser used, so prefer
+  // the forwarded/request host and protocol over `nextUrl.origin`.
+  const host = effectiveRequestHost(request);
   const forwardedProtocol = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
   const protocol =
     forwardedProtocol === "http" || forwardedProtocol === "https"
@@ -68,9 +77,31 @@ export function proxy(request: NextRequest) {
   requestHeaders.set("x-yaarlink-pathname", request.nextUrl.pathname);
 
   // API responses keep their static deny-all CSP from next.config.ts. The
-  // proxy's only API job is to establish one correlation ID that route logs
-  // and the response share.
+  // proxy establishes one correlation ID that route logs and the response
+  // share, and refuses cross-origin state-changing requests before any
+  // route handler can act on ambient cookie credentials (CSRF). The CSP
+  // report endpoint is exempt: it is unauthenticated browser machinery that
+  // changes no state and must keep accepting reports.
   if (request.nextUrl.pathname.startsWith("/api/")) {
+    if (
+      request.nextUrl.pathname !== CSP_REPORT_PATH &&
+      !isAllowedMutationOrigin({
+        method: request.method,
+        origin: request.headers.get("origin"),
+        referer: request.headers.get("referer"),
+        secFetchSite: request.headers.get("sec-fetch-site"),
+        requestHost: effectiveRequestHost(request),
+        allowedHosts: [SITE.host, SITE.domain],
+      })
+    ) {
+      const blocked = NextResponse.json(
+        { error: "Cross-origin request blocked.", code: "forbidden_origin" },
+        { status: 403, headers: { "Cache-Control": "private, no-store" } },
+      );
+      if (requestId) blocked.headers.set(REQUEST_ID_HEADER, requestId);
+      return blocked;
+    }
+
     const response = NextResponse.next({
       request: {
         headers: requestHeaders,

@@ -11,6 +11,7 @@ import {
   isDiagnosticTokenValid,
   toPublicDatabaseHealth,
 } from "@/backend/health-diagnostics";
+import { logRouteEvent } from "@/backend/observability";
 import { getHealthDiagnosticToken } from "@/backend/secret-config";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +19,10 @@ export const dynamic = "force-dynamic";
 const NO_STORE = { "Cache-Control": "private, no-store" };
 
 type DiagnosticAccess = "authorized" | "public" | "invalid-authorization";
+type DiagnosticAccessResult = {
+  access: DiagnosticAccess;
+  via: "bearer-token" | "admin-session" | null;
+};
 
 function healthHeaders(ok: boolean): Headers {
   const headers = new Headers(NO_STORE);
@@ -29,7 +34,7 @@ function healthHeaders(ok: boolean): Headers {
   return headers;
 }
 
-async function getDiagnosticAccess(request: Request): Promise<DiagnosticAccess> {
+async function getDiagnosticAccess(request: Request): Promise<DiagnosticAccessResult> {
   const authorization = request.headers.get("authorization");
 
   // A caller that explicitly supplies credentials is asking for diagnostics.
@@ -37,24 +42,34 @@ async function getDiagnosticAccess(request: Request): Promise<DiagnosticAccess> 
   // which could make an expired monitoring credential look successful.
   if (authorization !== null) {
     return isDiagnosticTokenValid(getBearerToken(authorization), getHealthDiagnosticToken())
-      ? "authorized"
-      : "invalid-authorization";
+      ? { access: "authorized", via: "bearer-token" }
+      : { access: "invalid-authorization", via: "bearer-token" };
   }
 
   // Query parameters—including the historical `diag` cache-buster—never grant
   // access. A valid, database-revocable admin session is the browser path.
-  if (!hasCookie(request.headers.get("cookie"), ADMIN_COOKIE)) return "public";
+  if (!hasCookie(request.headers.get("cookie"), ADMIN_COOKIE)) return { access: "public", via: null };
 
   try {
-    return (await isAdmin()) ? "authorized" : "public";
+    return (await isAdmin()) ? { access: "authorized", via: "admin-session" } : { access: "public", via: null };
   } catch (error) {
     if (isAdminSessionUnavailableError(error)) logAdminSessionUnavailable(error, request);
-    return "public";
+    return { access: "public", via: null };
   }
 }
 
 export async function GET(request: Request) {
-  const access = await getDiagnosticAccess(request);
+  const { access, via } = await getDiagnosticAccess(request);
+
+  // Diagnostics expose operational detail, so every privileged access—and
+  // every rejected credential—is audit-logged with the request correlation
+  // ID. The credential itself is never logged; anonymous public probes are
+  // expected uptime traffic and stay unlogged.
+  if (access === "authorized") {
+    logRouteEvent("info", "health.diagnostics_accessed", request, { component: "health", via });
+  } else if (access === "invalid-authorization") {
+    logRouteEvent("warn", "health.diagnostics_rejected", request, { component: "health", via });
+  }
 
   if (access === "invalid-authorization") {
     const headers = healthHeaders(false);
