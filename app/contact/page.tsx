@@ -7,6 +7,7 @@ import ContactLink from "@/frontend/components/ContactLink";
 import PrivacyNotice from "@/frontend/components/PrivacyNotice";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { readFormDraft, removeFormDraft, writeFormDraft } from "@/frontend/form-drafts";
+import { sanitizePhoneInput } from "@/shared/phone-input";
 import {
   SITE,
   callLink,
@@ -362,7 +363,7 @@ export default function ContactPage() {
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="grid gap-1.5" htmlFor="contact-phone">
                     <span className="text-[13.5px] font-bold">{t("cont.phoneWhatsApp")}</span>
-                    <input id="contact-phone" name="phone" type="tel" autoComplete="tel" aria-describedby="contact-reply-hint" value={form.phone} onChange={(e) => set("phone", e.target.value)} inputMode="tel" placeholder={t("brand.phPhone")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                    <input id="contact-phone" name="phone" type="tel" autoComplete="tel" aria-describedby="contact-reply-hint" value={form.phone} onChange={(e) => set("phone", sanitizePhoneInput(e.target.value))} inputMode="tel" placeholder={t("brand.phPhone")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                   </label>
                   <label className="grid gap-1.5" htmlFor="contact-email">
                     <span className="text-[13.5px] font-bold">{t("cont.email")}</span>

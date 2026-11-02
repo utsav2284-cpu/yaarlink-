@@ -128,6 +128,18 @@ function parseCampaign(
     phone = current?.phone ?? null;
   }
 
+  // Phone and email are both mandatory campaign contacts, matching the
+  // creator-profile rule and the brand form. An existing campaign that
+  // predates the rule is grandfathered when a PATCH simply omits the
+  // field, but explicitly clearing either contact — or creating a
+  // campaign without one — is rejected.
+  if (!email && (!current || supplied("email"))) {
+    return { ok: false, error: "Please enter a valid email.", code: "invalid_email", field: "email" };
+  }
+  if (!phone && (!current || supplied("phone"))) {
+    return { ok: false, error: "Please enter a valid phone number.", code: "invalid_phone", field: "phone" };
+  }
+
   let website: string | null;
   if (supplied("website")) {
     const rawWebsite = body.website;

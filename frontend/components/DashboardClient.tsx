@@ -29,6 +29,7 @@ import { useSession } from "@/frontend/session-context";
 import { buildAuthPath } from "@/shared/return-to";
 import { normalizeUserRole, USER_ROLES, type UserRole } from "@/shared/user-roles";
 import { contactLinks } from "@/shared/contact-links";
+import { sanitizePhoneInput } from "@/shared/phone-input";
 
 type User = {
   id: string;
@@ -1366,8 +1367,8 @@ export default function DashboardClient({
             </span>
           </label>
           <p id={`dashboard-campaign-${c.id}-contact-note`} className="text-[12.5px] font-semibold leading-relaxed text-[#6f6862] sm:col-span-2">{t("brand.contactNote")}</p>
-          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-phone`}>{t("brand.phone")}<input id={`dashboard-campaign-${c.id}-phone`} name="phone" type="tel" inputMode="tel" autoComplete="tel" aria-describedby={`dashboard-campaign-${c.id}-contact-note`} value={campaignForm.phone} onChange={(e) => set("phone", e.target.value)} placeholder={t("brand.phPhone")} className={inputClass} /></label>
-          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-email`}>{t("brand.email")}<input id={`dashboard-campaign-${c.id}-email`} name="email" type="email" inputMode="email" autoComplete="email" aria-describedby={`dashboard-campaign-${c.id}-contact-note`} value={campaignForm.email} onChange={(e) => set("email", e.target.value)} placeholder={t("brand.phEmail")} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-phone`}><span>{t("brand.phone")}<RequiredMark /></span><input id={`dashboard-campaign-${c.id}-phone`} name="phone" type="tel" inputMode="tel" autoComplete="tel" required aria-describedby={`dashboard-campaign-${c.id}-contact-note`} value={campaignForm.phone} onChange={(e) => set("phone", sanitizePhoneInput(e.target.value))} placeholder={t("brand.phPhone")} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-email`}><span>{t("brand.email")}<RequiredMark /></span><input id={`dashboard-campaign-${c.id}-email`} name="email" type="email" inputMode="email" autoComplete="email" required aria-describedby={`dashboard-campaign-${c.id}-contact-note`} value={campaignForm.email} onChange={(e) => set("email", e.target.value)} placeholder={t("brand.phEmail")} className={inputClass} /></label>
           <label className={`${labelClass} sm:col-span-2`} htmlFor={`dashboard-campaign-${c.id}-description`}>{t("brand.descLabel")}<textarea id={`dashboard-campaign-${c.id}-description`} name="description" autoComplete="off" value={campaignForm.description} onChange={(e) => set("description", e.target.value)} rows={4} placeholder={t("brand.phDesc")} className={inputClass} /></label>
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
@@ -1537,8 +1538,8 @@ export default function DashboardClient({
         )}
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-name`}>{t("cr.name")}<input autoFocus id={`dashboard-profile-${profile.id}-name`} name="name" autoComplete="name" required value={profileForm.name} onChange={(e) => set("name", e.target.value)} placeholder={t("cr.phName")} className={inputClass} /></label>
-          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-phone`}>{t("cr.phone")}<input id={`dashboard-profile-${profile.id}-phone`} name="phone" type="tel" inputMode="tel" autoComplete="tel" value={profileForm.phone} onChange={(e) => set("phone", e.target.value)} placeholder={t("brand.phPhone")} className={inputClass} /></label>
-          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-email`}>{t("cr.email")}<input id={`dashboard-profile-${profile.id}-email`} name="email" type="email" inputMode="email" autoComplete="email" value={profileForm.email} onChange={(e) => set("email", e.target.value)} placeholder={t("cr.phEmail")} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-phone`}>{t("cr.phone")}<input id={`dashboard-profile-${profile.id}-phone`} name="phone" type="tel" inputMode="tel" autoComplete="tel" required value={profileForm.phone} onChange={(e) => set("phone", sanitizePhoneInput(e.target.value))} placeholder={t("brand.phPhone")} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-email`}>{t("cr.email")}<input id={`dashboard-profile-${profile.id}-email`} name="email" type="email" inputMode="email" autoComplete="email" required value={profileForm.email} onChange={(e) => set("email", e.target.value)} placeholder={t("cr.phEmail")} className={inputClass} /></label>
           <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-location`}>{t("cr.city")}<input id={`dashboard-profile-${profile.id}-location`} name="location" autoComplete="address-level2" value={profileForm.location} onChange={(e) => set("location", e.target.value)} placeholder={t("cr.phCity")} className={inputClass} /></label>
           <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-platform`}><span>{t("cr.platform")}<RequiredMark /></span>
             <select id={`dashboard-profile-${profile.id}-platform`} name="platform" autoComplete="off" required value={profileForm.platform} onChange={(e) => set("platform", e.target.value)} className={inputClass}>

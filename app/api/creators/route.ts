@@ -131,6 +131,18 @@ function parseCreatorProfile(body: Record<string, unknown>, user: SessionUser, c
     phone = current?.phone ?? null;
   }
 
+  // Phone and email are both mandatory on a creator profile: brands need a
+  // reliable way to reach the creator, and the join form now requires both.
+  // A completed legacy row that predates this rule is grandfathered when a
+  // PATCH simply omits the field, but explicitly clearing either contact —
+  // or creating/completing a profile without one — is rejected.
+  if (!email && (!completedCurrent || supplied("email"))) {
+    return { ok: false, error: "Please enter a valid email.", code: "invalid_email", field: "email" };
+  }
+  if (!phone && (!completedCurrent || supplied("phone"))) {
+    return { ok: false, error: "Please enter a valid phone number.", code: "invalid_phone", field: "phone" };
+  }
+
   let platform: string;
   if (completedCurrent && !supplied("platform")) {
     // A completed legacy row can still carry a display label/key such as
