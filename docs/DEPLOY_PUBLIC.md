@@ -28,7 +28,7 @@ For the deployed application:
 
 Do not use `sslmode=no-verify`, `disable`, `prefer`, `require`, or `verify-ca` for a remote database. Without a configured CA, `backend/db/connection-config.ts` rejects those modes for remote hosts. When `DATABASE_CA_CERT` is set, the app strips the URL's SSL-mode parameters and passes that CA explicitly to node-postgres with `rejectUnauthorized: true`, so both the certificate chain and hostname are verified and a legacy weaker `sslmode` cannot downgrade the actual connection. New connection strings should still specify `verify-full` explicitly.
 
-For an existing production database, review schema changes and take a backup before applying them; do not blindly repeat an initial-provisioning push. A database created before the data-model/reporting fields must instead run the reviewed transactional file `backend/db/migrations/20261102_data_model_reporting.sql` with the verified-TLS Direct/Session provisioning URL (for example, `psql "$PROVISIONING_DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/db/migrations/20261102_data_model_reporting.sql`) before the matching application deployment. It includes historical listed-date, contact-source, brand-link, campaign-expiry, settings, and audit-table backfills that a schema-only push cannot reproduce; verify the commented read-only checks and `/api/health` afterward.
+For an existing production database, review schema changes and satisfy the verified-backup gate in [`BACKUP_AND_RECOVERY.md`](./BACKUP_AND_RECOVERY.md) before applying them; do not blindly repeat an initial-provisioning push or assume that a successful prior migration proves a backup exists. A database created before the data-model/reporting fields must instead run the reviewed transactional file `backend/db/migrations/20261102_data_model_reporting.sql` with the verified-TLS Direct/Session provisioning URL (for example, `psql "$PROVISIONING_DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/db/migrations/20261102_data_model_reporting.sql`) before the matching application deployment. It includes historical listed-date, contact-source, brand-link, campaign-expiry, settings, and audit-table backfills that a schema-only push cannot reproduce; verify the commented read-only checks and `/api/health` afterward.
 
 ## 2. Required production environment variables
 
@@ -61,6 +61,8 @@ Use different values for `SESSION_SECRET` and `ADMIN_SESSION_SECRET`, and use a 
 Optional admin MFA: set `ADMIN_TOTP_SECRET` to a valid Base32 TOTP secret (at least 16 Base32 characters) after enrolling that secret in the owner's authenticator app. When set, `/admin` requires the current six-digit code in addition to `ADMIN_PASSWORD`. If the value is invalid or too short, startup/admin login fail closed; it does not fall back to password-only access.
 
 Optional public-form challenge secret: generate `BOT_CHALLENGE_SECRET` separately and make it different from both session secrets. If unset, a validated `SESSION_SECRET` signs those short-lived, one-time challenges.
+
+Optional health-diagnostic credential: public `/api/health` responses contain only `ok`, `status`, and `checkedAt`. Detailed database/schema/pool diagnostics require either a valid admin session or `HEALTH_DIAGNOSTIC_TOKEN` sent as an HTTPS `Authorization: Bearer …` header. Generate that token separately with `openssl rand -hex 32`; weak or reused values fail startup. Never put it in a URL—the historical `?diag=…` value is only a cache-buster and does not authorize diagnostics.
 
 When a user creates or changes a password, the server checks it against known breached passwords through Have I Been Pwned's k-anonymity range API. Only the first five characters of the password's SHA-1 hash leave the server. If that check is unavailable, the password-setting request returns HTTP 503 instead of accepting an unchecked password. `PWNED_PASSWORDS_RANGE_URL` may point to a compatible HTTPS mirror; leave it unset for the public endpoint.
 
@@ -105,7 +107,7 @@ Before deploying, also confirm there is exactly one Vercel project connected to 
 
 After deployment, check:
 
-1. `/api/health` returns HTTP 200 with `{"ok":true,...}`. HTTP 503/`"status":"degraded"` means the database connection or required schema check failed.
+1. Public `/api/health` returns HTTP 200 with only `{"ok":true,"status":"ok","checkedAt":"…"}`. HTTP 503/`"status":"degraded"` means the database connection or required schema check failed. Use an admin session or the optional bearer diagnostic token when detailed checks/pool counters are needed; an invalid Authorization header returns HTTP 401.
 2. A document response has `Content-Security-Policy` and `Reporting-Endpoints`, and does **not** rely on `Content-Security-Policy-Report-Only`.
 3. Pages hydrate and forms work with no CSP errors in the browser console.
 4. Vercel logs show no database TLS/configuration errors. Sanitized CSP violations, if any, appear with the `[csp-report]` prefix.

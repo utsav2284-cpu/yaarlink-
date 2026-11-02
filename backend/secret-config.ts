@@ -197,7 +197,8 @@ export function adminPasswordProblem(
   if (
     value === env.SESSION_SECRET ||
     value === env.ADMIN_SESSION_SECRET ||
-    value === env.BOT_CHALLENGE_SECRET
+    value === env.BOT_CHALLENGE_SECRET ||
+    value === env.HEALTH_DIAGNOSTIC_TOKEN
   ) {
     return "shared";
   }
@@ -254,6 +255,36 @@ export function getBotChallengeSecret(env: SecretEnvironment = process.env): str
 }
 
 /**
+ * The health diagnostic credential is optional because a signed-in admin
+ * session can already authorize detailed health output. When an operator
+ * configures a bearer token for monitoring automation, it must be generated
+ * key material and must not reuse any authentication secret/password.
+ */
+export function healthDiagnosticTokenProblem(
+  env: SecretEnvironment = process.env,
+): SecretConfigurationProblem | null {
+  const token = env.HEALTH_DIAGNOSTIC_TOKEN;
+  if (!token?.trim()) return null;
+
+  if (
+    token === env.SESSION_SECRET ||
+    token === env.ADMIN_SESSION_SECRET ||
+    token === env.BOT_CHALLENGE_SECRET ||
+    token === env.ADMIN_PASSWORD
+  ) {
+    return { name: "HEALTH_DIAGNOSTIC_TOKEN", reason: "shared" };
+  }
+
+  const problem = signingSecretProblem(token);
+  return problem ? { name: "HEALTH_DIAGNOSTIC_TOKEN", reason: problem } : null;
+}
+
+export function getHealthDiagnosticToken(env: SecretEnvironment = process.env): string | null {
+  if (healthDiagnosticTokenProblem(env)) return null;
+  return env.HEALTH_DIAGNOSTIC_TOKEN?.trim() ? env.HEALTH_DIAGNOSTIC_TOKEN : null;
+}
+
+/**
  * Validate every authentication secret needed by the deployed app. Optional
  * values are validated whenever present; optional TOTP must not silently
  * degrade to password-only admin login because its value is malformed.
@@ -289,6 +320,9 @@ export function collectServerSecretProblems(env: SecretEnvironment = process.env
     const problem = adminTotpSecretProblem(env.ADMIN_TOTP_SECRET);
     if (problem) problems.push({ name: "ADMIN_TOTP_SECRET", reason: problem });
   }
+
+  const healthDiagnosticProblem = healthDiagnosticTokenProblem(env);
+  if (healthDiagnosticProblem) problems.push(healthDiagnosticProblem);
 
   return problems;
 }

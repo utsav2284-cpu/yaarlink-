@@ -76,7 +76,7 @@ Never use `sslmode=no-verify`, `disable`, `prefer`, `require`, or `verify-ca` fo
 | `RESEND_API_KEY` | Resend API key |
 | `EMAIL_FROM` | Verified sender, e.g. `YaarLink <no-reply@theyaar.com>` |
 
-Optional variables are documented in `.env.example`: `APP_URL`, `ADMIN_TOTP_SECRET`, `BOT_CHALLENGE_SECRET`, and `PWNED_PASSWORDS_RANGE_URL`.
+Optional variables are documented in `.env.example`: `APP_URL`, `ADMIN_TOTP_SECRET`, `BOT_CHALLENGE_SECRET`, `HEALTH_DIAGNOSTIC_TOKEN`, and `PWNED_PASSWORDS_RANGE_URL`.
 
 The server refuses to start when a required auth secret is missing, weak, copied from `.env.example`, or shared. The app needs no project-defined `NEXT_PUBLIC_*` variables, and the build fails if an unapproved or secret-like public variable name is configured. Signup also fails closed until the two email settings are present and the sending domain is verified in Resend.
 
@@ -95,7 +95,7 @@ HTTPS certificates are provisioned by Vercel automatically.
 
 ## 5 · Check everything works
 
-- `https://www.theyaar.com/api/health` → HTTP 200 with `{"ok":true,...}`. A failure returns HTTP 503 with `"status":"degraded"`; check `DATABASE_URL`, `DATABASE_CA_CERT`, and that the current database schema has been applied.
+- `https://www.theyaar.com/api/health` → HTTP 200 with only `{"ok":true,"status":"ok","checkedAt":"…"}`. A failure returns HTTP 503 with `"status":"degraded"`. Detailed schema/pool diagnostics require an admin session or `HEALTH_DIAGNOSTIC_TOKEN` in an `Authorization: Bearer …` header; keep the token out of URLs.
 - A page response includes an enforcing `Content-Security-Policy` header (not `Content-Security-Policy-Report-Only`) and a `Reporting-Endpoints` header
 - Sign up as a brand → verify the emailed link → create a campaign → it appears on your dashboard with the budget 🔒
 - Sign up as a creator (another email) → verify the emailed link → apply to the campaign → the brand sees it on their dashboard
@@ -119,7 +119,7 @@ Logs: Vercel → your project → **Logs**. CSP violations are logged with the `
 
 **Update the live site:** merge or push to `main`; Vercel deploys automatically.
 
-**Changed `backend/db/schema.ts`?** Apply and verify the corresponding database change in Supabase before deploying application code that depends on it. For an existing production database, review the exact SQL/diff and take a backup first; do not blindly push destructive schema changes.
+**Changed `backend/db/schema.ts`?** Apply and verify the corresponding database change in Supabase before deploying application code that depends on it. For an existing production database, review the exact SQL/diff and satisfy the verified-backup gate in [`docs/BACKUP_AND_RECOVERY.md`](./docs/BACKUP_AND_RECOVERY.md) first; do not blindly push destructive schema changes or infer that a backup exists from migration success.
 
 For an existing database that predates the data-model/reporting fields, run the reviewed transactional migration `backend/db/migrations/20261102_data_model_reporting.sql` before deploying code that expects it. Use the Direct/Session provisioning connection with verified TLS, for example `psql "$PROVISIONING_DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/db/migrations/20261102_data_model_reporting.sql`, then verify `/api/health`. This migration also performs the historical listed-date, contact-source, brand-link, campaign-expiry, settings, and audit-table backfills that a schema-only push cannot reproduce. A brand-new database provisioned from the current schema does not need those legacy backfills.
 
@@ -141,5 +141,5 @@ For a remote Supabase database from local development, either set `DATABASE_CA_C
 
 - **Login:** signed, httpOnly cookie (`backend/auth.ts`). Passwords are hashed with PBKDF2 via Web Crypto.
 - **Privacy:** budgets, phone numbers and applications are never in public APIs. Brands see only their own campaigns + applications (`/api/me/dashboard`); the owner sees everything at `/admin`.
-- **Database:** `backend/db/index.ts` uses one shared node-postgres pool per warm Node/Vercel instance, with an explicit size/timeout policy and an idle-client error handler. `backend/db/connection-config.ts` fails closed when a remote database URL does not require verified TLS, and `/api/health` verifies both connectivity and the required tables/columns.
+- **Database:** `backend/db/index.ts` uses one shared node-postgres pool per warm Node/Vercel instance, with an explicit size/timeout policy and an idle-client error handler. `backend/db/connection-config.ts` fails closed when a remote database URL does not require verified TLS. `/api/health` internally verifies connectivity and required tables/columns, but anonymous callers receive only overall status; the detailed checks and pool counters require admin/diagnostic authorization.
 - **Security headers:** `proxy.ts` generates a per-request CSP nonce so the enforcing policy can allow Next.js bootstrap/RSC scripts without `unsafe-inline`; the root layout renders dynamically for that nonce. Static security headers live in `next.config.ts`, and sanitized CSP reports are collected at `/api/security/csp-report`.
