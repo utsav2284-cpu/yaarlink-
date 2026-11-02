@@ -147,6 +147,9 @@ BEGIN
     -- The runtime role inserts and reads reporting history. UPDATE is also
     -- required for the actor/owner foreign keys' ON DELETE SET NULL action
     -- when an account is deleted; DELETE remains unavailable to the app.
+    -- Supabase's default privileges may already have granted DELETE when the
+    -- table was created, so remove it explicitly before granting the subset.
+    EXECUTE 'REVOKE DELETE ON TABLE audit_events FROM yaarlink_app';
     EXECUTE 'GRANT SELECT, INSERT, UPDATE ON TABLE audit_events TO yaarlink_app';
     DROP POLICY IF EXISTS yaarlink_app_audit_events_all ON audit_events;
     EXECUTE 'CREATE POLICY yaarlink_app_audit_events_all ON audit_events FOR ALL TO yaarlink_app USING (true) WITH CHECK (true)';
