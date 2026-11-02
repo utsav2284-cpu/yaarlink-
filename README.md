@@ -121,6 +121,8 @@ Logs: Vercel → your project → **Logs**. CSP violations are logged with the `
 
 **Changed `backend/db/schema.ts`?** Apply and verify the corresponding database change in Supabase before deploying application code that depends on it. For an existing production database, review the exact SQL/diff and take a backup first; do not blindly push destructive schema changes.
 
+For an existing database that predates the data-model/reporting fields, run the reviewed transactional migration `backend/db/migrations/20261102_data_model_reporting.sql` before deploying code that expects it. Use the Direct/Session provisioning connection with verified TLS, for example `psql "$PROVISIONING_DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/db/migrations/20261102_data_model_reporting.sql`, then verify `/api/health`. This migration also performs the historical listed-date, contact-source, brand-link, campaign-expiry, settings, and audit-table backfills that a schema-only push cannot reproduce. A brand-new database provisioned from the current schema does not need those legacy backfills.
+
 ---
 
 ## Run on your own computer

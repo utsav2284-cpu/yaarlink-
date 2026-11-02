@@ -96,9 +96,9 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
           bullets: [
             "Account information: your name, email address, optional phone number, preferred starting workspace (brand or creator), email-verification status, account dates, and a hashed password. We do not store your plain-text password.",
             "Pending-signup information: the details submitted before email verification and a hashed one-time verification token. A usable account is created only after verification.",
-            "Profile and campaign information: business or creator names, contact details, social profile links, category, languages, location, audience or follower information, campaign descriptions, budget, verification codes, and moderation status.",
-            "Application and communication information: the creator-profile name, the saved account/profile contact you select, the message you enter, application status and decision notes, notifications, contact-form messages, and listing reports.",
-            "Technical and security information: session identifiers, browser/device user-agent information, sign-in and activity times, hashed rate-limit and failed-sign-in identifiers, brief browser security-check results on public forms, IP addresses in security or admin audit logs where the hosting platform provides a trusted address, and limited hosting or email-delivery logs.",
+            "Profile and campaign information: business or creator names, contact details, social profile links, category, languages, location, audience or follower information, campaign descriptions, budget, application deadlines/expiry dates, verification codes, and moderation status.",
+            "Application and communication information: the creator-profile name, the saved account/profile contact you select, the message you enter, any optional quote or proposed timeline, a snapshot of the creator-profile details at application time (shown to the campaign brand only while that profile is public), application status/history and decision notes, notifications, contact-form messages, and listing reports.",
+            "Technical, security and activity information: session identifiers, browser/device user-agent information, sign-in and activity times, privacy-limited records of profile, campaign, application and moderation changes (such as the actor, affected item, status transition and changed field names, without copying private free-text values into the activity record), hashed rate-limit and failed-sign-in identifiers, brief browser security-check results on public forms, IP addresses in security or admin audit logs where the hosting platform provides a trusted address, and limited hosting or email-delivery logs.",
             "Preferences: your selected site language is stored in an essential first-party cookie and mirrored in your browser's local storage so the server can render pages in that language immediately.",
           ],
           paragraphs: [
@@ -121,14 +121,14 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
           heading: "4. What is public",
           bullets: [
             "An approved and verified creator profile may publicly show the creator or page name, social links, platform, verified follower count, category, languages, location, content types and bio. Creator phone numbers and email addresses are not included in the public listing response.",
-            "An open and verified campaign may publicly show the business name, campaign title and description, promotion type, category, location, language, target audience, format and website. Campaign budget, phone and email are not included in the public listing response.",
+            "An open and verified campaign may publicly show the business name, campaign title and description, promotion type, category, location, language, target audience, format, website and application deadline/expiry date. Campaign budget, phone and email are not included in the public listing response.",
             "Anything you place in a public profile or campaign field can be viewed, copied or indexed by others after the listing is approved. Do not put private personal information in public fields.",
           ],
         },
         {
           heading: "5. Applications and sharing",
           paragraphs: [
-            "When you apply to a campaign, only your creator-profile name, the phone, email or social contact saved on your account or completed creator profile that you select for that application, and your message are shared with that campaign's brand. YaarLink does not automatically substitute an account phone number, account email address or any other saved contact you do not select. You must select the saved contact you want the brand to use and confirm the sharing before submission.",
+            "When you apply to a campaign, your creator-profile name, the phone, email or social contact saved on your account or completed creator profile that you select for that application, your message, and any optional quote or proposed timeline you enter are shared with that campaign's brand. If your creator profile is public, the brand may also see a snapshot of the profile's public details as they were when you applied, alongside a link to the current public profile. YaarLink does not automatically substitute an account phone number, account email address or any other saved contact you do not select. You must select the saved contact you want the brand to use and confirm the sharing before submission.",
           ],
           bullets: [
             "The campaign brand and authorised YaarLink administrators can view application details needed to operate and moderate the marketplace.",
@@ -215,9 +215,9 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
           heading: "4. Applications and contacts",
           bullets: [
             "An account may apply only after completing its own creator profile, and may not apply to a campaign it owns.",
-            "A creator chooses one phone, email or social contact saved on their account or completed creator profile. By confirming submission, the creator authorises YaarLink to show the creator-profile name, selected contact and message to that campaign's brand.",
+            "A creator chooses one phone, email or social contact saved on their account or completed creator profile. By confirming submission, the creator authorises YaarLink to show the creator-profile name, selected contact, message and any optional quote or proposed timeline entered to that campaign's brand. While the creator profile is public, the brand may also see the snapshot of its public details captured at application time and a link to the current public profile.",
             "A brand may use applicant information only to evaluate and manage that application or campaign and related agreed work. The brand must not sell, rent, publish, spam or use it for unrelated marketing.",
-            "An application or status on YaarLink does not by itself create employment, agency, partnership or a payment guarantee. Brands and creators should confirm deliverables, usage rights, dates, price and payment method before work starts.",
+            "An application or status on YaarLink does not by itself create employment, agency, partnership or a payment guarantee. An optional quote or proposed timeline in an application is proposal information only; brands and creators should confirm deliverables, usage rights, dates, final price and payment method before work starts.",
             "YaarLink does not currently provide in-app chat, draft or content approval, posting-link or proof collection, content scheduling, or campaign-performance analytics. Exchange briefs, drafts, post links, screenshots and results through an agreed off-platform channel and keep your own records.",
             "A brand-set “completed” status records the brand’s off-platform confirmation; it is not YaarLink verification that a post was published or that views, clicks, enquiries or sales occurred.",
             "Dashboard notifications cover application received, withdrawn and status-change activity. Marketplace email notifications are best effort; YaarLink does not send new-campaign alerts.",
@@ -277,7 +277,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
           heading: "1. No website checkout at present",
           bullets: [
             "Creating an account, joining as a creator, posting a campaign for review and applying to a campaign do not trigger an online payment on theyaar.com.",
-            "The budget entered on a campaign form is the brand's intended campaign budget. It is not a payment, deposit, escrow balance, price guarantee or amount held by YaarLink.",
+            "The budget entered on a campaign form is the brand's intended campaign budget. It is not a payment, deposit, escrow balance, price guarantee or amount held by YaarLink. Likewise, an optional quote in a creator application is not collected, held or guaranteed by YaarLink.",
             "YaarLink does not ask for card details, bank-login details or a UPI PIN through website forms. Stop and contact support if anyone claiming to represent YaarLink asks for those secrets.",
           ],
         },
@@ -335,7 +335,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
         {
           heading: "1. Choices available to you",
           bullets: [
-            "Access a copy of your account, profile, campaign, application, notification, report and session information through the data download.",
+            "Access a copy of your account, profile, campaign, application, notification, report, activity-history and session information through the data download.",
             "Correct inaccurate account, profile, campaign or application information, subject to listing-review rules.",
             "Withdraw an eligible application so it is no longer active for the brand.",
             "Withdraw consent for future processing where consent is the basis for that processing; withdrawal does not undo lawful sharing that already happened.",
@@ -465,9 +465,9 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
           bullets: [
             "अकाउंट जानकारी: नाम, ईमेल, वैकल्पिक फोन, पसंदीदा शुरुआती वर्कस्पेस (ब्रांड या क्रिएटर), ईमेल-सत्यापन स्थिति, अकाउंट तिथियाँ और हैश किया गया पासवर्ड। हम आपका सादा पासवर्ड सेव नहीं करते।",
             "लंबित साइन-अप जानकारी: ईमेल सत्यापन से पहले दी गई जानकारी और हैश किया गया एक-बार का सत्यापन टोकन। उपयोग योग्य अकाउंट सत्यापन के बाद ही बनता है।",
-            "प्रोफाइल और कैंपेन जानकारी: बिज़नेस या क्रिएटर नाम, संपर्क विवरण, सोशल प्रोफाइल लिंक, कैटेगरी, भाषाएँ, स्थान, ऑडियंस या फॉलोअर जानकारी, कैंपेन विवरण, बजट, सत्यापन कोड और मॉडरेशन स्थिति।",
-            "आवेदन और संचार जानकारी: क्रिएटर प्रोफ़ाइल का नाम, आपके द्वारा चुना गया सेव अकाउंट/प्रोफ़ाइल संपर्क, लिखा गया संदेश, आवेदन स्थिति और निर्णय नोट, सूचनाएँ, संपर्क-फॉर्म संदेश और लिस्टिंग रिपोर्ट।",
-            "तकनीकी और सुरक्षा जानकारी: सेशन पहचान, ब्राउज़र/डिवाइस यूज़र-एजेंट, साइन-इन और गतिविधि समय, हैश किए रेट-लिमिट और असफल साइन-इन पहचानकर्ता, सार्वजनिक फ़ॉर्म पर संक्षिप्त ब्राउज़र सुरक्षा-जाँच परिणाम, जहाँ होस्टिंग प्लेटफ़ॉर्म विश्वसनीय पता देता है वहाँ सुरक्षा या एडमिन ऑडिट लॉग में IP पते तथा सीमित होस्टिंग या ईमेल-डिलीवरी लॉग।",
+            "प्रोफाइल और कैंपेन जानकारी: बिज़नेस या क्रिएटर नाम, संपर्क विवरण, सोशल प्रोफाइल लिंक, कैटेगरी, भाषाएँ, स्थान, ऑडियंस या फॉलोअर जानकारी, कैंपेन विवरण, बजट, आवेदन अंतिम तारीखें/समाप्ति तारीखें, सत्यापन कोड और मॉडरेशन स्थिति।",
+            "आवेदन और संचार जानकारी: क्रिएटर प्रोफ़ाइल का नाम, आपके द्वारा चुना गया सेव अकाउंट/प्रोफ़ाइल संपर्क, लिखा गया संदेश, कोई वैकल्पिक कीमत या प्रस्तावित समयरेखा, आवेदन के समय क्रिएटर-प्रोफ़ाइल विवरणों का स्नैपशॉट (यह कैंपेन ब्रांड को सिर्फ़ तब दिखता है जब वह प्रोफ़ाइल सार्वजनिक हो), आवेदन स्थिति/इतिहास और निर्णय नोट, सूचनाएँ, संपर्क-फॉर्म संदेश और लिस्टिंग रिपोर्ट।",
+            "तकनीकी, सुरक्षा और गतिविधि जानकारी: सेशन पहचान, ब्राउज़र/डिवाइस यूज़र-एजेंट, साइन-इन और गतिविधि समय, प्रोफ़ाइल, कैंपेन, आवेदन और मॉडरेशन बदलावों के प्राइवेसी-सीमित रिकॉर्ड (जैसे बदलाव करने वाला, प्रभावित आइटम, स्थिति बदलाव और बदले गए फ़ील्ड के नाम, निजी मुक्त-पाठ मानों को गतिविधि रिकॉर्ड में कॉपी किए बिना), हैश किए रेट-लिमिट और असफल साइन-इन पहचानकर्ता, सार्वजनिक फ़ॉर्म पर संक्षिप्त ब्राउज़र सुरक्षा-जाँच परिणाम, जहाँ होस्टिंग प्लेटफ़ॉर्म विश्वसनीय पता देता है वहाँ सुरक्षा या एडमिन ऑडिट लॉग में IP पते तथा सीमित होस्टिंग या ईमेल-डिलीवरी लॉग।",
             "पसंद: आपकी चुनी गई साइट भाषा एक आवश्यक फ़र्स्ट-पार्टी कुकी में सेव होती है और ब्राउज़र के लोकल स्टोरेज में भी रखी जाती है, ताकि सर्वर पेज तुरंत उसी भाषा में दिखा सके।",
           ],
           paragraphs: [
@@ -490,14 +490,14 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
           heading: "4. क्या सार्वजनिक होता है",
           bullets: [
             "स्वीकृत और सत्यापित क्रिएटर प्रोफाइल में क्रिएटर या पेज नाम, सोशल लिंक, प्लेटफॉर्म, सत्यापित फॉलोअर्स, कैटेगरी, भाषाएँ, स्थान, कंटेंट प्रकार और परिचय सार्वजनिक हो सकता है। क्रिएटर फोन और ईमेल सार्वजनिक लिस्टिंग में शामिल नहीं होते।",
-            "खुले और सत्यापित कैंपेन में बिज़नेस नाम, शीर्षक व विवरण, प्रमोशन प्रकार, कैटेगरी, स्थान, भाषा, टारगेट ऑडियंस, फॉर्मेट और वेबसाइट सार्वजनिक हो सकती है। कैंपेन बजट, फोन और ईमेल सार्वजनिक लिस्टिंग में शामिल नहीं होते।",
+            "खुले और सत्यापित कैंपेन में बिज़नेस नाम, शीर्षक व विवरण, प्रमोशन प्रकार, कैटेगरी, स्थान, भाषा, टारगेट ऑडियंस, फॉर्मेट, वेबसाइट और आवेदन अंतिम तारीख/समाप्ति तारीख सार्वजनिक हो सकती है। कैंपेन बजट, फोन और ईमेल सार्वजनिक लिस्टिंग में शामिल नहीं होते।",
             "सार्वजनिक प्रोफाइल या कैंपेन फ़ील्ड में लिखी चीज़ स्वीकृति के बाद दूसरों द्वारा देखी, कॉपी या इंडेक्स हो सकती है। सार्वजनिक फ़ील्ड में निजी जानकारी न लिखें।",
           ],
         },
         {
           heading: "5. आवेदन और शेयरिंग",
           paragraphs: [
-            "जब आप किसी कैंपेन के लिए अप्लाई करते हैं, तो सिर्फ़ आपकी क्रिएटर प्रोफ़ाइल का नाम, आपके अकाउंट या पूरी क्रिएटर प्रोफ़ाइल में सेव वह फोन, ईमेल या सोशल संपर्क जो आप उस आवेदन के लिए चुनते हैं, और आपका संदेश उस कैंपेन के ब्रांड के साथ शेयर होता है। YaarLink अपने आप आपका अकाउंट फोन, अकाउंट ईमेल या कोई अन्य सेव संपर्क नहीं जोड़ता जिसे आपने नहीं चुना। आपको वही सेव संपर्क चुनना होगा जो आप ब्रांड को उपयोग करने देना चाहते हैं और भेजने से पहले शेयरिंग की पुष्टि करनी होगी।",
+            "जब आप किसी कैंपेन के लिए अप्लाई करते हैं, तो आपकी क्रिएटर प्रोफ़ाइल का नाम, आपके अकाउंट या पूरी क्रिएटर प्रोफ़ाइल में सेव वह फोन, ईमेल या सोशल संपर्क जो आप उस आवेदन के लिए चुनते हैं, आपका संदेश और आपके द्वारा दर्ज कोई वैकल्पिक कीमत या प्रस्तावित समयरेखा उस कैंपेन के ब्रांड के साथ शेयर होते हैं। यदि आपकी क्रिएटर प्रोफ़ाइल सार्वजनिक है, तो ब्रांड आवेदन के समय उसके सार्वजनिक विवरणों का स्नैपशॉट और मौजूदा सार्वजनिक प्रोफ़ाइल का लिंक भी देख सकता है। YaarLink अपने आप आपका अकाउंट फोन, अकाउंट ईमेल या कोई अन्य सेव संपर्क नहीं जोड़ता जिसे आपने नहीं चुना। आपको वही सेव संपर्क चुनना होगा जो आप ब्रांड को उपयोग करने देना चाहते हैं और भेजने से पहले शेयरिंग की पुष्टि करनी होगी।",
           ],
           bullets: [
             "कैंपेन ब्रांड और अधिकृत YaarLink एडमिन मार्केटप्लेस चलाने और मॉडरेशन के लिए आवश्यक आवेदन विवरण देख सकते हैं।",
@@ -584,9 +584,9 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
           heading: "4. आवेदन और संपर्क",
           bullets: [
             "कोई अकाउंट अपनी क्रिएटर प्रोफ़ाइल पूरी करने के बाद ही आवेदन कर सकता है, और अपने ही कैंपेन के लिए आवेदन नहीं कर सकता।",
-            "क्रिएटर अपने अकाउंट या पूरी क्रिएटर प्रोफाइल में सेव एक फोन, ईमेल या सोशल संपर्क चुनता है। भेजने की पुष्टि करके क्रिएटर YaarLink को क्रिएटर प्रोफाइल का नाम, चुना गया संपर्क और संदेश उस कैंपेन के ब्रांड को दिखाने की अनुमति देता है।",
+            "क्रिएटर अपने अकाउंट या पूरी क्रिएटर प्रोफाइल में सेव एक फोन, ईमेल या सोशल संपर्क चुनता है। भेजने की पुष्टि करके क्रिएटर YaarLink को क्रिएटर प्रोफाइल का नाम, चुना गया संपर्क, संदेश और दर्ज कोई वैकल्पिक कीमत या प्रस्तावित समयरेखा उस कैंपेन के ब्रांड को दिखाने की अनुमति देता है। जब क्रिएटर प्रोफाइल सार्वजनिक हो, तो ब्रांड आवेदन के समय सहेजा गया उसके सार्वजनिक विवरणों का स्नैपशॉट और मौजूदा सार्वजनिक प्रोफाइल का लिंक भी देख सकता है।",
             "ब्रांड आवेदक जानकारी सिर्फ़ उस आवेदन या कैंपेन तथा संबंधित सहमत काम का मूल्यांकन और संचालन करने के लिए उपयोग कर सकता है। वह उसे बेच, किराए पर दे, प्रकाशित, स्पैम या असंबंधित मार्केटिंग के लिए उपयोग नहीं कर सकता।",
-            "YaarLink पर आवेदन या स्थिति अपने आप रोजगार, एजेंसी, साझेदारी या पेमेंट गारंटी नहीं बनाती। काम शुरू होने से पहले ब्रांड और क्रिएटर डिलीवरेबल, उपयोग अधिकार, तिथि, कीमत और पेमेंट तरीका पुष्ट करें।",
+            "YaarLink पर आवेदन या स्थिति अपने आप रोजगार, एजेंसी, साझेदारी या पेमेंट गारंटी नहीं बनाती। आवेदन में दी गई वैकल्पिक कीमत या प्रस्तावित समयरेखा सिर्फ़ प्रस्ताव जानकारी है; काम शुरू होने से पहले ब्रांड और क्रिएटर डिलीवरेबल, उपयोग अधिकार, तिथि, अंतिम कीमत और पेमेंट तरीका पुष्ट करें।",
             "YaarLink वर्तमान में इन-ऐप चैट, ड्राफ़्ट या कंटेंट अप्रूवल, पोस्टिंग लिंक या प्रमाण संग्रह, कंटेंट शेड्यूलिंग, या कैंपेन परफ़ॉर्मेंस एनालिटिक्स नहीं देता। ब्रीफ़, ड्राफ़्ट, पोस्ट लिंक, स्क्रीनशॉट और नतीजे तय प्लेटफ़ॉर्म-बाहर चैनल से साझा करें और अपने रिकॉर्ड रखें।",
             "ब्रांड द्वारा दर्ज “पूरा” स्थिति ब्रांड की प्लेटफ़ॉर्म-बाहर पुष्टि दर्शाती है; यह YaarLink की तरफ़ से पोस्ट प्रकाशित होने या व्यू, क्लिक, पूछताछ या बिक्री होने का सत्यापन नहीं है।",
             "डैशबोर्ड सूचनाएँ आवेदन प्राप्त, वापस और स्थिति-बदलाव गतिविधि कवर करती हैं। मार्केटप्लेस ईमेल सूचनाएँ सर्वोत्तम प्रयास पर हैं; YaarLink नए कैंपेन अलर्ट नहीं भेजता।",
@@ -646,7 +646,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
           heading: "1. अभी वेबसाइट चेकआउट नहीं है",
           bullets: [
             "अकाउंट बनाना, क्रिएटर के रूप में जुड़ना, जाँच के लिए कैंपेन पोस्ट करना और कैंपेन के लिए अप्लाई करना theyaar.com पर ऑनलाइन पेमेंट शुरू नहीं करता।",
-            "कैंपेन फॉर्म में लिखा बजट ब्रांड का इच्छित कैंपेन बजट है। यह पेमेंट, जमा, एस्क्रो बैलेंस, कीमत गारंटी या YaarLink के पास रखी राशि नहीं है।",
+            "कैंपेन फॉर्म में लिखा बजट ब्रांड का इच्छित कैंपेन बजट है। यह पेमेंट, जमा, एस्क्रो बैलेंस, कीमत गारंटी या YaarLink के पास रखी राशि नहीं है। इसी तरह, क्रिएटर आवेदन में दी गई वैकल्पिक कीमत YaarLink द्वारा इकट्ठा, रखी या गारंटी नहीं दी जाती।",
             "YaarLink वेबसाइट फॉर्म के ज़रिए कार्ड विवरण, बैंक-लॉगिन विवरण या UPI PIN नहीं माँगता। यदि YaarLink का प्रतिनिधि बताकर कोई ये रहस्य माँगे तो रुकें और सपोर्ट से संपर्क करें।",
           ],
         },
@@ -704,7 +704,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
         {
           heading: "1. उपलब्ध विकल्प",
           bullets: [
-            "डेटा डाउनलोड से अपने अकाउंट, प्रोफाइल, कैंपेन, आवेदन, सूचना, रिपोर्ट और सेशन जानकारी की प्रति प्राप्त करें।",
+            "डेटा डाउनलोड से अपने अकाउंट, प्रोफाइल, कैंपेन, आवेदन, सूचना, रिपोर्ट, गतिविधि इतिहास और सेशन जानकारी की प्रति प्राप्त करें।",
             "लिस्टिंग-जाँच नियमों के अधीन गलत अकाउंट, प्रोफाइल, कैंपेन या आवेदन जानकारी सुधारें।",
             "योग्य आवेदन वापस लें ताकि वह ब्रांड के लिए सक्रिय न रहे।",
             "जहाँ प्रोसेसिंग का आधार सहमति है, भविष्य की प्रोसेसिंग के लिए सहमति वापस लें; वापसी पहले कानूनी रूप से हुई शेयरिंग को पूर्ववत नहीं करती।",
@@ -834,9 +834,9 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
           bullets: [
             "ਅਕਾਊਂਟ ਜਾਣਕਾਰੀ: ਨਾਮ, ਈਮੇਲ, ਵਿਕਲਪਿਕ ਫੋਨ, ਪਸੰਦੀਦਾ ਸ਼ੁਰੂਆਤੀ ਵਰਕਸਪੇਸ (ਬ੍ਰਾਂਡ ਜਾਂ ਕ੍ਰਿਏਟਰ), ਈਮੇਲ-ਤਸਦੀਕ ਸਥਿਤੀ, ਅਕਾਊਂਟ ਤਾਰੀਖਾਂ ਅਤੇ ਹੈਸ਼ ਕੀਤਾ ਪਾਸਵਰਡ। ਅਸੀਂ ਤੁਹਾਡਾ ਸਾਦਾ ਪਾਸਵਰਡ ਸੇਵ ਨਹੀਂ ਕਰਦੇ।",
             "ਲੰਬਿਤ ਸਾਈਨ-ਅੱਪ ਜਾਣਕਾਰੀ: ਈਮੇਲ ਤਸਦੀਕ ਤੋਂ ਪਹਿਲਾਂ ਦਿੱਤੀ ਜਾਣਕਾਰੀ ਅਤੇ ਹੈਸ਼ ਕੀਤਾ ਇੱਕ-ਵਾਰੀ ਤਸਦੀਕ ਟੋਕਨ। ਵਰਤੋਂਯੋਗ ਅਕਾਊਂਟ ਤਸਦੀਕ ਤੋਂ ਬਾਅਦ ਹੀ ਬਣਦਾ ਹੈ।",
-            "ਪ੍ਰੋਫਾਈਲ ਅਤੇ ਕੈਂਪੇਨ ਜਾਣਕਾਰੀ: ਕਾਰੋਬਾਰ ਜਾਂ ਕ੍ਰਿਏਟਰ ਨਾਮ, ਸੰਪਰਕ ਵੇਰਵੇ, ਸੋਸ਼ਲ ਪ੍ਰੋਫਾਈਲ ਲਿੰਕ, ਕੈਟੇਗਰੀ, ਭਾਸ਼ਾਵਾਂ, ਥਾਂ, ਆਡੀਅੰਸ ਜਾਂ ਫਾਲੋਅਰ ਜਾਣਕਾਰੀ, ਕੈਂਪੇਨ ਵੇਰਵੇ, ਬਜਟ, ਤਸਦੀਕ ਕੋਡ ਅਤੇ ਮਾਡਰੇਸ਼ਨ ਸਥਿਤੀ।",
-            "ਅਰਜ਼ੀ ਅਤੇ ਸੰਚਾਰ ਜਾਣਕਾਰੀ: ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਦਾ ਨਾਮ, ਤੁਹਾਡਾ ਚੁਣਿਆ ਸੇਵ ਅਕਾਊਂਟ/ਪ੍ਰੋਫਾਈਲ ਸੰਪਰਕ, ਲਿਖਿਆ ਸੁਨੇਹਾ, ਅਰਜ਼ੀ ਸਥਿਤੀ ਅਤੇ ਫੈਸਲਾ ਨੋਟ, ਸੂਚਨਾਵਾਂ, ਸੰਪਰਕ-ਫਾਰਮ ਸੁਨੇਹੇ ਅਤੇ ਲਿਸਟਿੰਗ ਰਿਪੋਰਟਾਂ।",
-            "ਤਕਨੀਕੀ ਅਤੇ ਸੁਰੱਖਿਆ ਜਾਣਕਾਰੀ: ਸੈਸ਼ਨ ਪਛਾਣ, ਬ੍ਰਾਊਜ਼ਰ/ਡਿਵਾਈਸ ਯੂਜ਼ਰ-ਏਜੰਟ, ਸਾਈਨ-ਇਨ ਅਤੇ ਗਤੀਵਿਧੀ ਸਮੇਂ, ਹੈਸ਼ ਕੀਤੇ ਰੇਟ-ਲਿਮਿਟ ਅਤੇ ਅਸਫਲ ਸਾਈਨ-ਇਨ ਪਛਾਣਕਰਤਾ, ਜਨਤਕ ਫਾਰਮਾਂ 'ਤੇ ਸੰਖੇਪ ਬ੍ਰਾਊਜ਼ਰ ਸੁਰੱਖਿਆ-ਜਾਂਚ ਨਤੀਜੇ, ਜਿੱਥੇ ਹੋਸਟਿੰਗ ਪਲੇਟਫਾਰਮ ਭਰੋਸੇਯੋਗ ਪਤਾ ਦਿੰਦਾ ਹੈ ਉੱਥੇ ਸੁਰੱਖਿਆ ਜਾਂ ਐਡਮਿਨ ਆਡਿਟ ਲੌਗ ਵਿੱਚ IP ਪਤੇ ਅਤੇ ਸੀਮਤ ਹੋਸਟਿੰਗ ਜਾਂ ਈਮੇਲ-ਡਿਲੀਵਰੀ ਲੌਗ।",
+            "ਪ੍ਰੋਫਾਈਲ ਅਤੇ ਕੈਂਪੇਨ ਜਾਣਕਾਰੀ: ਕਾਰੋਬਾਰ ਜਾਂ ਕ੍ਰਿਏਟਰ ਨਾਮ, ਸੰਪਰਕ ਵੇਰਵੇ, ਸੋਸ਼ਲ ਪ੍ਰੋਫਾਈਲ ਲਿੰਕ, ਕੈਟੇਗਰੀ, ਭਾਸ਼ਾਵਾਂ, ਥਾਂ, ਆਡੀਅੰਸ ਜਾਂ ਫਾਲੋਅਰ ਜਾਣਕਾਰੀ, ਕੈਂਪੇਨ ਵੇਰਵੇ, ਬਜਟ, ਅਰਜ਼ੀ ਆਖਰੀ ਤਾਰੀਖਾਂ/ਸਮਾਪਤੀ ਤਾਰੀਖਾਂ, ਤਸਦੀਕ ਕੋਡ ਅਤੇ ਮਾਡਰੇਸ਼ਨ ਸਥਿਤੀ।",
+            "ਅਰਜ਼ੀ ਅਤੇ ਸੰਚਾਰ ਜਾਣਕਾਰੀ: ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਦਾ ਨਾਮ, ਤੁਹਾਡਾ ਚੁਣਿਆ ਸੇਵ ਅਕਾਊਂਟ/ਪ੍ਰੋਫਾਈਲ ਸੰਪਰਕ, ਲਿਖਿਆ ਸੁਨੇਹਾ, ਕੋਈ ਚੋਣਵੀਂ ਕੀਮਤ ਜਾਂ ਪ੍ਰਸਤਾਵਿਤ ਸਮਾਂ-ਸੀਮਾ, ਅਰਜ਼ੀ ਵੇਲੇ ਕ੍ਰਿਏਟਰ-ਪ੍ਰੋਫਾਈਲ ਵੇਰਵਿਆਂ ਦਾ ਸਨੈਪਸ਼ਾਟ (ਇਹ ਕੈਂਪੇਨ ਬ੍ਰਾਂਡ ਨੂੰ ਸਿਰਫ਼ ਉਦੋਂ ਵਿਖਾਇਆ ਜਾਂਦਾ ਹੈ ਜਦੋਂ ਉਹ ਪ੍ਰੋਫਾਈਲ ਜਨਤਕ ਹੋਵੇ), ਅਰਜ਼ੀ ਸਥਿਤੀ/ਇਤਿਹਾਸ ਅਤੇ ਫੈਸਲਾ ਨੋਟ, ਸੂਚਨਾਵਾਂ, ਸੰਪਰਕ-ਫਾਰਮ ਸੁਨੇਹੇ ਅਤੇ ਲਿਸਟਿੰਗ ਰਿਪੋਰਟਾਂ।",
+            "ਤਕਨੀਕੀ, ਸੁਰੱਖਿਆ ਅਤੇ ਗਤੀਵਿਧੀ ਜਾਣਕਾਰੀ: ਸੈਸ਼ਨ ਪਛਾਣ, ਬ੍ਰਾਊਜ਼ਰ/ਡਿਵਾਈਸ ਯੂਜ਼ਰ-ਏਜੰਟ, ਸਾਈਨ-ਇਨ ਅਤੇ ਗਤੀਵਿਧੀ ਸਮੇਂ, ਪ੍ਰੋਫਾਈਲ, ਕੈਂਪੇਨ, ਅਰਜ਼ੀ ਅਤੇ ਮਾਡਰੇਸ਼ਨ ਬਦਲਾਅ ਦੇ ਪਰਾਈਵੇਸੀ-ਸੀਮਤ ਰਿਕਾਰਡ (ਜਿਵੇਂ ਬਦਲਾਅ ਕਰਨ ਵਾਲਾ, ਪ੍ਰਭਾਵਿਤ ਆਈਟਮ, ਸਥਿਤੀ ਬਦਲਾਅ ਅਤੇ ਬਦਲੇ ਫੀਲਡਾਂ ਦੇ ਨਾਮ, ਨਿੱਜੀ ਮੁਕਤ-ਪਾਠ ਮੁੱਲਾਂ ਨੂੰ ਗਤੀਵਿਧੀ ਰਿਕਾਰਡ ਵਿੱਚ ਕਾਪੀ ਕੀਤੇ ਬਿਨਾਂ), ਹੈਸ਼ ਕੀਤੇ ਰੇਟ-ਲਿਮਿਟ ਅਤੇ ਅਸਫਲ ਸਾਈਨ-ਇਨ ਪਛਾਣਕਰਤਾ, ਜਨਤਕ ਫਾਰਮਾਂ 'ਤੇ ਸੰਖੇਪ ਬ੍ਰਾਊਜ਼ਰ ਸੁਰੱਖਿਆ-ਜਾਂਚ ਨਤੀਜੇ, ਜਿੱਥੇ ਹੋਸਟਿੰਗ ਪਲੇਟਫਾਰਮ ਭਰੋਸੇਯੋਗ ਪਤਾ ਦਿੰਦਾ ਹੈ ਉੱਥੇ ਸੁਰੱਖਿਆ ਜਾਂ ਐਡਮਿਨ ਆਡਿਟ ਲੌਗ ਵਿੱਚ IP ਪਤੇ ਅਤੇ ਸੀਮਤ ਹੋਸਟਿੰਗ ਜਾਂ ਈਮੇਲ-ਡਿਲੀਵਰੀ ਲੌਗ।",
             "ਪਸੰਦ: ਤੁਹਾਡੀ ਚੁਣੀ ਸਾਈਟ ਭਾਸ਼ਾ ਇੱਕ ਜ਼ਰੂਰੀ ਫਸਟ-ਪਾਰਟੀ ਕੂਕੀ ਵਿੱਚ ਸੇਵ ਹੁੰਦੀ ਹੈ ਅਤੇ ਬ੍ਰਾਊਜ਼ਰ ਦੇ ਲੋਕਲ ਸਟੋਰੇਜ ਵਿੱਚ ਵੀ ਰੱਖੀ ਜਾਂਦੀ ਹੈ, ਤਾਂ ਜੋ ਸਰਵਰ ਪੇਜ ਤੁਰੰਤ ਉਸੇ ਭਾਸ਼ਾ ਵਿੱਚ ਦਿਖਾ ਸਕੇ।",
           ],
           paragraphs: [
@@ -859,14 +859,14 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
           heading: "4. ਕੀ ਜਨਤਕ ਹੁੰਦਾ ਹੈ",
           bullets: [
             "ਮਨਜ਼ੂਰ ਅਤੇ ਤਸਦੀਕ ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਵਿੱਚ ਕ੍ਰਿਏਟਰ ਜਾਂ ਪੇਜ ਨਾਮ, ਸੋਸ਼ਲ ਲਿੰਕ, ਪਲੇਟਫਾਰਮ, ਤਸਦੀਕ ਫਾਲੋਅਰ, ਕੈਟੇਗਰੀ, ਭਾਸ਼ਾਵਾਂ, ਥਾਂ, ਕੰਟੈਂਟ ਕਿਸਮਾਂ ਅਤੇ ਜਾਣ-ਪਛਾਣ ਜਨਤਕ ਹੋ ਸਕਦੀ ਹੈ। ਕ੍ਰਿਏਟਰ ਫੋਨ ਅਤੇ ਈਮੇਲ ਜਨਤਕ ਲਿਸਟਿੰਗ ਵਿੱਚ ਸ਼ਾਮਲ ਨਹੀਂ ਹੁੰਦੇ।",
-            "ਖੁੱਲ੍ਹੇ ਅਤੇ ਤਸਦੀਕ ਕੈਂਪੇਨ ਵਿੱਚ ਕਾਰੋਬਾਰ ਨਾਮ, ਸਿਰਲੇਖ ਤੇ ਵੇਰਵਾ, ਪ੍ਰਮੋਸ਼ਨ ਕਿਸਮ, ਕੈਟੇਗਰੀ, ਥਾਂ, ਭਾਸ਼ਾ, ਟਾਰਗੇਟ ਆਡੀਅੰਸ, ਫਾਰਮੈਟ ਅਤੇ ਵੈੱਬਸਾਈਟ ਜਨਤਕ ਹੋ ਸਕਦੀ ਹੈ। ਕੈਂਪੇਨ ਬਜਟ, ਫੋਨ ਅਤੇ ਈਮੇਲ ਜਨਤਕ ਲਿਸਟਿੰਗ ਵਿੱਚ ਸ਼ਾਮਲ ਨਹੀਂ ਹੁੰਦੇ।",
+            "ਖੁੱਲ੍ਹੇ ਅਤੇ ਤਸਦੀਕ ਕੈਂਪੇਨ ਵਿੱਚ ਕਾਰੋਬਾਰ ਨਾਮ, ਸਿਰਲੇਖ ਤੇ ਵੇਰਵਾ, ਪ੍ਰਮੋਸ਼ਨ ਕਿਸਮ, ਕੈਟੇਗਰੀ, ਥਾਂ, ਭਾਸ਼ਾ, ਟਾਰਗੇਟ ਆਡੀਅੰਸ, ਫਾਰਮੈਟ, ਵੈੱਬਸਾਈਟ ਅਤੇ ਅਰਜ਼ੀ ਆਖਰੀ ਤਾਰੀਖ/ਸਮਾਪਤੀ ਤਾਰੀਖ ਜਨਤਕ ਹੋ ਸਕਦੀ ਹੈ। ਕੈਂਪੇਨ ਬਜਟ, ਫੋਨ ਅਤੇ ਈਮੇਲ ਜਨਤਕ ਲਿਸਟਿੰਗ ਵਿੱਚ ਸ਼ਾਮਲ ਨਹੀਂ ਹੁੰਦੇ।",
             "ਜਨਤਕ ਪ੍ਰੋਫਾਈਲ ਜਾਂ ਕੈਂਪੇਨ ਖੇਤਰ ਵਿੱਚ ਲਿਖੀ ਚੀਜ਼ ਮਨਜ਼ੂਰੀ ਤੋਂ ਬਾਅਦ ਦੂਜਿਆਂ ਦੁਆਰਾ ਵੇਖੀ, ਕਾਪੀ ਜਾਂ ਇੰਡੈਕਸ ਹੋ ਸਕਦੀ ਹੈ। ਜਨਤਕ ਖੇਤਰਾਂ ਵਿੱਚ ਨਿੱਜੀ ਜਾਣਕਾਰੀ ਨਾ ਲਿਖੋ।",
           ],
         },
         {
           heading: "5. ਅਰਜ਼ੀਆਂ ਅਤੇ ਸਾਂਝ",
           paragraphs: [
-            "ਜਦੋਂ ਤੁਸੀਂ ਕਿਸੇ ਕੈਂਪੇਨ ਲਈ ਅਪਲਾਈ ਕਰਦੇ ਹੋ, ਤਾਂ ਸਿਰਫ਼ ਤੁਹਾਡੀ ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਦਾ ਨਾਮ, ਤੁਹਾਡੇ ਅਕਾਊਂਟ ਜਾਂ ਪੂਰੀ ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਵਿੱਚ ਸੇਵ ਉਹ ਫੋਨ, ਈਮੇਲ ਜਾਂ ਸੋਸ਼ਲ ਸੰਪਰਕ ਜੋ ਤੁਸੀਂ ਉਸ ਅਰਜ਼ੀ ਲਈ ਚੁਣਦੇ ਹੋ, ਅਤੇ ਤੁਹਾਡਾ ਸੁਨੇਹਾ ਉਸ ਕੈਂਪੇਨ ਦੇ ਬ੍ਰਾਂਡ ਨਾਲ ਸਾਂਝਾ ਹੁੰਦਾ ਹੈ। YaarLink ਆਪਣੇ ਆਪ ਤੁਹਾਡਾ ਅਕਾਊਂਟ ਫੋਨ, ਅਕਾਊਂਟ ਈਮੇਲ ਜਾਂ ਕੋਈ ਹੋਰ ਸੇਵ ਸੰਪਰਕ ਨਹੀਂ ਜੋੜਦਾ ਜੋ ਤੁਸੀਂ ਨਹੀਂ ਚੁਣਿਆ। ਤੁਹਾਨੂੰ ਉਹੀ ਸੇਵ ਸੰਪਰਕ ਚੁਣਨਾ ਹੋਵੇਗਾ ਜੋ ਤੁਸੀਂ ਬ੍ਰਾਂਡ ਨੂੰ ਵਰਤਣ ਦੇਣਾ ਚਾਹੁੰਦੇ ਹੋ ਅਤੇ ਭੇਜਣ ਤੋਂ ਪਹਿਲਾਂ ਸਾਂਝ ਦੀ ਪੁਸ਼ਟੀ ਕਰਨੀ ਹੋਵੇਗੀ।",
+            "ਜਦੋਂ ਤੁਸੀਂ ਕਿਸੇ ਕੈਂਪੇਨ ਲਈ ਅਪਲਾਈ ਕਰਦੇ ਹੋ, ਤਾਂ ਤੁਹਾਡੀ ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਦਾ ਨਾਮ, ਤੁਹਾਡੇ ਅਕਾਊਂਟ ਜਾਂ ਪੂਰੀ ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਵਿੱਚ ਸੇਵ ਉਹ ਫੋਨ, ਈਮੇਲ ਜਾਂ ਸੋਸ਼ਲ ਸੰਪਰਕ ਜੋ ਤੁਸੀਂ ਉਸ ਅਰਜ਼ੀ ਲਈ ਚੁਣਦੇ ਹੋ, ਤੁਹਾਡਾ ਸੁਨੇਹਾ ਅਤੇ ਤੁਹਾਡੇ ਵੱਲੋਂ ਦਰਜ ਕੋਈ ਚੋਣਵੀਂ ਕੀਮਤ ਜਾਂ ਪ੍ਰਸਤਾਵਿਤ ਸਮਾਂ-ਸੀਮਾ ਉਸ ਕੈਂਪੇਨ ਦੇ ਬ੍ਰਾਂਡ ਨਾਲ ਸਾਂਝੇ ਹੁੰਦੇ ਹਨ। ਜੇ ਤੁਹਾਡੀ ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਜਨਤਕ ਹੈ, ਤਾਂ ਬ੍ਰਾਂਡ ਅਰਜ਼ੀ ਵੇਲੇ ਇਸਦੇ ਜਨਤਕ ਵੇਰਵਿਆਂ ਦਾ ਸਨੈਪਸ਼ਾਟ ਅਤੇ ਮੌਜੂਦਾ ਜਨਤਕ ਪ੍ਰੋਫਾਈਲ ਦਾ ਲਿੰਕ ਵੀ ਵੇਖ ਸਕਦਾ ਹੈ। YaarLink ਆਪਣੇ ਆਪ ਤੁਹਾਡਾ ਅਕਾਊਂਟ ਫੋਨ, ਅਕਾਊਂਟ ਈਮੇਲ ਜਾਂ ਕੋਈ ਹੋਰ ਸੇਵ ਸੰਪਰਕ ਨਹੀਂ ਜੋੜਦਾ ਜੋ ਤੁਸੀਂ ਨਹੀਂ ਚੁਣਿਆ। ਤੁਹਾਨੂੰ ਉਹੀ ਸੇਵ ਸੰਪਰਕ ਚੁਣਨਾ ਹੋਵੇਗਾ ਜੋ ਤੁਸੀਂ ਬ੍ਰਾਂਡ ਨੂੰ ਵਰਤਣ ਦੇਣਾ ਚਾਹੁੰਦੇ ਹੋ ਅਤੇ ਭੇਜਣ ਤੋਂ ਪਹਿਲਾਂ ਸਾਂਝ ਦੀ ਪੁਸ਼ਟੀ ਕਰਨੀ ਹੋਵੇਗੀ।",
           ],
           bullets: [
             "ਕੈਂਪੇਨ ਬ੍ਰਾਂਡ ਅਤੇ ਅਧਿਕਾਰਤ YaarLink ਐਡਮਿਨ ਮਾਰਕੀਟਪਲੇਸ ਚਲਾਉਣ ਅਤੇ ਮਾਡਰੇਸ਼ਨ ਲਈ ਲੋੜੀਂਦੇ ਅਰਜ਼ੀ ਵੇਰਵੇ ਵੇਖ ਸਕਦੇ ਹਨ।",
@@ -953,9 +953,9 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
           heading: "4. ਅਰਜ਼ੀਆਂ ਅਤੇ ਸੰਪਰਕ",
           bullets: [
             "ਕੋਈ ਅਕਾਊਂਟ ਆਪਣੀ ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਪੂਰੀ ਕਰਨ ਤੋਂ ਬਾਅਦ ਹੀ ਅਰਜ਼ੀ ਦੇ ਸਕਦਾ ਹੈ, ਅਤੇ ਆਪਣੇ ਹੀ ਕੈਂਪੇਨ ਲਈ ਅਰਜ਼ੀ ਨਹੀਂ ਦੇ ਸਕਦਾ।",
-            "ਕ੍ਰਿਏਟਰ ਆਪਣੇ ਅਕਾਊਂਟ ਜਾਂ ਪੂਰੀ ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਵਿੱਚ ਸੇਵ ਇੱਕ ਫੋਨ, ਈਮੇਲ ਜਾਂ ਸੋਸ਼ਲ ਸੰਪਰਕ ਚੁਣਦਾ ਹੈ। ਭੇਜਣ ਦੀ ਪੁਸ਼ਟੀ ਕਰਕੇ ਕ੍ਰਿਏਟਰ YaarLink ਨੂੰ ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਦਾ ਨਾਮ, ਚੁਣਿਆ ਸੰਪਰਕ ਅਤੇ ਸੁਨੇਹਾ ਉਸ ਕੈਂਪੇਨ ਦੇ ਬ੍ਰਾਂਡ ਨੂੰ ਦਿਖਾਉਣ ਦੀ ਇਜਾਜ਼ਤ ਦਿੰਦਾ ਹੈ।",
+            "ਕ੍ਰਿਏਟਰ ਆਪਣੇ ਅਕਾਊਂਟ ਜਾਂ ਪੂਰੀ ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਵਿੱਚ ਸੇਵ ਇੱਕ ਫੋਨ, ਈਮੇਲ ਜਾਂ ਸੋਸ਼ਲ ਸੰਪਰਕ ਚੁਣਦਾ ਹੈ। ਭੇਜਣ ਦੀ ਪੁਸ਼ਟੀ ਕਰਕੇ ਕ੍ਰਿਏਟਰ YaarLink ਨੂੰ ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਦਾ ਨਾਮ, ਚੁਣਿਆ ਸੰਪਰਕ, ਸੁਨੇਹਾ ਅਤੇ ਦਰਜ ਕੋਈ ਚੋਣਵੀਂ ਕੀਮਤ ਜਾਂ ਪ੍ਰਸਤਾਵਿਤ ਸਮਾਂ-ਸੀਮਾ ਉਸ ਕੈਂਪੇਨ ਦੇ ਬ੍ਰਾਂਡ ਨੂੰ ਦਿਖਾਉਣ ਦੀ ਇਜਾਜ਼ਤ ਦਿੰਦਾ ਹੈ। ਜਦੋਂ ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਜਨਤਕ ਹੋਵੇ, ਤਾਂ ਬ੍ਰਾਂਡ ਅਰਜ਼ੀ ਵੇਲੇ ਸਾਂਭਿਆ ਇਸਦੇ ਜਨਤਕ ਵੇਰਵਿਆਂ ਦਾ ਸਨੈਪਸ਼ਾਟ ਅਤੇ ਮੌਜੂਦਾ ਜਨਤਕ ਪ੍ਰੋਫਾਈਲ ਦਾ ਲਿੰਕ ਵੀ ਵੇਖ ਸਕਦਾ ਹੈ।",
             "ਬ੍ਰਾਂਡ ਬਿਨੈਕਾਰ ਜਾਣਕਾਰੀ ਸਿਰਫ਼ ਉਸ ਅਰਜ਼ੀ ਜਾਂ ਕੈਂਪੇਨ ਅਤੇ ਸੰਬੰਧਿਤ ਸਹਿਮਤ ਕੰਮ ਦਾ ਮੁਲਾਂਕਣ ਤੇ ਸੰਚਾਲਨ ਕਰਨ ਲਈ ਵਰਤ ਸਕਦਾ ਹੈ। ਉਹ ਉਸ ਨੂੰ ਵੇਚ, ਕਿਰਾਏ 'ਤੇ, ਪ੍ਰਕਾਸ਼ਿਤ, ਸਪੈਮ ਜਾਂ ਅਸੰਬੰਧਿਤ ਮਾਰਕੀਟਿੰਗ ਲਈ ਨਹੀਂ ਵਰਤ ਸਕਦਾ।",
-            "YaarLink 'ਤੇ ਅਰਜ਼ੀ ਜਾਂ ਸਥਿਤੀ ਆਪਣੇ ਆਪ ਰੁਜ਼ਗਾਰ, ਏਜੰਸੀ, ਭਾਈਵਾਲੀ ਜਾਂ ਪੇਮੈਂਟ ਗਾਰੰਟੀ ਨਹੀਂ ਬਣਾਉਂਦੀ। ਕੰਮ ਸ਼ੁਰੂ ਹੋਣ ਤੋਂ ਪਹਿਲਾਂ ਬ੍ਰਾਂਡ ਅਤੇ ਕ੍ਰਿਏਟਰ ਡਿਲੀਵਰੇਬਲ, ਵਰਤੋਂ ਹੱਕ, ਤਾਰੀਖਾਂ, ਕੀਮਤ ਅਤੇ ਪੇਮੈਂਟ ਤਰੀਕਾ ਪੁਸ਼ਟ ਕਰਨ।",
+            "YaarLink 'ਤੇ ਅਰਜ਼ੀ ਜਾਂ ਸਥਿਤੀ ਆਪਣੇ ਆਪ ਰੁਜ਼ਗਾਰ, ਏਜੰਸੀ, ਭਾਈਵਾਲੀ ਜਾਂ ਪੇਮੈਂਟ ਗਾਰੰਟੀ ਨਹੀਂ ਬਣਾਉਂਦੀ। ਅਰਜ਼ੀ ਵਿੱਚ ਦਿੱਤੀ ਚੋਣਵੀਂ ਕੀਮਤ ਜਾਂ ਪ੍ਰਸਤਾਵਿਤ ਸਮਾਂ-ਸੀਮਾ ਸਿਰਫ਼ ਪ੍ਰਸਤਾਵ ਜਾਣਕਾਰੀ ਹੈ; ਕੰਮ ਸ਼ੁਰੂ ਹੋਣ ਤੋਂ ਪਹਿਲਾਂ ਬ੍ਰਾਂਡ ਅਤੇ ਕ੍ਰਿਏਟਰ ਡਿਲੀਵਰੇਬਲ, ਵਰਤੋਂ ਹੱਕ, ਤਾਰੀਖਾਂ, ਅੰਤਿਮ ਕੀਮਤ ਅਤੇ ਪੇਮੈਂਟ ਤਰੀਕਾ ਪੁਸ਼ਟ ਕਰਨ।",
             "YaarLink ਮੌਜੂਦਾ ਸਮੇਂ ਵਿੱਚ ਇਨ-ਐਪ ਚੈਟ, ਡਰਾਫਟ ਜਾਂ ਕੰਟੈਂਟ ਮਨਜ਼ੂਰੀ, ਪੋਸਟਿੰਗ ਲਿੰਕ ਜਾਂ ਸਬੂਤ ਸੰਗ੍ਰਹਿ, ਕੰਟੈਂਟ ਸ਼ਡਿਊਲਿੰਗ, ਜਾਂ ਕੈਂਪੇਨ ਪਰਫ਼ਾਮੈਂਸ ਐਨਾਲਿਟਿਕਸ ਨਹੀਂ ਦਿੰਦਾ। ਬ੍ਰੀਫ਼, ਡਰਾਫਟ, ਪੋਸਟ ਲਿੰਕ, ਸਕ੍ਰੀਨਸ਼ਾਟ ਅਤੇ ਨਤੀਜੇ ਤੈਅ ਕੀਤੇ ਪਲੇਟਫਾਰਮ-ਬਾਹਰ ਚੈਨਲ ਰਾਹੀਂ ਸਾਂਝੇ ਕਰੋ ਅਤੇ ਆਪਣੇ ਰਿਕਾਰਡ ਰੱਖੋ।",
             "ਬ੍ਰਾਂਡ ਵੱਲੋਂ ਦਰਜ “ਪੂਰਾ” ਸਥਿਤੀ ਬ੍ਰਾਂਡ ਦੀ ਪਲੇਟਫਾਰਮ-ਬਾਹਰ ਪੁਸ਼ਟੀ ਦਰਸਾਉਂਦੀ ਹੈ; ਇਹ YaarLink ਵੱਲੋਂ ਪੋਸਟ ਪ੍ਰਕਾਸ਼ਿਤ ਹੋਣ ਜਾਂ ਵਿਊ, ਕਲਿੱਕ, ਪੁੱਛਗਿੱਛ ਜਾਂ ਵਿਕਰੀ ਹੋਣ ਦੀ ਤਸਦੀਕ ਨਹੀਂ ਹੈ।",
             "ਡੈਸ਼ਬੋਰਡ ਸੂਚਨਾਵਾਂ ਅਰਜ਼ੀ ਪ੍ਰਾਪਤ, ਵਾਪਸ ਅਤੇ ਸਥਿਤੀ-ਬਦਲਾਅ ਗਤੀਵਿਧੀ ਕਵਰ ਕਰਦੀਆਂ ਹਨ। ਮਾਰਕੀਟਪਲੇਸ ਈਮੇਲ ਸੂਚਨਾਵਾਂ ਸੰਭਵ ਕੋਸ਼ਿਸ਼ ਨਾਲ ਹਨ; YaarLink ਨਵੇਂ ਕੈਂਪੇਨ ਅਲਰਟ ਨਹੀਂ ਭੇਜਦਾ।",
@@ -1015,7 +1015,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
           heading: "1. ਹਾਲੇ ਵੈੱਬਸਾਈਟ ਚੈੱਕਆਊਟ ਨਹੀਂ ਹੈ",
           bullets: [
             "ਅਕਾਊਂਟ ਬਣਾਉਣਾ, ਕ੍ਰਿਏਟਰ ਵਜੋਂ ਜੁੜਨਾ, ਜਾਂਚ ਲਈ ਕੈਂਪੇਨ ਪੋਸਟ ਕਰਨਾ ਅਤੇ ਕੈਂਪੇਨ ਲਈ ਅਪਲਾਈ ਕਰਨਾ theyaar.com 'ਤੇ ਔਨਲਾਈਨ ਪੇਮੈਂਟ ਸ਼ੁਰੂ ਨਹੀਂ ਕਰਦਾ।",
-            "ਕੈਂਪੇਨ ਫਾਰਮ ਵਿੱਚ ਲਿਖਿਆ ਬਜਟ ਬ੍ਰਾਂਡ ਦਾ ਇੱਛਿਤ ਕੈਂਪੇਨ ਬਜਟ ਹੈ। ਇਹ ਪੇਮੈਂਟ, ਜਮ੍ਹਾ, ਐਸਕ੍ਰੋ ਬੈਲੰਸ, ਕੀਮਤ ਗਾਰੰਟੀ ਜਾਂ YaarLink ਕੋਲ ਰੱਖੀ ਰਕਮ ਨਹੀਂ ਹੈ।",
+            "ਕੈਂਪੇਨ ਫਾਰਮ ਵਿੱਚ ਲਿਖਿਆ ਬਜਟ ਬ੍ਰਾਂਡ ਦਾ ਇੱਛਿਤ ਕੈਂਪੇਨ ਬਜਟ ਹੈ। ਇਹ ਪੇਮੈਂਟ, ਜਮ੍ਹਾ, ਐਸਕ੍ਰੋ ਬੈਲੰਸ, ਕੀਮਤ ਗਾਰੰਟੀ ਜਾਂ YaarLink ਕੋਲ ਰੱਖੀ ਰਕਮ ਨਹੀਂ ਹੈ। ਇਸੇ ਤਰ੍ਹਾਂ, ਕ੍ਰਿਏਟਰ ਅਰਜ਼ੀ ਵਿੱਚ ਦਿੱਤੀ ਚੋਣਵੀਂ ਕੀਮਤ YaarLink ਵੱਲੋਂ ਇਕੱਠੀ, ਰੱਖੀ ਜਾਂ ਗਾਰੰਟੀ ਨਹੀਂ ਦਿੱਤੀ ਜਾਂਦੀ।",
             "YaarLink ਵੈੱਬਸਾਈਟ ਫਾਰਮ ਰਾਹੀਂ ਕਾਰਡ ਵੇਰਵੇ, ਬੈਂਕ-ਲਾਗਇਨ ਵੇਰਵੇ ਜਾਂ UPI PIN ਨਹੀਂ ਮੰਗਦਾ। ਜੇ YaarLink ਦਾ ਪ੍ਰਤਿਨਿਧੀ ਦੱਸ ਕੇ ਕੋਈ ਇਹ ਗੁਪਤ ਜਾਣਕਾਰੀ ਮੰਗੇ ਤਾਂ ਰੁਕੋ ਅਤੇ ਸਪੋਰਟ ਨਾਲ ਸੰਪਰਕ ਕਰੋ।",
           ],
         },
@@ -1073,7 +1073,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
         {
           heading: "1. ਉਪਲਬਧ ਚੋਣਾਂ",
           bullets: [
-            "ਡੇਟਾ ਡਾਊਨਲੋਡ ਤੋਂ ਆਪਣੇ ਅਕਾਊਂਟ, ਪ੍ਰੋਫਾਈਲ, ਕੈਂਪੇਨ, ਅਰਜ਼ੀ, ਸੂਚਨਾ, ਰਿਪੋਰਟ ਅਤੇ ਸੈਸ਼ਨ ਜਾਣਕਾਰੀ ਦੀ ਕਾਪੀ ਲਵੋ।",
+            "ਡੇਟਾ ਡਾਊਨਲੋਡ ਤੋਂ ਆਪਣੇ ਅਕਾਊਂਟ, ਪ੍ਰੋਫਾਈਲ, ਕੈਂਪੇਨ, ਅਰਜ਼ੀ, ਸੂਚਨਾ, ਰਿਪੋਰਟ, ਗਤੀਵਿਧੀ ਇਤਿਹਾਸ ਅਤੇ ਸੈਸ਼ਨ ਜਾਣਕਾਰੀ ਦੀ ਕਾਪੀ ਲਵੋ।",
             "ਲਿਸਟਿੰਗ-ਜਾਂਚ ਨਿਯਮਾਂ ਅਧੀਨ ਗਲਤ ਅਕਾਊਂਟ, ਪ੍ਰੋਫਾਈਲ, ਕੈਂਪੇਨ ਜਾਂ ਅਰਜ਼ੀ ਜਾਣਕਾਰੀ ਠੀਕ ਕਰੋ।",
             "ਯੋਗ ਅਰਜ਼ੀ ਵਾਪਸ ਲਵੋ ਤਾਂ ਜੋ ਉਹ ਬ੍ਰਾਂਡ ਲਈ ਸਰਗਰਮ ਨਾ ਰਹੇ।",
             "ਜਿੱਥੇ ਪ੍ਰੋਸੈਸਿੰਗ ਦਾ ਆਧਾਰ ਸਹਿਮਤੀ ਹੈ, ਭਵਿੱਖੀ ਪ੍ਰੋਸੈਸਿੰਗ ਲਈ ਸਹਿਮਤੀ ਵਾਪਸ ਲਵੋ; ਵਾਪਸੀ ਪਹਿਲਾਂ ਕਾਨੂੰਨੀ ਤੌਰ 'ਤੇ ਹੋਈ ਸਾਂਝ ਨੂੰ ਉਲਟ ਨਹੀਂ ਕਰਦੀ।",

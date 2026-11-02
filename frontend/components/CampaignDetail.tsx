@@ -7,7 +7,8 @@ import { useLang } from "@/frontend/i18n";
 import ReportButton from "@/frontend/components/ReportButton";
 
 export default function CampaignDetail({ campaign }: { campaign: PublicCampaignDetail }) {
-  const { t, opt, promo, status: statusLabel, formatDateTime, formatRelativeTime } = useLang();
+  const { t, opt, promo, status: statusLabel, formatDate, formatDateTime, formatRelativeTime } = useLang();
+  const effectiveDeadline = campaign.deadlineAt ?? campaign.expiresAt;
   const campaignIsOpen = campaign.status === "open" && campaign.verificationStatus === "verified";
 
   useEffect(() => {
@@ -27,6 +28,14 @@ export default function CampaignDetail({ campaign }: { campaign: PublicCampaignD
       value: (
         <time dateTime={campaign.createdAt} title={formatDateTime(campaign.createdAt)}>
           {formatRelativeTime(campaign.createdAt)}
+        </time>
+      ),
+    },
+    {
+      label: t("dash.deadline"),
+      value: (
+        <time dateTime={effectiveDeadline} title={formatDateTime(effectiveDeadline)}>
+          {formatDate(effectiveDeadline)}
         </time>
       ),
     },
@@ -60,6 +69,10 @@ export default function CampaignDetail({ campaign }: { campaign: PublicCampaignD
           <p className="mt-1 text-[13.5px] font-semibold text-[#6f6862]">
             <time dateTime={campaign.createdAt} title={formatDateTime(campaign.createdAt)}>
               {t("listing.posted", { age: formatRelativeTime(campaign.createdAt) })}
+            </time>
+            {" • "}
+            <time dateTime={effectiveDeadline} title={formatDateTime(effectiveDeadline)}>
+              {t("camp.applyBy", { date: formatDate(effectiveDeadline) })}
             </time>
           </p>
           <div className="mt-6 flex flex-wrap gap-3">

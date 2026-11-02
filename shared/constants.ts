@@ -264,6 +264,15 @@ export function normalizeContentTypeList(value: unknown, keepUnknown = false): s
 export const CAMPAIGN_BUDGET_MIN = 500;
 export const CAMPAIGN_BUDGET_MAX = 10_000_000;
 
+/** Fallback campaign lifetime when the owner/platform setting is unavailable. */
+export const CAMPAIGN_DEFAULT_EXPIRY_DAYS = 45;
+export const CAMPAIGN_MAX_EXPIRY_DAYS = 180;
+
+/** Optional commercial terms a creator may attach to one application. */
+export const APPLICATION_QUOTE_MAX = CAMPAIGN_BUDGET_MAX;
+export const APPLICATION_TIMELINE_DAYS_MAX = 365;
+export const APPLICATION_TIMELINE_MAX_LENGTH = 300;
+
 /** Creator list bounds; joined lengths are the exact all-values maxima. */
 export const MAX_CREATOR_LANGUAGES = LANGUAGES.length;
 export const MAX_CREATOR_CONTENT_TYPES = CONTENT_TYPES.length;
@@ -281,7 +290,7 @@ export function formatINR(n: number, locale: string) {
 
 /** Public-listing review states. Only approved/open + verified rows are public. */
 export const CREATOR_REVIEW_STATUSES = ["incomplete", "pending", "approved", "rejected", "suspended"] as const;
-export const CAMPAIGN_REVIEW_STATUSES = ["pending", "open", "paused", "rejected", "suspended", "closed"] as const;
+export const CAMPAIGN_REVIEW_STATUSES = ["pending", "open", "paused", "rejected", "suspended", "closed", "expired"] as const;
 export const VERIFICATION_STATUSES = ["unverified", "pending", "verified", "failed"] as const;
 
 /** Marketplace application lifecycle, from first application through completion. */

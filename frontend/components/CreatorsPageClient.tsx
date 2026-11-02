@@ -31,7 +31,7 @@ export type CreatorsInitialCampaigns = {
 };
 
 export default function CreatorsPageClient({ initialCampaigns }: { initialCampaigns: CreatorsInitialCampaigns }) {
-  const { t, opt, platform: platformLabel, apiErrorKey, formatNumber, formatDateTime, formatRelativeTime } = useLang();
+  const { t, opt, platform: platformLabel, apiErrorKey, formatNumber, formatDate, formatDateTime, formatRelativeTime } = useLang();
   const session = useSession();
   const [afterProfileReturnTo] = useState(initialAfterProfileReturnTo);
   const creatorReturnTo = afterProfileReturnTo
@@ -539,6 +539,14 @@ export default function CreatorsPageClient({ initialCampaigns }: { initialCampai
                       <time dateTime={c.createdAt} title={formatDateTime(c.createdAt)}>
                         {t("listing.posted", { age: formatRelativeTime(c.createdAt) })}
                       </time>
+                      {(c.deadlineAt ?? c.expiresAt) && (
+                        <>
+                          {" • "}
+                          <time dateTime={c.deadlineAt ?? c.expiresAt} title={formatDateTime(c.deadlineAt ?? c.expiresAt)}>
+                            {t("camp.applyBy", { date: formatDate(c.deadlineAt ?? c.expiresAt) })}
+                          </time>
+                        </>
+                      )}
                     </p>
                     <div className="mt-2 flex items-center justify-between gap-2">
                       <span className="rounded-full bg-[#17452e] px-3 py-1 text-[12.5px] font-bold text-white">{t("cr.paid")} • {opt(c.format)}</span>

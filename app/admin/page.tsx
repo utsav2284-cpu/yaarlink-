@@ -6,6 +6,8 @@ import { ListingPagination } from "@/frontend/components/ListingState";
 import { appendUniqueById, isListPagination, type ListPagination } from "@/frontend/api-json";
 import {
   APPLICATION_STATUSES,
+  CAMPAIGN_DEFAULT_EXPIRY_DAYS,
+  CAMPAIGN_MAX_EXPIRY_DAYS,
   CAMPAIGN_REVIEW_STATUSES,
   CREATOR_REVIEW_STATUSES,
   VERIFICATION_STATUSES,
@@ -14,8 +16,9 @@ import { normalizeInstagramUrl, normalizeProfileUrl, normalizeYouTubeUrl } from 
 import { contactLinks } from "@/shared/contact-links";
 import { USER_ROLES } from "@/shared/user-roles";
 
-type Tab = "campaigns" | "creators" | "reports" | "applications" | "contacts" | "audit" | "users" | "brands";
-type ModerationEntity = "campaign" | "creator" | "report" | "application" | "contact" | "user" | "brand";
+type Tab = "campaigns" | "creators" | "reports" | "applications" | "contacts" | "audit" | "activity" | "users" | "brands";
+type ModerationEntity = "campaign" | "creator" | "report" | "application" | "contact" | "user" | "brand" | "setting";
+type PlatformSettings = { defaultExpiryDays: number; maxExpiryDays: number };
 
 interface AdminCounts {
   campaigns: number;
@@ -24,6 +27,9 @@ interface AdminCounts {
   contacts: number;
   reports: number;
   auditLogs: number;
+  activity: number;
+  activityEvents: number;
+  expiredCampaigns: number;
   users: number;
   brands: number;
   pendingCampaigns: number;
@@ -43,6 +49,7 @@ const DEFAULT_ADMIN_SORT: Record<Tab, string> = {
   applications: "newest",
   contacts: "newest",
   audit: "newest",
+  activity: "newest",
   users: "newest",
   brands: "newest",
 };
@@ -90,6 +97,88 @@ const AUDIT_REASON_KEYS: Readonly<Record<string, TranslationKey>> = {
   server_error: "admin.auditReason.server_error",
 };
 
+const PLATFORM_SETTINGS_ENTITY_ID = "00000000-0000-4000-8000-000000000001";
+const ACTIVITY_ENTITY_TYPES = ["user", "brand", "creator_profile", "campaign", "application", "report", "contact", "setting"] as const;
+const ACTIVITY_ACTOR_TYPES = ["user", "admin", "system"] as const;
+const ACTIVITY_ACTION_KEYS: Readonly<Record<string, TranslationKey>> = {
+  created: "admin.activityAction.created",
+  updated: "admin.activityAction.updated",
+  deleted: "admin.activityAction.deleted",
+  status_changed: "admin.activityAction.status_changed",
+  expired: "admin.activityAction.expired",
+  completed: "admin.activityAction.completed",
+  contact_synced: "admin.activityAction.contact_synced",
+  email_changed: "admin.activityAction.email_changed",
+  phone_changed: "admin.activityAction.phone_changed",
+  sessions_revoked: "admin.activityAction.sessions_revoked",
+};
+const ACTIVITY_FIELD_KEYS: Readonly<Record<string, TranslationKey>> = {
+  name: "admin.name",
+  email: "brand.email",
+  phone: "brand.phone",
+  status: "admin.status",
+  title: "brand.titleLabel",
+  businessName: "brand.businessName",
+  contactName: "brand.contactName",
+  description: "brand.descLabel",
+  budget: "brand.budget",
+  location: "brand.location",
+  language: "brand.language",
+  languages: "brand.language",
+  format: "brand.format",
+  contentTypes: "cr.content",
+  category: "brand.category",
+  promotionType: "brand.promoting",
+  website: "brand.website",
+  targetAudience: "brand.audience",
+  deadlineAt: "admin.deadlineDate",
+  expiresAt: "admin.expiresDate",
+  expiredAt: "dash.expiredOn",
+  listedAt: "admin.listedDate",
+  followers: "admin.followers",
+  verifiedFollowers: "dash.verifiedFollowers",
+  platform: "cr.platform",
+  bio: "cr.bio",
+  instagram: "cr.instagram",
+  youtube: "cr.youtube",
+  profileUrl: "cr.profileLink",
+  creatorContact: "dash.contactForBrand",
+  creatorName: "admin.creator",
+  creatorId: "admin.creator",
+  campaignId: "admin.campaign",
+  userId: "admin.userContact",
+  message: "admin.message",
+  quoteAmount: "dash.quote",
+  proposedTimelineDays: "dash.proposedTimeline",
+  proposedTimeline: "dash.proposedTimeline",
+  creatorProfileSnapshot: "dash.profileSnapshot",
+  snapshotCapturedAt: "dash.profileSnapshot",
+  decisionNote: "dash.decisionNote",
+  decisionAt: "dash.updatedOn",
+  verificationStatus: "admin.verification",
+  verificationCode: "dash.verificationCode",
+  emailVerifiedAt: "account.emailVerified",
+  moderationNote: "admin.note",
+  adminNote: "admin.note",
+  reviewedAt: "admin.reviewed",
+  emailSource: "admin.contactSource",
+  phoneSource: "admin.contactSource",
+  brandId: "admin.entityBrand",
+  campaignDefaultExpiryDays: "admin.defaultExpiryDays",
+  campaignMaxExpiryDays: "admin.maxExpiryDays",
+  defaultExpiryDays: "admin.defaultExpiryDays",
+  maxExpiryDays: "admin.maxExpiryDays",
+  tokenVersion: "admin.auditDetail.sessionVersion",
+  updatedAt: "dash.updatedOn",
+  resolvedAt: "status.resolved",
+  targetType: "admin.auditDetail.targetType",
+  targetId: "admin.auditDetail.targetId",
+  reason: "admin.auditDetail.reason",
+  details: "admin.details",
+  kind: "admin.type",
+  role: "account.role",
+};
+
 const emptyAdminCounts = (): AdminCounts => ({
   campaigns: 0,
   creators: 0,
@@ -97,6 +186,9 @@ const emptyAdminCounts = (): AdminCounts => ({
   contacts: 0,
   reports: 0,
   auditLogs: 0,
+  activity: 0,
+  activityEvents: 0,
+  expiredCampaigns: 0,
   users: 0,
   brands: 0,
   pendingCampaigns: 0,
@@ -112,12 +204,19 @@ const emptyAdminListState = (): Record<Tab, AdminListState> => ({
   applications: { ...emptyAdminQuery("applications"), rows: [], pagination: null, loaded: false },
   contacts: { ...emptyAdminQuery("contacts"), rows: [], pagination: null, loaded: false },
   audit: { ...emptyAdminQuery("audit"), rows: [], pagination: null, loaded: false },
+  activity: { ...emptyAdminQuery("activity"), rows: [], pagination: null, loaded: false },
   users: { ...emptyAdminQuery("users"), rows: [], pagination: null, loaded: false },
   brands: { ...emptyAdminQuery("brands"), rows: [], pagination: null, loaded: false },
 });
 const adminEntityForTab = (tab: Tab) => (tab === "audit" ? "auditLogs" : tab);
 const adminFilterParamForTab = (tab: Tab) =>
-  tab === "contacts" ? "kind" : tab === "audit" ? "outcome" : tab === "users" ? "role" : "status";
+  tab === "contacts" ? "kind" : tab === "audit" ? "outcome" : tab === "activity" ? "entityType" : tab === "users" ? "role" : "status";
+
+function dateHasPassed(value: string | null | undefined, now: number): boolean {
+  if (!value) return false;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) && time <= now;
+}
 
 function statusClass(status?: string | null, isReport = false) {
   if (isReport && status === "open") return "bg-red-100 text-red-800";
@@ -293,12 +392,25 @@ export default function AdminPage() {
   const [exporting, setExporting] = useState(false);
   const [busyKey, setBusyKey] = useState("");
   const [verifiedFollowers, setVerifiedFollowers] = useState<Record<string, string>>({});
+  const [platformSettings, setPlatformSettings] = useState<PlatformSettings>({
+    defaultExpiryDays: CAMPAIGN_DEFAULT_EXPIRY_DAYS,
+    maxExpiryDays: CAMPAIGN_MAX_EXPIRY_DAYS,
+  });
+  const [settingsForm, setSettingsForm] = useState({
+    defaultExpiryDays: String(CAMPAIGN_DEFAULT_EXPIRY_DAYS),
+    maxExpiryDays: String(CAMPAIGN_MAX_EXPIRY_DAYS),
+  });
+  const settingsDirtyRef = useRef(false);
+  const [clientNow, setClientNow] = useState<number | null>(null);
 
   const clearAdminState = () => {
     setListState(emptyAdminListState());
     setCounts(emptyAdminCounts());
     setAdminDraft(emptyAdminQuery("campaigns"));
     setVerifiedFollowers({});
+    setPlatformSettings({ defaultExpiryDays: CAMPAIGN_DEFAULT_EXPIRY_DAYS, maxExpiryDays: CAMPAIGN_MAX_EXPIRY_DAYS });
+    setSettingsForm({ defaultExpiryDays: String(CAMPAIGN_DEFAULT_EXPIRY_DAYS), maxExpiryDays: String(CAMPAIGN_MAX_EXPIRY_DAYS) });
+    settingsDirtyRef.current = false;
     setTab("campaigns");
     setKey("");
     setTotp("");
@@ -325,6 +437,9 @@ export default function AdminPage() {
     if ((targetTab === "campaigns" || targetTab === "creators" || targetTab === "users") && activeQuery.verificationStatus) {
       params.set("verificationStatus", activeQuery.verificationStatus);
     }
+    if (targetTab === "activity" && activeQuery.verificationStatus) {
+      params.set("actorType", activeQuery.verificationStatus);
+    }
     if (cursor) params.set("cursor", cursor);
 
     setLoading(true);
@@ -345,6 +460,23 @@ export default function AdminPage() {
       if (!rows || !isListPagination(d?.pagination) || !d?.counts || typeof d.counts !== "object") {
         setErrKey("api.loadFailed");
         return;
+      }
+      if (
+        d.platformSettings &&
+        Number.isSafeInteger(d.platformSettings.defaultExpiryDays) &&
+        Number.isSafeInteger(d.platformSettings.maxExpiryDays)
+      ) {
+        const nextSettings = {
+          defaultExpiryDays: d.platformSettings.defaultExpiryDays,
+          maxExpiryDays: d.platformSettings.maxExpiryDays,
+        };
+        setPlatformSettings(nextSettings);
+        if (!settingsDirtyRef.current) {
+          setSettingsForm({
+            defaultExpiryDays: String(nextSettings.defaultExpiryDays),
+            maxExpiryDays: String(nextSettings.maxExpiryDays),
+          });
+        }
       }
       setCounts({ ...emptyAdminCounts(), ...d.counts });
       setListState((current) => ({
@@ -416,6 +548,9 @@ export default function AdminPage() {
     if ((tab === "campaigns" || tab === "creators" || tab === "users") && query.verificationStatus) {
       params.set("verificationStatus", query.verificationStatus);
     }
+    if (tab === "activity" && query.verificationStatus) {
+      params.set("actorType", query.verificationStatus);
+    }
 
     setExporting(true);
     setErrKey("");
@@ -446,7 +581,70 @@ export default function AdminPage() {
     }
   };
 
+  useEffect(() => {
+    const updateNow = () => setClientNow(Date.now());
+    updateNow();
+    const interval = window.setInterval(updateNow, 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   useEffect(() => { void Promise.resolve().then(() => load("campaigns")); }, []);
+
+  const savePlatformSettings = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const defaultExpiryDays = Number(settingsForm.defaultExpiryDays);
+    const maxExpiryDays = Number(settingsForm.maxExpiryDays);
+    if (
+      !Number.isSafeInteger(defaultExpiryDays) ||
+      !Number.isSafeInteger(maxExpiryDays) ||
+      defaultExpiryDays < 7 ||
+      defaultExpiryDays > 90 ||
+      maxExpiryDays < defaultExpiryDays ||
+      maxExpiryDays > 365
+    ) {
+      setErrKey("api.invalidPlatformSetting");
+      return;
+    }
+
+    setBusyKey("setting:update");
+    setErrKey("");
+    setNoticeKey("");
+    try {
+      const res = await fetch("/api/admin/moderation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          entity: "setting",
+          id: PLATFORM_SETTINGS_ENTITY_ID,
+          action: "update",
+          campaignDefaultExpiryDays: defaultExpiryDays,
+          campaignMaxExpiryDays: maxExpiryDays,
+        }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErrKey(apiErrorKey(res.status, d?.code, "api.invalidPlatformSetting"));
+        return;
+      }
+      const nextSettings =
+        d.settings && Number.isSafeInteger(d.settings.defaultExpiryDays) && Number.isSafeInteger(d.settings.maxExpiryDays)
+          ? { defaultExpiryDays: d.settings.defaultExpiryDays, maxExpiryDays: d.settings.maxExpiryDays }
+          : { defaultExpiryDays, maxExpiryDays };
+      settingsDirtyRef.current = false;
+      setPlatformSettings(nextSettings);
+      setSettingsForm({
+        defaultExpiryDays: String(nextSettings.defaultExpiryDays),
+        maxExpiryDays: String(nextSettings.maxExpiryDays),
+      });
+      setNoticeKey("admin.settingsSaved");
+      await load(tab);
+    } catch {
+      setErrKey("api.invalidPlatformSetting");
+    } finally {
+      setBusyKey("");
+    }
+  };
 
   const moderate = async (entity: ModerationEntity, id: string, action: string, extra: Record<string, unknown> = {}) => {
     if (action === "delete") {
@@ -607,6 +805,7 @@ export default function AdminPage() {
   const contacts = listState.contacts.rows;
   const reports = listState.reports.rows;
   const auditLogs = listState.audit.rows;
+  const activityRows = listState.activity.rows;
   const userRows = listState.users.rows;
   const brandRows = listState.brands.rows;
   const pendingReviews = counts.pendingReviews;
@@ -663,6 +862,77 @@ export default function AdminPage() {
     }
   };
 
+  const activityActionLabel = (action?: string | null, entityType?: string | null) => {
+    if (!action) return "—";
+    const suffix = action.includes(".") ? action.slice(action.indexOf(".") + 1) : action;
+    const actionKey = ACTIVITY_ACTION_KEYS[suffix];
+    return t("admin.activityActionFor", {
+      action: actionKey ? t(actionKey) : t("admin.activityAction.unknown"),
+      entity: entityLabel(entityType),
+    });
+  };
+  const actorTypeLabel = (actorType?: string | null) =>
+    actorType === "admin"
+      ? t("admin.actorAdmin")
+      : actorType === "system"
+        ? t("admin.actorSystem")
+        : actorType === "user"
+          ? t("admin.actorUser")
+          : "—";
+  const contactSourceLabel = (source?: string | null) =>
+    source === "account"
+      ? t("admin.sourceAccount")
+      : source === "profile"
+        ? t("admin.sourceProfile")
+        : source === "campaign"
+          ? t("admin.sourceCampaign")
+          : "—";
+  const activityFieldLabels = (fields: unknown): string[] => {
+    if (!Array.isArray(fields)) return [];
+    return fields
+      .filter((field): field is string => typeof field === "string")
+      .map((field) => {
+        const labelKey = ACTIVITY_FIELD_KEYS[field];
+        return labelKey ? t(labelKey).replace(/\s*\*$/, "") : field;
+      });
+  };
+  const activityMetadataEntries = (metadata: unknown): Array<[string, string]> => {
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return [];
+    const entries: Array<[string, string]> = [];
+    for (const [detailKey, rawValue] of Object.entries(metadata as Record<string, unknown>)) {
+      const fieldKey = ACTIVITY_FIELD_KEYS[detailKey];
+      const auditKey = AUDIT_DETAIL_KEYS[detailKey];
+      const label = detailKey === "reviewRequired"
+        ? t("admin.reviewRequired")
+        : detailKey === "lifecycleAction"
+          ? t("admin.action")
+          : fieldKey
+            ? t(fieldKey).replace(/\s*\*$/, "")
+            : auditKey
+              ? t(auditKey)
+              : null;
+      if (!label) continue;
+      let value: string;
+      if (rawValue === null || rawValue === undefined || rawValue === "") value = "—";
+      else if (typeof rawValue === "boolean") value = rawValue ? t("admin.yes") : t("admin.no");
+      else if (typeof rawValue === "number") value = formatNumber(rawValue);
+      else if (detailKey === "targetType") value = entityLabel(String(rawValue));
+      else if (detailKey === "lifecycleAction") {
+        const action = String(rawValue);
+        value = action === "pause"
+          ? statusLabel("paused")
+          : action === "close"
+            ? statusLabel("closed")
+            : action === "republish"
+              ? t("dash.republishCampaign")
+              : t("common.unknown");
+      } else if (detailKey === "targetId") value = String(rawValue);
+      else continue;
+      entries.push([label, value]);
+    }
+    return entries;
+  };
+
   const adminFilterOptions =
     tab === "campaigns"
       ? CAMPAIGN_REVIEW_STATUSES.map((value) => ({ value, label: statusLabel(value) }))
@@ -674,7 +944,9 @@ export default function AdminPage() {
             ? APPLICATION_STATUSES.map((value) => ({ value, label: statusLabel(value) }))
             : tab === "contacts"
               ? ["brand", "creator", "other"].map((value) => ({ value, label: contactKindLabel(value) }))
-              : tab === "users"
+              : tab === "activity"
+                ? ACTIVITY_ENTITY_TYPES.map((value) => ({ value, label: entityLabel(value) }))
+                : tab === "users"
                 ? USER_ROLES.map((value) => ({ value, label: roleLabel(value) }))
                 : tab === "brands"
                   ? ["active"].map((value) => ({ value, label: statusLabel(value) }))
@@ -721,7 +993,13 @@ export default function AdminPage() {
                   { value: "name", label: t("listing.sortName") },
                   { value: "kind", label: t("admin.type") },
                 ]
-              : tab === "users"
+              : tab === "activity"
+                ? [
+                    { value: "newest", label: t("listing.sortNewest") },
+                    { value: "oldest", label: t("listing.sortOldest") },
+                    { value: "action", label: t("admin.action") },
+                  ]
+                : tab === "users"
                 ? [
                     { value: "newest", label: t("listing.sortNewest") },
                     { value: "oldest", label: t("listing.sortOldest") },
@@ -762,7 +1040,7 @@ export default function AdminPage() {
       <h1 className="font-display text-[30px] font-black sm:text-[40px]">{t("admin.overview")}</h1>
       <p className="text-[14.5px] text-[#6f6862]">{t("admin.overviewSub")}</p>
 
-      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {[
           { a: counts.users, b: t("admin.users") },
           { a: counts.brands, b: t("admin.brands") },
@@ -772,6 +1050,8 @@ export default function AdminPage() {
           { a: counts.contacts, b: t("admin.messages") },
           { a: pendingReviews, b: t("admin.pendingReviews") },
           { a: openReports, b: t("admin.openReports") },
+          { a: counts.expiredCampaigns, b: t("admin.expiredCampaigns") },
+          { a: counts.activityEvents, b: t("admin.activityEvents") },
         ].map((s) => (
           <div key={s.b} className="rounded-2xl border border-[#e9ddc3] bg-white p-5 text-center">
             <p className="font-display text-[30px] font-black">{formatNumber(s.a)}</p>
@@ -784,6 +1064,63 @@ export default function AdminPage() {
         <b className="text-[#1c1917]">{t("admin.beforeApproving")}</b> {t("admin.approvalHelp")}
       </div>
 
+      <section className="mt-4 rounded-2xl border border-[#e9ddc3] bg-white p-4" aria-labelledby="platform-settings-heading">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 id="platform-settings-heading" className="text-[16px] font-extrabold">{t("admin.platformSettings")}</h2>
+            <p className="mt-1 max-w-3xl text-[13px] leading-relaxed text-[#6f6862]">{t("admin.platformSettingsHelp")}</p>
+          </div>
+          <p className="rounded-full bg-[#fff4de] px-3 py-1 text-[12px] font-bold text-[#6f6862]">
+            {formatNumber(platformSettings.defaultExpiryDays)} / {formatNumber(platformSettings.maxExpiryDays)}
+          </p>
+        </div>
+        <form onSubmit={savePlatformSettings} className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+          <label htmlFor="admin-default-expiry-days" className="grid gap-1 text-[12.5px] font-bold text-[#57534e]">
+            {t("admin.defaultExpiryDays")}
+            <input
+              id="admin-default-expiry-days"
+              name="campaignDefaultExpiryDays"
+              type="number"
+              inputMode="numeric"
+              autoComplete="off"
+              required
+              min={7}
+              max={90}
+              step={1}
+              value={settingsForm.defaultExpiryDays}
+              onChange={(e) => {
+                settingsDirtyRef.current = true;
+                setSettingsForm((current) => ({ ...current, defaultExpiryDays: e.target.value }));
+              }}
+              className={adminControlClass}
+            />
+          </label>
+          <label htmlFor="admin-MaxExpiry" className="grid gap-1 text-[12.5px] font-bold text-[#57534e]">
+            {t("admin.maxExpiryDays")}
+            <input
+              id="admin-MaxExpiry"
+              name="campaignMaxExpiryDays"
+              type="number"
+              inputMode="numeric"
+              autoComplete="off"
+              required
+              min={7}
+              max={365}
+              step={1}
+              value={settingsForm.maxExpiryDays}
+              onChange={(e) => {
+                settingsDirtyRef.current = true;
+                setSettingsForm((current) => ({ ...current, maxExpiryDays: e.target.value }));
+              }}
+              className={adminControlClass}
+            />
+          </label>
+          <button type="submit" disabled={busyKey === "setting:update" || loading} className="rounded-xl bg-[#1c1917] px-5 py-2.5 text-[13.5px] font-bold text-white disabled:opacity-50 sm:self-end">
+            {busyKey === "setting:update" ? t("dash.saving") : t("admin.saveSettings")}
+          </button>
+        </form>
+      </section>
+
       <div className="mt-6 flex gap-2 overflow-x-auto no-scrollbar">
         {([
           { id: "campaigns", label: t("admin.campaigns") },
@@ -794,6 +1131,7 @@ export default function AdminPage() {
           { id: "applications", label: t("admin.applications") },
           { id: "contacts", label: t("admin.contacts") },
           { id: "audit", label: t("admin.auditLog") },
+          { id: "activity", label: t("admin.activityEvents") },
         ] as Array<{ id: Tab; label: string }>).map((item) => (
           <button
             key={item.id}
@@ -812,18 +1150,20 @@ export default function AdminPage() {
           <input id="admin-search" name="q" type="search" autoComplete="off" value={adminDraft.q} onChange={(e) => setAdminDraft((current) => ({ ...current, q: e.target.value }))} placeholder={t("listing.searchItems")} className={adminControlClass} />
         </label>
         <label htmlFor="admin-filter">
-          <span className="sr-only">{tab === "contacts" ? t("admin.type") : tab === "audit" ? t("admin.outcome") : tab === "users" ? t("account.role") : t("listing.filterStatus")}</span>
+          <span className="sr-only">{tab === "contacts" ? t("admin.type") : tab === "audit" ? t("admin.outcome") : tab === "activity" ? t("admin.entity") : tab === "users" ? t("account.role") : t("listing.filterStatus")}</span>
           <select id="admin-filter" name="filter" autoComplete="off" value={adminDraft.filter} onChange={(e) => setAdminDraft((current) => ({ ...current, filter: e.target.value }))} className={adminControlClass}>
-            <option value="">{tab === "contacts" ? t("admin.type") : tab === "audit" ? t("admin.outcome") : tab === "users" ? t("admin.allRoles") : t("listing.allStatuses")}</option>
+            <option value="">{tab === "contacts" ? t("admin.type") : tab === "audit" ? t("admin.outcome") : tab === "activity" ? t("admin.allEntityTypes") : tab === "users" ? t("admin.allRoles") : t("listing.allStatuses")}</option>
             {adminFilterOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
-        {(tab === "campaigns" || tab === "creators" || tab === "users") && (
+        {(tab === "campaigns" || tab === "creators" || tab === "users" || tab === "activity") && (
           <label htmlFor="admin-verification-filter">
-            <span className="sr-only">{t("admin.verification")}</span>
-            <select id="admin-verification-filter" name="verificationStatus" autoComplete="off" value={adminDraft.verificationStatus} onChange={(e) => setAdminDraft((current) => ({ ...current, verificationStatus: e.target.value }))} className={adminControlClass}>
-              <option value="">{t("listing.allVerification")}</option>
-              {(tab === "users" ? ["verified", "unverified"] : VERIFICATION_STATUSES).map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
+            <span className="sr-only">{tab === "activity" ? t("admin.actor") : t("admin.verification")}</span>
+            <select id="admin-verification-filter" name={tab === "activity" ? "actorType" : "verificationStatus"} autoComplete="off" value={adminDraft.verificationStatus} onChange={(e) => setAdminDraft((current) => ({ ...current, verificationStatus: e.target.value }))} className={adminControlClass}>
+              <option value="">{tab === "activity" ? t("admin.allActorTypes") : t("listing.allVerification")}</option>
+              {tab === "activity"
+                ? ACTIVITY_ACTOR_TYPES.map((actorType) => <option key={actorType} value={actorType}>{actorTypeLabel(actorType)}</option>)
+                : (tab === "users" ? ["verified", "unverified"] : VERIFICATION_STATUSES).map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
             </select>
           </label>
         )}
@@ -851,6 +1191,12 @@ export default function AdminPage() {
       {noticeKey && <p role="status" className="mt-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-[13.5px] font-bold text-green-800">{t(noticeKey)}</p>}
       {errKey && <p role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13.5px] font-bold text-red-700">{t(errKey)}</p>}
 
+      {tab === "activity" && (
+        <p className="mt-4 rounded-xl border border-[#d9e8dc] bg-[#f7fbf7] px-4 py-3 text-[13.5px] font-semibold leading-relaxed text-[#31543b]">
+          {t("admin.activityHelp")}
+        </p>
+      )}
+
       <div className="mt-4 overflow-x-auto rounded-2xl border border-[#e9ddc3] bg-white">
         {tab === "campaigns" && (
           <table className="w-full min-w-[980px] text-left text-[13.5px]">
@@ -868,12 +1214,23 @@ export default function AdminPage() {
               {campaigns.map((c: any) => {
                 const busy = busyKey.startsWith(`campaign:${c.id}:`);
                 const websiteLink = c.website ? normalizeProfileUrl(c.website, "Instagram") : null;
+                const effectiveDeadline = c.deadlineAt ?? c.expiresAt;
+                const deadlinePassed = dateHasPassed(c.expiresAt, clientNow ?? 0);
+                const campaignExpired =
+                  c.status === "expired" || (["pending", "open", "paused"].includes(c.status) && deadlinePassed);
                 return (
                   <tr key={c.id} className="border-b border-[#faf3e0] align-top">
                     <td className="max-w-[260px] p-4">
                       <p className="font-bold">{c.title}</p>
                       {c.description && <p className="mt-1 line-clamp-3 text-[12.5px] text-[#6f6862]">{c.description}</p>}
                       <p className="mt-1 text-[11.5px] text-[#6f6862]">{formatDate(c.createdAt)}</p>
+                      {effectiveDeadline && (
+                        <p className="mt-1 text-[11.5px] font-semibold text-[#6f6862]">
+                          {t(campaignExpired ? "dash.expiredOn" : "admin.deadlineDate")}: {formatDate(effectiveDeadline)}
+                        </p>
+                      )}
+                      {c.updatedAt && <p className="mt-0.5 text-[11.5px] text-[#6f6862]">{t("dash.updatedOn")}: {formatDate(c.updatedAt)}</p>}
+                      {c.brandId && <p className="mt-0.5 break-all text-[11px] text-[#6f6862]">{t("admin.entityBrand")}: {c.brandId}</p>}
                     </td>
                     <td className="max-w-[230px] p-4">
                       <p className="font-semibold">{c.businessName}</p>
@@ -882,6 +1239,11 @@ export default function AdminPage() {
                         {c.phone && <ContactValue value={c.phone} />}
                         {c.email && <ContactValue value={c.email} />}
                       </div>
+                      {(c.emailSource || c.phoneSource) && (
+                        <p className="mt-1 text-[11.5px] font-semibold text-[#6f6862]">
+                          {t("admin.contactSource")}: {[c.emailSource ? `${t("brand.email")} — ${contactSourceLabel(c.emailSource)}` : "", c.phoneSource ? `${t("brand.phone")} — ${contactSourceLabel(c.phoneSource)}` : ""].filter(Boolean).join(" • ")}
+                        </p>
+                      )}
                       {c.website && (
                         websiteLink ? (
                           <a href={websiteLink} target="_blank" rel="noopener noreferrer" className="mt-1 block break-all text-[12px] font-semibold text-[#c7431f] hover:underline">
@@ -902,13 +1264,13 @@ export default function AdminPage() {
                       {c.reviewedAt && <p className="mt-1 text-[11.5px] text-[#6f6862]">{t("admin.reviewed")} {formatDate(c.reviewedAt)}</p>}
                       {c.moderationNote && <p className="mt-1 text-[12px] text-[#6f6862]">{t("admin.note")}: {c.moderationNote}</p>}
                     </td>
-                    <td className="p-4"><StatusPill status={c.status} /></td>
+                    <td className="p-4"><StatusPill status={campaignExpired ? "expired" : c.status} /></td>
                     <td className="p-4">
                       <div className="flex max-w-[220px] flex-wrap gap-1.5">
-                        {c.status !== "open" && (
+                        {!deadlinePassed && c.status !== "open" && (
                           <ActionButton tone="primary" disabled={busy} onClick={() => moderate("campaign", c.id, "approve")}>{t("admin.approveOpen")}</ActionButton>
                         )}
-                        {(c.status !== "pending" || !c.verificationCode) && (
+                        {!deadlinePassed && (c.status !== "pending" || !c.verificationCode) && (
                           <ActionButton tone="warning" disabled={busy} onClick={() => moderate("campaign", c.id, "review")}>
                             {c.status === "pending" ? t("admin.issueCode") : t("admin.sendToReview")}
                           </ActionButton>
@@ -916,10 +1278,10 @@ export default function AdminPage() {
                         {c.status === "pending" && (
                           <ActionButton tone="danger" disabled={busy} onClick={() => moderate("campaign", c.id, "reject")}>{t("admin.reject")}</ActionButton>
                         )}
-                        {(c.status === "open" || c.status === "paused") && (
+                        {!campaignExpired && (c.status === "open" || c.status === "paused") && (
                           <ActionButton tone="danger" disabled={busy} onClick={() => moderate("campaign", c.id, "suspend")}>{t("admin.suspend")}</ActionButton>
                         )}
-                        {c.status === "open" && (
+                        {!campaignExpired && c.status === "open" && (
                           <ActionButton tone="warning" disabled={busy} onClick={() => moderate("campaign", c.id, "close")}>{t("admin.close")}</ActionButton>
                         )}
                         <ActionButton tone="danger" disabled={busy} onClick={() => moderate("campaign", c.id, "delete")}>{t("admin.delete")}</ActionButton>
@@ -957,7 +1319,16 @@ export default function AdminPage() {
                         {c.phone && <ContactValue value={c.phone} />}
                         {c.email && <ContactValue value={c.email} />}
                       </div>
+                      {(c.emailSource || c.phoneSource) && (
+                        <p className="mt-1 text-[11.5px] font-semibold text-[#6f6862]">
+                          {t("admin.contactSource")}: {[c.emailSource ? `${t("brand.email")} — ${contactSourceLabel(c.emailSource)}` : "", c.phoneSource ? `${t("brand.phone")} — ${contactSourceLabel(c.phoneSource)}` : ""].filter(Boolean).join(" • ")}
+                        </p>
+                      )}
                       <p className="mt-1 text-[11.5px] text-[#6f6862]">{formatDate(c.createdAt)}</p>
+                      {(c.listedAt || c.status !== "incomplete") && (
+                        <p className="mt-0.5 text-[11.5px] font-semibold text-[#6f6862]">{t("admin.listedDate")}: {formatDate(c.listedAt ?? c.createdAt)}</p>
+                      )}
+                      {c.updatedAt && <p className="mt-0.5 text-[11.5px] text-[#6f6862]">{t("dash.updatedOn")}: {formatDate(c.updatedAt)}</p>}
                     </td>
                     <td className="p-4"><ProfileLinks links={[{ value: c.profileUrl, kind: "profile" }, { value: c.instagram, kind: "instagram" }, { value: c.youtube, kind: "youtube" }]} platform={c.platform} /></td>
                     <td className="max-w-[260px] p-4">
@@ -1102,14 +1473,44 @@ export default function AdminPage() {
                 const busy = busyKey.startsWith(`application:${a.id}:`);
                 return (
                   <tr key={a.id} className="border-b border-[#faf3e0] align-top">
-                    <td className="max-w-[190px] p-4">
-                      <p className="font-bold">{a.creatorLabel || a.creatorName}</p>
+                    <td className="max-w-[220px] p-4">
+                      <p className="text-[10.5px] font-bold uppercase tracking-widest text-[#6f6862]">{t("dash.submittedName")}</p>
+                      <p className="font-bold">{a.creatorName || a.creatorLabel}</p>
+                      {a.currentCreatorProfile && (
+                        <p className="mt-1 text-[12px] font-semibold text-[#57534e]">
+                          {t("dash.currentCreatorProfile")}: {a.currentCreatorProfile.name}
+                        </p>
+                      )}
                       <p className="mt-1 text-[11.5px] text-[#6f6862]">{formatDate(a.createdAt)}</p>
+                      {a.updatedAt && <p className="mt-0.5 text-[11.5px] text-[#6f6862]">{t("dash.updatedOn")}: {formatDate(a.updatedAt)}</p>}
                     </td>
                     <td className="max-w-[240px] p-4">{a.campaignLabel || (a.campaignMissing ? t("admin.deletedCampaign") : a.campaignId)}</td>
                     <td className="max-w-[300px] p-4">
                       {a.creatorContact && <ContactValue value={a.creatorContact} />}
                       {a.message && <p className="mt-1 text-[12.5px] leading-relaxed text-[#6f6862]">{a.message}</p>}
+                      {a.quoteAmount != null && <p className="mt-1 text-[12.5px] font-semibold"><b>{t("dash.quote")}:</b> {formatCurrency(a.quoteAmount)}</p>}
+                      {(a.proposedTimelineDays != null || a.proposedTimeline) && (
+                        <p className="mt-1 text-[12.5px] leading-relaxed">
+                          <b>{t("dash.proposedTimeline")}:</b>{" "}
+                          {[a.proposedTimelineDays == null ? null : a.proposedTimelineDays === 1 ? t("dash.oneDay") : t("dash.daysCount", { days: a.proposedTimelineDays }), a.proposedTimeline].filter(Boolean).join(" • ")}
+                        </p>
+                      )}
+                      {a.quoteAmount == null && a.proposedTimelineDays == null && !a.proposedTimeline && (
+                        <p className="mt-1 text-[12px] font-semibold text-[#6f6862]">{t("dash.noProposal")}</p>
+                      )}
+                      {a.creatorProfileSnapshot ? (
+                        <div className="mt-2 rounded-lg border border-[#d9e8dc] bg-[#f7fbf7] p-2 text-[12px] leading-relaxed">
+                          <p className="font-bold text-[#31543b]">{t("dash.profileSnapshot")}</p>
+                          <p className="mt-0.5 font-semibold">{a.creatorProfileSnapshot.name}</p>
+                          <p>{[platform(a.creatorProfileSnapshot.platform), opt(a.creatorProfileSnapshot.category), opt(a.creatorProfileSnapshot.languages), a.creatorProfileSnapshot.location].filter(Boolean).join(" • ")}</p>
+                          <p>{a.creatorProfileSnapshot.verifiedFollowers != null ? t("dash.verifiedFollowers") : t("dash.claimedFollowers")}: {formatNumber(a.creatorProfileSnapshot.effectiveFollowers ?? a.creatorProfileSnapshot.followers ?? 0)}</p>
+                          {(a.snapshotCapturedAt || a.creatorProfileSnapshot.capturedAt) && (
+                            <p className="text-[#6f6862]">{t("dash.snapshotCaptured", { date: formatDate(a.snapshotCapturedAt || a.creatorProfileSnapshot.capturedAt) })}</p>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-[12px] font-semibold text-[#6f6862]">{t("dash.snapshotUnavailable")}</p>
+                      )}
                       {a.decisionNote && <p className="mt-1 text-[12px] text-[#6f6862]">{t("dash.brandNote")}: {a.decisionNote}</p>}
                     </td>
                     <td className="p-4">
@@ -1130,9 +1531,16 @@ export default function AdminPage() {
                       )}
                     </td>
                     <td className="p-4">
-                      <ActionButton tone="danger" disabled={busy} onClick={() => moderate("application", a.id, "delete")}>
-                        {t("admin.deleteSpam")}
-                      </ActionButton>
+                      <div className="flex max-w-[210px] flex-wrap gap-1.5">
+                        {a.creatorId && (
+                          <ActionButton disabled={loading} onClick={() => openAdminTabWithSearch("creators", a.creatorId)}>
+                            {t("dash.viewCurrentProfile")}
+                          </ActionButton>
+                        )}
+                        <ActionButton tone="danger" disabled={busy} onClick={() => moderate("application", a.id, "delete")}>
+                          {t("admin.deleteSpam")}
+                        </ActionButton>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -1223,6 +1631,78 @@ export default function AdminPage() {
             </tbody>
           </table>
         )}
+        {tab === "activity" && (
+          <table className="w-full min-w-[1180px] text-left text-[13.5px]">
+            <thead>
+              <tr className="border-b border-[#f0e6cc] text-[#6f6862]">
+                <th scope="col" className="p-4">{t("admin.time")}</th>
+                <th scope="col" className="p-4">{t("admin.action")}</th>
+                <th scope="col" className="p-4">{t("admin.actor")}</th>
+                <th scope="col" className="p-4">{t("admin.owner")}</th>
+                <th scope="col" className="p-4">{t("admin.entity")}</th>
+                <th scope="col" className="p-4">{t("admin.statusChange")}</th>
+                <th scope="col" className="p-4">{t("admin.changedFields")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {activityRows.map((event: any) => {
+                const fields = activityFieldLabels(event.changedFields);
+                const metadataEntries = activityMetadataEntries(event.metadata);
+                return (
+                  <tr key={event.id} className="border-b border-[#faf3e0] align-top">
+                    <td className="whitespace-nowrap p-4 text-[12.5px] text-[#6f6862]">{formatDate(event.createdAt)}</td>
+                    <td className="max-w-[220px] p-4 text-[12.5px] font-bold">{activityActionLabel(event.action, event.entityType)}</td>
+                    <td className="max-w-[220px] p-4">
+                      <p className="font-semibold">{actorTypeLabel(event.actorType)}</p>
+                      {event.actorName && <p className="mt-0.5">{event.actorName}</p>}
+                      {event.actorEmail && <p className="mt-0.5 break-all text-[11.5px] text-[#6f6862]">{event.actorEmail}</p>}
+                      {event.actorUserId && <p className="mt-0.5 break-all text-[11px] text-[#6f6862]">{event.actorUserId}</p>}
+                    </td>
+                    <td className="max-w-[220px] p-4">
+                      {event.ownerName ? <p className="font-semibold">{event.ownerName}</p> : <span className="text-stone-600">—</span>}
+                      {event.ownerEmail && <p className="mt-0.5 break-all text-[11.5px] text-[#6f6862]">{event.ownerEmail}</p>}
+                      {event.ownerUserId && <p className="mt-0.5 break-all text-[11px] text-[#6f6862]">{event.ownerUserId}</p>}
+                    </td>
+                    <td className="max-w-[220px] p-4">
+                      <p className="font-semibold">{entityLabel(event.entityType)}</p>
+                      <p className="mt-0.5 break-all text-[11px] text-[#6f6862]"><span className="font-bold">{t("admin.entityId")}:</span> {event.entityId}</p>
+                    </td>
+                    <td className="min-w-[150px] p-4">
+                      {(event.fromStatus || event.toStatus) ? (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {event.fromStatus && <StatusPill status={event.fromStatus} />}
+                          {event.fromStatus && event.toStatus && <span aria-hidden="true">→</span>}
+                          {event.toStatus && <StatusPill status={event.toStatus} />}
+                        </div>
+                      ) : <span className="text-stone-600">—</span>}
+                    </td>
+                    <td className="max-w-[340px] p-4">
+                      {fields.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {fields.map((field: string, index: number) => (
+                            <span key={`${field}-${index}`} className="rounded-full bg-[#fff4de] px-2 py-0.5 text-[11px] font-bold text-[#57534e]">{field}</span>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[12px] font-semibold text-[#6f6862]">{t("admin.noChangedFields")}</p>
+                      )}
+                      {metadataEntries.length > 0 && (
+                        <dl className="mt-2 grid gap-1 text-[11.5px] leading-relaxed text-[#57534e]">
+                          {metadataEntries.map(([label, value]) => (
+                            <div key={`${label}:${value}`} className="flex flex-wrap gap-x-1.5">
+                              <dt className="font-bold">{label}:</dt>
+                              <dd className="break-all">{value}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
         {tab === "users" && (
           <table className="w-full min-w-[980px] text-left text-[13.5px]">
             <thead>
@@ -1245,6 +1725,7 @@ export default function AdminPage() {
                         {u.phone && <ContactValue value={u.phone} />}
                       </div>
                       <p className="mt-1 text-[11.5px] text-[#6f6862]">{formatDate(u.createdAt)}</p>
+                      {u.updatedAt && <p className="mt-0.5 text-[11.5px] text-[#6f6862]">{t("dash.updatedOn")}: {formatDate(u.updatedAt)}</p>}
                       <p className="break-all text-[11px] text-[#6f6862]">{u.id}</p>
                     </td>
                     <td className="max-w-[260px] p-4">
@@ -1320,7 +1801,9 @@ export default function AdminPage() {
                         {b.email && <ContactValue value={b.email} />}
                         {!b.phone && !b.email && <span className="text-stone-600">—</span>}
                       </div>
+                      <p className="mt-1 text-[11.5px] font-semibold text-[#6f6862]">{t("admin.contactSource")}: {contactSourceLabel("account")}</p>
                       <p className="mt-1 text-[11.5px] text-[#6f6862]">{formatDate(b.createdAt)}</p>
+                      {b.updatedAt && <p className="mt-0.5 text-[11.5px] text-[#6f6862]">{t("dash.updatedOn")}: {formatDate(b.updatedAt)}</p>}
                       <p className="break-all text-[11px] text-[#6f6862]">{b.id}</p>
                     </td>
                     <td className="max-w-[260px] p-4">

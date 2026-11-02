@@ -1,5 +1,5 @@
 import { db } from "@/backend/db";
-import { adminAuditLogs, applications, brands, campaigns, contacts, creators, reports, userSessions, users } from "@/backend/db/schema";
+import { adminAuditLogs, applications, auditEvents, brands, campaigns, contacts, creators, reports, userSessions, users } from "@/backend/db/schema";
 import { adminSessionUnavailableResponse, isAdmin, isAdminSessionUnavailableError, logAdminSessionUnavailable } from "@/backend/admin";
 import { logAdminAudit } from "@/backend/admin-audit";
 import { attachApplicationStatusHistory } from "@/backend/application-history";
@@ -38,11 +38,15 @@ import {
   type SortKey,
 } from "@/backend/pagination";
 import { USER_ROLES } from "@/shared/user-roles";
+import { alias } from "drizzle-orm/pg-core";
+import { parseCreatorProfileSnapshot } from "@/backend/application-snapshot";
+import { expireOverdueCampaigns } from "@/backend/campaign-lifecycle";
+import { getCampaignExpiryPolicy } from "@/backend/platform-settings";
 
 export const dynamic = "force-dynamic";
 
 const NO_STORE = { "Cache-Control": "private, no-store" };
-const ADMIN_ENTITIES = ["campaigns", "creators", "applications", "contacts", "reports", "auditLogs", "users", "brands"] as const;
+const ADMIN_ENTITIES = ["campaigns", "creators", "applications", "contacts", "reports", "auditLogs", "activity", "users", "brands"] as const;
 type AdminEntity = (typeof ADMIN_ENTITIES)[number];
 
 const CAMPAIGN_SORTS = ["review", "newest", "oldest", "title", "budget_desc", "budget_asc", "status"] as const;
@@ -51,6 +55,9 @@ const APPLICATION_SORTS = ["newest", "oldest", "updated", "status"] as const;
 const CONTACT_SORTS = ["newest", "oldest", "name", "kind"] as const;
 const REPORT_SORTS = ["triage", "newest", "oldest", "status"] as const;
 const AUDIT_SORTS = ["newest", "oldest", "action", "outcome"] as const;
+const ACTIVITY_SORTS = ["newest", "oldest", "action"] as const;
+const ACTIVITY_ENTITY_TYPES = ["user", "brand", "creator_profile", "campaign", "application", "report", "contact", "setting"] as const;
+const ACTIVITY_ACTOR_TYPES = ["user", "admin", "system"] as const;
 const USER_SORTS = ["newest", "oldest", "name", "email", "role"] as const;
 const BRAND_SORTS = ["newest", "oldest", "name", "status"] as const;
 const REPORT_STATUSES = ["open", "resolved", "dismissed"] as const;
@@ -59,11 +66,15 @@ const CONTACT_KINDS = ["brand", "creator", "other"] as const;
 const AUDIT_OUTCOMES = ["success", "failure"] as const;
 
 type CampaignSortRow = { id: string; title: string; budget: number; status: string; createdAt: Date };
-type CreatorSortRow = { id: string; name: string; followers: number; status: string; createdAt: Date };
+type CreatorSortRow = { id: string; name: string; followers: number; status: string; listedAt: Date | null; createdAt: Date };
 type ApplicationSortRow = { application: { id: string; status: string; createdAt: Date; updatedAt: Date } };
 type ContactSortRow = { id: string; name: string; kind: string; createdAt: Date };
 type ReportSortRow = { report: { id: string; status: string; createdAt: Date } };
 type AuditSortRow = { id: string; action: string; outcome: string; createdAt: Date };
+type ActivitySortRow = { event: { id: string; action: string; createdAt: Date } };
+
+const activityActorUsers = alias(users, "activity_actor_users");
+const activityOwnerUsers = alias(users, "activity_owner_users");
 type UserSortRow = { id: string; name: string; email: string; role: string; createdAt: Date };
 type BrandSortRow = { brand: { id: string; name: string; status: string; createdAt: Date } };
 
@@ -95,6 +106,8 @@ async function loadAdminCounts() {
     [contactsRow],
     [reportsRow],
     [auditLogsRow],
+    [activityRow],
+    [expiredCampaignsRow],
     [usersRow],
     [brandsRow],
     [pendingCampaignsRow],
@@ -107,6 +120,8 @@ async function loadAdminCounts() {
     db.select({ count: sql<number>`count(*)::int` }).from(contacts),
     db.select({ count: sql<number>`count(*)::int` }).from(reports),
     db.select({ count: sql<number>`count(*)::int` }).from(adminAuditLogs),
+    db.select({ count: sql<number>`count(*)::int` }).from(auditEvents),
+    db.select({ count: sql<number>`count(*)::int` }).from(campaigns).where(eq(campaigns.status, "expired")),
     db.select({ count: sql<number>`count(*)::int` }).from(users),
     db.select({ count: sql<number>`count(*)::int` }).from(brands),
     db.select({ count: sql<number>`count(*)::int` }).from(campaigns).where(eq(campaigns.status, "pending")),
@@ -122,6 +137,9 @@ async function loadAdminCounts() {
     contacts: Number(contactsRow?.count ?? 0),
     reports: Number(reportsRow?.count ?? 0),
     auditLogs: Number(auditLogsRow?.count ?? 0),
+    activity: Number(activityRow?.count ?? 0),
+    activityEvents: Number(activityRow?.count ?? 0),
+    expiredCampaigns: Number(expiredCampaignsRow?.count ?? 0),
     users: Number(usersRow?.count ?? 0),
     brands: Number(brandsRow?.count ?? 0),
     pendingCampaigns,
@@ -195,6 +213,8 @@ async function loadCampaigns(params: URLSearchParams) {
   const search = searchCondition(
     [
       textExpression(sql`${campaigns.id}`),
+      textExpression(sql`${campaigns.ownerId}`),
+      textExpression(sql`${campaigns.brandId}`),
       textExpression(sql`${campaigns.title}`),
       textExpression(sql`${campaigns.businessName}`),
       textExpression(sql`${campaigns.contactName}`),
@@ -237,36 +257,36 @@ function creatorSortKeys(sort: string): Array<SortKey<CreatorSortRow>> {
   switch (sort) {
     case "newest":
       return [
-        { expression: sql`${creators.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`coalesce(${creators.listedAt}, ${creators.createdAt})`, direction: "desc", kind: "date", value: (row) => row.listedAt ?? row.createdAt },
         { expression: sql`${creators.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
       ];
     case "oldest":
       return [
-        { expression: sql`${creators.createdAt}`, direction: "asc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`coalesce(${creators.listedAt}, ${creators.createdAt})`, direction: "asc", kind: "date", value: (row) => row.listedAt ?? row.createdAt },
         { expression: sql`${creators.id}`, direction: "asc", kind: "uuid", value: (row) => row.id },
       ];
     case "name":
       return [
         { expression: sql`lower(${creators.name})`, direction: "asc", kind: "string", value: (row) => row.name.toLocaleLowerCase("en-US") },
-        { expression: sql`${creators.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`coalesce(${creators.listedAt}, ${creators.createdAt})`, direction: "desc", kind: "date", value: (row) => row.listedAt ?? row.createdAt },
         { expression: sql`${creators.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
       ];
     case "followers_desc":
       return [
         { expression: sql`${creators.followers}`, direction: "desc", kind: "number", value: (row) => row.followers },
-        { expression: sql`${creators.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`coalesce(${creators.listedAt}, ${creators.createdAt})`, direction: "desc", kind: "date", value: (row) => row.listedAt ?? row.createdAt },
         { expression: sql`${creators.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
       ];
     case "followers_asc":
       return [
         { expression: sql`${creators.followers}`, direction: "asc", kind: "number", value: (row) => row.followers },
-        { expression: sql`${creators.createdAt}`, direction: "asc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`coalesce(${creators.listedAt}, ${creators.createdAt})`, direction: "asc", kind: "date", value: (row) => row.listedAt ?? row.createdAt },
         { expression: sql`${creators.id}`, direction: "asc", kind: "uuid", value: (row) => row.id },
       ];
     case "status":
       return [
         { expression: sql`${creators.status}`, direction: "asc", kind: "string", value: (row) => row.status },
-        { expression: sql`${creators.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`coalesce(${creators.listedAt}, ${creators.createdAt})`, direction: "desc", kind: "date", value: (row) => row.listedAt ?? row.createdAt },
         { expression: sql`${creators.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
       ];
     default:
@@ -277,7 +297,7 @@ function creatorSortKeys(sort: string): Array<SortKey<CreatorSortRow>> {
           kind: "number",
           value: (row) => (row.status === "pending" ? 0 : 1),
         },
-        { expression: sql`${creators.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`coalesce(${creators.listedAt}, ${creators.createdAt})`, direction: "desc", kind: "date", value: (row) => row.listedAt ?? row.createdAt },
         { expression: sql`${creators.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
       ];
   }
@@ -379,6 +399,8 @@ async function loadApplications(params: URLSearchParams) {
       textExpression(sql`${applications.creatorName}`),
       textExpression(sql`${applications.creatorContact}`),
       textExpression(sql`${applications.message}`),
+      textExpression(sql`${applications.proposedTimeline}`),
+      textExpression(sql`${applications.quoteAmount}`),
       textExpression(sql`${applications.decisionNote}`),
       textExpression(sql`${applications.status}`),
       textExpression(sql`${campaigns.title}`),
@@ -416,9 +438,13 @@ async function loadApplications(params: URLSearchParams) {
     rows: await attachApplicationStatusHistory(
       page.items.map(({ application, campaignTitle, campaignBusinessName, creatorLabel }) => ({
         ...application,
+        creatorProfileSnapshot: parseCreatorProfileSnapshot(application.creatorProfileSnapshot),
         campaignLabel: campaignTitle ? `${campaignTitle} (${campaignBusinessName ?? ""})` : null,
         campaignMissing: campaignTitle === null,
         creatorLabel: creatorLabel ?? application.creatorName,
+        currentCreatorProfile: creatorLabel
+          ? { id: application.creatorId, name: creatorLabel }
+          : null,
       })),
     ),
     pagination: page.pagination,
@@ -643,6 +669,101 @@ async function loadAuditLogs(params: URLSearchParams) {
   return { rows: page.items, pagination: page.pagination };
 }
 
+function activitySortKeys(sort: string): Array<SortKey<ActivitySortRow>> {
+  switch (sort) {
+    case "oldest":
+      return [
+        { expression: sql`${auditEvents.createdAt}`, direction: "asc", kind: "date", value: (row) => row.event.createdAt },
+        { expression: sql`${auditEvents.id}`, direction: "asc", kind: "uuid", value: (row) => row.event.id },
+      ];
+    case "action":
+      return [
+        { expression: sql`lower(${auditEvents.action})`, direction: "asc", kind: "string", value: (row) => row.event.action.toLocaleLowerCase("en-US") },
+        { expression: sql`${auditEvents.createdAt}`, direction: "desc", kind: "date", value: (row) => row.event.createdAt },
+        { expression: sql`${auditEvents.id}`, direction: "desc", kind: "uuid", value: (row) => row.event.id },
+      ];
+    default:
+      return [
+        { expression: sql`${auditEvents.createdAt}`, direction: "desc", kind: "date", value: (row) => row.event.createdAt },
+        { expression: sql`${auditEvents.id}`, direction: "desc", kind: "uuid", value: (row) => row.event.id },
+      ];
+  }
+}
+
+async function loadActivity(params: URLSearchParams) {
+  const listing = parseListingParams(params, { defaultLimit: 50, defaultSort: "newest", allowedSorts: ACTIVITY_SORTS });
+  const entityType = parseEnumParam(params, "entityType", ACTIVITY_ENTITY_TYPES, { aliases: ["status", "filter"] });
+  const actorType = parseEnumParam(params, "actorType", ACTIVITY_ACTOR_TYPES, { aliases: ["verificationStatus"] });
+  const entityId = parseUuidParam(params, "entityId");
+  const actorUserId = parseUuidParam(params, "actorUserId");
+  const ownerUserId = parseUuidParam(params, "ownerUserId");
+  const scope = scopeFrom({ listing: "admin-activity", q: listing.q, entityType, actorType, entityId, actorUserId, ownerUserId });
+  const keys = activitySortKeys(listing.sort);
+  const cursorValues = decodeCursor(listing.cursor, { sort: listing.sort, scope, keys });
+  const search = searchCondition(
+    [
+      textExpression(sql`${auditEvents.id}`),
+      textExpression(sql`${auditEvents.actorType}`),
+      textExpression(sql`${auditEvents.actorUserId}`),
+      textExpression(sql`${auditEvents.ownerUserId}`),
+      textExpression(sql`${auditEvents.entityType}`),
+      textExpression(sql`${auditEvents.entityId}`),
+      textExpression(sql`${auditEvents.action}`),
+      textExpression(sql`${auditEvents.fromStatus}`),
+      textExpression(sql`${auditEvents.toStatus}`),
+      textExpression(sql`${auditEvents.changedFields}`),
+      textExpression(sql`${auditEvents.metadata}`),
+      textExpression(sql`${activityActorUsers.name}`),
+      textExpression(sql`${activityActorUsers.email}`),
+      textExpression(sql`${activityOwnerUsers.name}`),
+      textExpression(sql`${activityOwnerUsers.email}`),
+    ],
+    listing.q,
+  );
+  const baseWhere = allConditions([
+    entityType ? eq(auditEvents.entityType, entityType) : undefined,
+    actorType ? eq(auditEvents.actorType, actorType) : undefined,
+    entityId ? eq(auditEvents.entityId, entityId) : undefined,
+    actorUserId ? eq(auditEvents.actorUserId, actorUserId) : undefined,
+    ownerUserId ? eq(auditEvents.ownerUserId, ownerUserId) : undefined,
+    search,
+  ]);
+  const pageWhere = allConditions([baseWhere, cursorCondition(keys, cursorValues)]);
+  const [[totalRow], rowsWithExtra] = await Promise.all([
+    db
+      .select({ count: sql<number>`count(distinct ${auditEvents.id})::int` })
+      .from(auditEvents)
+      .leftJoin(activityActorUsers, eq(auditEvents.actorUserId, activityActorUsers.id))
+      .leftJoin(activityOwnerUsers, eq(auditEvents.ownerUserId, activityOwnerUsers.id))
+      .where(baseWhere),
+    db
+      .select({
+        event: auditEvents,
+        actorName: activityActorUsers.name,
+        actorEmail: activityActorUsers.email,
+        ownerName: activityOwnerUsers.name,
+        ownerEmail: activityOwnerUsers.email,
+      })
+      .from(auditEvents)
+      .leftJoin(activityActorUsers, eq(auditEvents.actorUserId, activityActorUsers.id))
+      .leftJoin(activityOwnerUsers, eq(auditEvents.ownerUserId, activityOwnerUsers.id))
+      .where(pageWhere)
+      .orderBy(...sortOrder(keys))
+      .limit(listing.limit + 1),
+  ]);
+  const page = paginateRows(rowsWithExtra, { limit: listing.limit, total: Number(totalRow?.count ?? 0), sort: listing.sort, scope, keys });
+  return {
+    rows: page.items.map(({ event, actorName, actorEmail, ownerName, ownerEmail }) => ({
+      ...event,
+      actorName,
+      actorEmail,
+      ownerName,
+      ownerEmail,
+    })),
+    pagination: page.pagination,
+  };
+}
+
 function userSortKeys(sort: string): Array<SortKey<UserSortRow>> {
   switch (sort) {
     case "oldest":
@@ -711,6 +832,7 @@ async function loadUsers(params: URLSearchParams) {
         role: users.role,
         emailVerifiedAt: users.emailVerifiedAt,
         createdAt: users.createdAt,
+        updatedAt: users.updatedAt,
       })
       .from(users)
       .where(pageWhere)
@@ -848,6 +970,10 @@ async function loadBrands(params: URLSearchParams) {
   return {
     rows: page.items.map(({ brand, ...account }) => ({
       ...brand,
+      // The brand row's copied contacts are a legacy mirror; the linked
+      // account is canonical for admin/display and future account edits.
+      email: account.accountEmail,
+      phone: account.accountPhone,
       ...account,
       campaignCount: campaignCountByUser.get(brand.userId) ?? 0,
       applicationsReceivedCount: receivedCountByUser.get(brand.userId) ?? 0,
@@ -872,9 +998,11 @@ async function loadAdminEntity(entity: AdminEntity, params: URLSearchParams): Pr
               ? await loadReports(params)
               : entity === "users"
                 ? await loadUsers(params)
-                : entity === "brands"
+                  : entity === "brands"
                   ? await loadBrands(params)
-                  : await loadAuditLogs(params);
+                  : entity === "activity"
+                    ? await loadActivity(params)
+                    : await loadAuditLogs(params);
   return page as AdminPage;
 }
 
@@ -968,6 +1096,8 @@ export async function GET(req: Request) {
     const entity = (rawEntity === "audit" ? "auditLogs" : rawEntity) as AdminEntity;
     if (!ADMIN_ENTITIES.includes(entity)) throw new ListingQueryError("invalid_filter", "Please choose a valid filter.");
 
+    await expireOverdueCampaigns();
+
     const format = params.get("format")?.trim().toLowerCase();
     if (format) {
       if (format !== "csv") throw new ListingQueryError("invalid_filter", "Please choose a valid filter.");
@@ -975,8 +1105,8 @@ export async function GET(req: Request) {
     }
 
     const page = await loadAdminEntity(entity, params);
-    const counts = await loadAdminCounts();
-    return Response.json({ entity, [entity]: page.rows, pagination: page.pagination, counts }, { headers: NO_STORE });
+    const [counts, platformSettings] = await Promise.all([loadAdminCounts(), getCampaignExpiryPolicy()]);
+    return Response.json({ entity, [entity]: page.rows, pagination: page.pagination, counts, platformSettings }, { headers: NO_STORE });
   } catch (e) {
     if (isAdminSessionUnavailableError(e)) {
       logAdminSessionUnavailable(e);

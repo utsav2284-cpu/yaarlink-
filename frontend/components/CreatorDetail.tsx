@@ -44,8 +44,8 @@ export default function CreatorDetail({ creator }: { creator: PublicCreatorDetai
     {
       label: t("listing.listedLabel"),
       value: (
-        <time dateTime={creator.createdAt} title={formatDateTime(creator.createdAt)}>
-          {formatRelativeTime(creator.createdAt)}
+        <time dateTime={creator.listedAt} title={formatDateTime(creator.listedAt)}>
+          {formatRelativeTime(creator.listedAt)}
         </time>
       ),
     },
@@ -77,8 +77,8 @@ export default function CreatorDetail({ creator }: { creator: PublicCreatorDetai
                 {[opt(creator.category), creator.location, opt(creator.languages)].filter(Boolean).join(" • ")}
               </p>
               <p className="mt-1 text-[13.5px] font-semibold text-white/65">
-                <time dateTime={creator.createdAt} title={formatDateTime(creator.createdAt)}>
-                  {t("listing.listed", { age: formatRelativeTime(creator.createdAt) })}
+                <time dateTime={creator.listedAt} title={formatDateTime(creator.listedAt)}>
+                  {t("listing.listed", { age: formatRelativeTime(creator.listedAt) })}
                 </time>
               </p>
             </div>

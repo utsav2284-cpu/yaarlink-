@@ -1,10 +1,11 @@
-import { and, desc, eq, gt, inArray, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, ne, or } from "drizzle-orm";
 import { hashPassword, verifyLoginPassword, verifyPassword } from "@/backend/auth";
 import { db } from "@/backend/db";
 import { localPasswordPolicyProblem } from "@/backend/password-policy";
 import {
   accountTokens,
   applications,
+  auditEvents,
   brands,
   campaigns,
   creators,
@@ -14,6 +15,8 @@ import {
   users,
 } from "@/backend/db/schema";
 import { availableUserRoles, primaryUserRole, type UserRole } from "@/shared/user-roles";
+import { recordAuditEvent } from "@/backend/audit-events";
+import { syncAccountPhoneContacts } from "@/backend/identity-sync";
 
 export function describeUserAgent(userAgent: string | null | undefined) {
   const ua = userAgent ?? "";
@@ -110,22 +113,70 @@ export async function changeUserPrimaryRole(userId: string, role: UserRole): Pro
     const [user] = await tx.select().from(users).where(eq(users.id, userId)).limit(1).for("update");
     if (!user) return { kind: "invalid_session" } as const;
 
+    const now = new Date();
     const [updated] = await tx
       .update(users)
-      .set({ role })
+      .set({ role, updatedAt: now })
       .where(eq(users.id, user.id))
       .returning({ id: users.id, name: users.name, email: users.email, role: users.role });
 
     if (role === "brand") {
-      await tx
+      const [brand] = await tx
         .insert(brands)
-        .values({ userId: user.id, name: user.name, email: user.email, phone: user.phone, status: "active" })
-        .onConflictDoNothing({ target: brands.userId });
+        .values({
+          userId: user.id,
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+          status: "active",
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoNothing({ target: brands.userId })
+        .returning({ id: brands.id });
+      if (brand) {
+        await recordAuditEvent(tx, {
+          actorType: "user",
+          actorUserId: user.id,
+          ownerUserId: user.id,
+          entityType: "brand",
+          entityId: brand.id,
+          action: "brand.created",
+          toStatus: "active",
+          changedFields: ["email", "name", "phone", "status"],
+          createdAt: now,
+        });
+      }
     } else {
-      await tx
+      const [creator] = await tx
         .insert(creators)
-        .values({ userId: user.id, name: user.name, email: user.email, phone: user.phone, status: "incomplete" })
-        .onConflictDoNothing({ target: creators.userId });
+        .values({
+          userId: user.id,
+          name: user.name,
+          email: user.email,
+          emailSource: "account",
+          phone: user.phone,
+          phoneSource: user.phone ? "account" : "profile",
+          status: "incomplete",
+          listedAt: null,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoNothing({ target: creators.userId })
+        .returning({ id: creators.id });
+      if (creator) {
+        await recordAuditEvent(tx, {
+          actorType: "user",
+          actorUserId: user.id,
+          ownerUserId: user.id,
+          entityType: "creator_profile",
+          entityId: creator.id,
+          action: "creator_profile.created",
+          toStatus: "incomplete",
+          changedFields: ["email", "emailSource", "name", "phone", "phoneSource", "status"],
+          createdAt: now,
+        });
+      }
     }
 
     return { kind: "changed", user: updated } as const;
@@ -182,7 +233,7 @@ export async function changeUserPasswordKeepingSession({
     const newTokenVersion = user.tokenVersion + 1;
     const [updated] = await tx
       .update(users)
-      .set({ passwordHash: await hashPassword(newPassword), tokenVersion: newTokenVersion })
+      .set({ passwordHash: await hashPassword(newPassword), tokenVersion: newTokenVersion, updatedAt: now })
       .where(eq(users.id, user.id))
       .returning({ id: users.id, name: users.name, email: users.email, role: users.role });
 
@@ -221,19 +272,28 @@ export async function changeUserPhone({
     const [user] = await tx.select().from(users).where(eq(users.id, userId)).limit(1).for("update");
     if (!user) return { kind: "invalid_session" } as const;
     if (!(await verifyPassword(currentPassword, user.passwordHash)).ok) return { kind: "wrong_password" } as const;
+    const now = new Date();
     const [updated] = await tx
       .update(users)
-      .set({ phone })
+      .set({ phone, updatedAt: now })
       .where(eq(users.id, user.id))
       .returning({ phone: users.phone });
-    // The one-to-one brand record is an account-contact snapshot. Keep it in
-    // sync when it was still using the old account phone (or had none), while
-    // leaving a deliberately different brand contact untouched. Campaign and
-    // creator-profile contact fields remain separately editable.
-    await tx
-      .update(brands)
-      .set({ phone })
-      .where(and(eq(brands.userId, user.id), user.phone ? eq(brands.phone, user.phone) : isNull(brands.phone)));
+    // The one-to-one brand record always mirrors canonical account contact.
+    // Creator/campaign contacts follow only when they are marked
+    // account-sourced; explicit profile/campaign contacts stay independent.
+    if (user.phone !== phone) {
+      await recordAuditEvent(tx, {
+        actorType: "user",
+        actorUserId: user.id,
+        ownerUserId: user.id,
+        entityType: "user",
+        entityId: user.id,
+        action: "user.phone_changed",
+        changedFields: ["phone"],
+        createdAt: now,
+      });
+      await syncAccountPhoneContacts(tx, { userId: user.id, newPhone: phone, now });
+    }
     return { kind: "changed", phone: updated.phone } as const;
   });
 }
@@ -260,9 +320,92 @@ export async function deleteUserAccount({
     if (confirmationEmail.toLowerCase().trim() !== user.email) return { kind: "confirmation_mismatch" } as const;
 
     const deletedUser = { id: user.id, name: user.name, email: user.email, role: user.role };
+    const now = new Date();
+    const [brandRows, creatorRows, campaignRows, applicationRows] = await Promise.all([
+      tx.select({ id: brands.id, status: brands.status }).from(brands).where(eq(brands.userId, user.id)),
+      tx.select({ id: creators.id, status: creators.status }).from(creators).where(eq(creators.userId, user.id)),
+      tx.select({ id: campaigns.id, status: campaigns.status }).from(campaigns).where(eq(campaigns.ownerId, user.id)),
+      tx
+        .select({
+          id: applications.id,
+          status: applications.status,
+          userId: applications.userId,
+          campaignId: applications.campaignId,
+          creatorId: applications.creatorId,
+        })
+        .from(applications)
+        .leftJoin(campaigns, eq(applications.campaignId, campaigns.id))
+        .where(or(eq(applications.userId, user.id), eq(campaigns.ownerId, user.id))),
+    ]);
+    for (const brand of brandRows) {
+      await recordAuditEvent(tx, {
+        actorType: "user",
+        actorUserId: user.id,
+        ownerUserId: user.id,
+        entityType: "brand",
+        entityId: brand.id,
+        action: "brand.deleted",
+        fromStatus: brand.status,
+        toStatus: "deleted",
+        metadata: { accountDeleted: true },
+        createdAt: now,
+      });
+    }
+    for (const creator of creatorRows) {
+      await recordAuditEvent(tx, {
+        actorType: "user",
+        actorUserId: user.id,
+        ownerUserId: user.id,
+        entityType: "creator_profile",
+        entityId: creator.id,
+        action: "creator_profile.deleted",
+        fromStatus: creator.status,
+        toStatus: "deleted",
+        metadata: { accountDeleted: true },
+        createdAt: now,
+      });
+    }
+    for (const campaign of campaignRows) {
+      await recordAuditEvent(tx, {
+        actorType: "user",
+        actorUserId: user.id,
+        ownerUserId: user.id,
+        entityType: "campaign",
+        entityId: campaign.id,
+        action: "campaign.deleted",
+        fromStatus: campaign.status,
+        toStatus: "deleted",
+        metadata: { accountDeleted: true },
+        createdAt: now,
+      });
+    }
+    for (const application of applicationRows) {
+      await recordAuditEvent(tx, {
+        actorType: "user",
+        actorUserId: user.id,
+        ownerUserId: application.userId,
+        entityType: "application",
+        entityId: application.id,
+        action: "application.deleted",
+        fromStatus: application.status,
+        toStatus: "deleted",
+        metadata: { accountDeleted: true, campaignId: application.campaignId, creatorId: application.creatorId },
+        createdAt: now,
+      });
+    }
+    await recordAuditEvent(tx, {
+      actorType: "user",
+      actorUserId: user.id,
+      ownerUserId: user.id,
+      entityType: "user",
+      entityId: user.id,
+      action: "user.deleted",
+      toStatus: "deleted",
+      createdAt: now,
+    });
     await tx
       .update(reports)
-      .set({ reporterName: null, reporterContact: null })
+      .set({ reporterName: null, reporterContact: null, updatedAt: now })
       .where(eq(reports.reporterUserId, user.id));
     // Foreign-key cascades remove the role profile, owned campaigns,
     // applications, notifications, sessions and account tokens. Reports the
@@ -287,14 +430,24 @@ export async function buildAccountExport(userId: string) {
       role: users.role,
       emailVerifiedAt: users.emailVerifiedAt,
       createdAt: users.createdAt,
+      updatedAt: users.updatedAt,
     })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
   if (!user) return null;
 
-  const [brandRows, creatorRows, ownedCampaigns, submittedApplications, userNotifications, submittedReports, sessionRows, pendingEmailChange] =
-    await Promise.all([
+  const [
+    brandRows,
+    creatorRows,
+    ownedCampaigns,
+    submittedApplications,
+    userNotifications,
+    submittedReports,
+    sessionRows,
+    pendingEmailChange,
+    activityRows,
+  ] = await Promise.all([
       db.select().from(brands).where(eq(brands.userId, userId)),
       db.select().from(creators).where(eq(creators.userId, userId)),
       db.select().from(campaigns).where(eq(campaigns.ownerId, userId)).orderBy(desc(campaigns.createdAt)),
@@ -303,6 +456,12 @@ export async function buildAccountExport(userId: string) {
       db.select().from(reports).where(eq(reports.reporterUserId, userId)).orderBy(desc(reports.createdAt)),
       db.select().from(userSessions).where(eq(userSessions.userId, userId)).orderBy(desc(userSessions.lastSeenAt)).limit(100),
       getPendingEmailChange(userId),
+      db
+        .select()
+        .from(auditEvents)
+        .where(or(eq(auditEvents.actorUserId, userId), eq(auditEvents.ownerUserId, userId)))
+        .orderBy(desc(auditEvents.createdAt), desc(auditEvents.id))
+        .limit(500),
     ]);
 
   const campaignIds = ownedCampaigns.map((campaign) => campaign.id);
@@ -317,11 +476,16 @@ export async function buildAccountExport(userId: string) {
     exportedAt: new Date().toISOString(),
     account: { ...user, role: primaryRole, primaryRole, availableRoles: availableUserRoles() },
     pendingEmailChange,
-    brandProfile: brandRows[0] ?? null,
+    brandProfile: brandRows[0] ? { ...brandRows[0], email: user.email, phone: user.phone } : null,
     creatorProfile: creatorRows[0] ? omitFields(creatorRows[0] as unknown as Record<string, unknown>, ["verificationCode"]) : null,
     campaigns: ownedCampaigns.map((row) => omitFields(row as unknown as Record<string, unknown>, ["verificationCode"])),
     applicationsSubmitted: submittedApplications,
-    applicationsReceived: receivedApplications,
+    // A brand's export includes the contact/message/proposal each creator
+    // submitted to it, but not another creator's stored profile snapshot.
+    applicationsReceived: receivedApplications.map((row) =>
+      omitFields(row as unknown as Record<string, unknown>, ["creatorProfileSnapshot", "snapshotCapturedAt"]),
+    ),
+    activityHistory: activityRows,
     notifications: userNotifications,
     reportsSubmitted: submittedReports,
     sessions: sessionRows.map((row) => ({

@@ -31,6 +31,7 @@ type Creator = {
   languages: string;
   contentTypes: string;
   instagram: string | null;
+  listedAt: string;
   createdAt: string;
 };
 
@@ -468,8 +469,8 @@ export default function HomePageClient({ initialListings }: { initialListings: H
                     </div>
                     <p className="mt-2 text-[12.5px] font-semibold text-[#57534e]">{[cr.location, opt(cr.languages)].filter(Boolean).join(" • ")}</p>
                     <p className="mt-1 text-[12px] font-semibold text-[#6f6862]">
-                      <time dateTime={cr.createdAt} title={formatDateTime(cr.createdAt)}>
-                        {t("listing.listed", { age: formatRelativeTime(cr.createdAt) })}
+                      <time dateTime={cr.listedAt ?? cr.createdAt} title={formatDateTime(cr.listedAt ?? cr.createdAt)}>
+                        {t("listing.listed", { age: formatRelativeTime(cr.listedAt ?? cr.createdAt) })}
                       </time>
                     </p>
                     <Link href={`/creators/${cr.id}`} className="mt-2 block text-[12.5px] font-bold text-[#c7431f] hover:underline">

@@ -1,15 +1,9 @@
 import { and, eq, isNull, lt, ne, sql } from "drizzle-orm";
 import { db } from "@/backend/db";
-import {
-  accountTokens,
-  brands,
-  campaigns,
-  creators,
-  pendingSignups,
-  userSessions,
-  users,
-} from "@/backend/db/schema";
+import { accountTokens, pendingSignups, userSessions, users } from "@/backend/db/schema";
 import { DEFAULT_RETURN_TO, safeReturnTo } from "@/shared/return-to";
+import { recordAuditEvent } from "@/backend/audit-events";
+import { syncAccountEmailContacts } from "@/backend/identity-sync";
 
 export type AccountTokenPurpose = "password_reset" | "email_verification" | "email_change";
 
@@ -236,6 +230,7 @@ export async function consumePasswordResetToken(token: string, newPasswordHash: 
         // current control of that inbox, including for grandfathered users.
         emailVerifiedAt: user.emailVerifiedAt ?? now,
         tokenVersion: user.tokenVersion + 1,
+        updatedAt: now,
       })
       .where(eq(users.id, user.id))
       .returning({ id: users.id, name: users.name, email: users.email, role: users.role });
@@ -272,7 +267,7 @@ export async function consumeEmailVerificationToken(token: string): Promise<Emai
 
     const [updated] = await tx
       .update(users)
-      .set({ emailVerifiedAt: user.emailVerifiedAt ?? now })
+      .set({ emailVerifiedAt: user.emailVerifiedAt ?? now, updatedAt: now })
       .where(eq(users.id, user.id))
       .returning({ id: users.id, name: users.name, email: users.email, role: users.role });
     await tx
@@ -323,16 +318,24 @@ export async function consumeEmailChangeToken(token: string): Promise<EmailChang
     const newEmail = record.targetEmail;
     const [updated] = await tx
       .update(users)
-      .set({ email: newEmail, emailVerifiedAt: now, tokenVersion: user.tokenVersion + 1 })
+      .set({ email: newEmail, emailVerifiedAt: now, tokenVersion: user.tokenVersion + 1, updatedAt: now })
       .where(eq(users.id, user.id))
       .returning({ id: users.id, name: users.name, email: users.email, role: users.role });
 
-    // Keep profile/listing contact addresses in sync only where they were
-    // still using the old account address; a deliberately different public
-    // contact address remains untouched.
-    await tx.update(brands).set({ email: newEmail }).where(and(eq(brands.userId, user.id), eq(brands.email, oldEmail)));
-    await tx.update(creators).set({ email: newEmail }).where(and(eq(creators.userId, user.id), eq(creators.email, oldEmail)));
-    await tx.update(campaigns).set({ email: newEmail }).where(and(eq(campaigns.ownerId, user.id), eq(campaigns.email, oldEmail)));
+    await recordAuditEvent(tx, {
+      actorType: "user",
+      actorUserId: user.id,
+      ownerUserId: user.id,
+      entityType: "user",
+      entityId: user.id,
+      action: "user.email_changed",
+      changedFields: ["email", "emailVerifiedAt", "tokenVersion"],
+      createdAt: now,
+    });
+    // The brand record mirrors the canonical account email. Creator and
+    // campaign addresses follow only where marked account-sourced; a
+    // deliberately different profile/campaign contact remains untouched.
+    await syncAccountEmailContacts(tx, { userId: user.id, newEmail, now });
     await tx.delete(pendingSignups).where(eq(pendingSignups.email, newEmail));
 
     await tx
