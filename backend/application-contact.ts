@@ -6,6 +6,12 @@ import {
   normalizeYouTubeUrl,
 } from "@/backend/social-url";
 import { normalizeEmail, normalizePhoneNumber } from "@/backend/validation";
+import {
+  normalizeCategory,
+  normalizeContentTypeList,
+  normalizeLanguageList,
+  normalizePlatform,
+} from "@/shared/constants";
 
 export type ApplicationContactKind = "email" | "phone" | "instagram" | "youtube" | "profile";
 
@@ -29,6 +35,11 @@ type CreatorProfileContactSource = AccountContactSource & {
   youtube?: string | null;
   profileUrl?: string | null;
   platform?: string | null;
+  followers?: number | null;
+  verifiedFollowers?: number | null;
+  category?: string | null;
+  languages?: string | null;
+  contentTypes?: string | null;
 };
 
 const COMPLETED_CREATOR_STATUSES = new Set(["pending", "approved", "rejected", "suspended"]);
@@ -251,10 +262,26 @@ export function isCompletedCreatorProfile(
   if (!COMPLETED_CREATOR_STATUSES.has(status)) return false;
   if (typeof profile.name !== "string" || !profile.name.trim()) return false;
 
-  // Match the creator-profile parser's completion gate: a completed (but
-  // not necessarily approved) profile has a name and at least one valid
-  // social/profile link. Contact-grade identity is stricter and is enforced
-  // separately by resolveApplicationContact.
+  // Match the creator-profile parser's completion gate. A completed (but not
+  // necessarily approved) profile must identify its platform, category,
+  // languages, content types and audience size, and link a social profile.
+  // An explicitly entered zero follower count is still information (for
+  // example, a UGC-only creator); what matters here is that a numeric count
+  // was stored by a completed submission rather than inferred by a default.
+  const followerCount = profile.verifiedFollowers ?? profile.followers;
+  if (
+    !normalizePlatform(profile.platform) ||
+    !normalizeCategory(profile.category) ||
+    !(normalizeLanguageList(profile.languages)?.length) ||
+    !(normalizeContentTypeList(profile.contentTypes)?.length) ||
+    typeof followerCount !== "number" ||
+    !Number.isSafeInteger(followerCount) ||
+    followerCount < 0 ||
+    followerCount > 100_000_000
+  ) {
+    return false;
+  }
+
   return Boolean(
     normalizeInstagramUrl(profile.instagram) ??
       normalizeYouTubeUrl(profile.youtube) ??

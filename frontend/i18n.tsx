@@ -25,9 +25,10 @@ import {
   formatDateTimeForLocale,
   formatListForLocale,
   formatNumberForLocale,
+  formatRelativeTimeForLocale,
 } from "./i18n/format";
 import { loadLocale } from "./i18n/load-locale";
-import { ROUTE_TITLE_KEYS } from "./i18n/routes";
+import { isPublicDetailPath, ROUTE_TITLE_KEYS } from "./i18n/routes";
 import { translateMessage, type TranslationValues } from "./i18n/translate";
 import type { Dictionary, LocaleData, PromotionDetail, TranslationKey } from "./i18n/types";
 
@@ -73,6 +74,7 @@ type Ctx = {
   formatList: (values: readonly string[], options?: Intl.ListFormatOptions) => string;
   formatDate: (value?: string | number | Date | null, options?: Intl.DateTimeFormatOptions) => string;
   formatDateTime: (value?: string | number | Date | null) => string;
+  formatRelativeTime: (value?: string | number | Date | null) => string;
 };
 
 const LangCtx = createContext<Ctx | null>(null);
@@ -374,6 +376,7 @@ export function LangProvider({
   }, [locale]);
 
   useEffect(() => {
+    if (pathname && isPublicDetailPath(pathname)) return;
     const titleKey = pathname ? ROUTE_TITLE_KEYS[pathname] : undefined;
     try {
       document.title = titleKey ? `${t(titleKey)} · YaarLink` : `YaarLink · ${t("foot.tagline")}`;
@@ -502,6 +505,7 @@ export function LangProvider({
     formatList: (values, options) => formatListForLocale(locale, values, options),
     formatDate: (dateValue, options) => formatDateForLocale(locale, dateValue, options),
     formatDateTime: (dateValue) => formatDateTimeForLocale(locale, dateValue),
+    formatRelativeTime: (dateValue) => formatRelativeTimeForLocale(locale, dateValue),
   };
 
   return <LangCtx.Provider value={value}>{children}</LangCtx.Provider>;

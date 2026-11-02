@@ -348,21 +348,22 @@ export default function ContactPage() {
                 </div>
                 <label className="grid gap-1.5" htmlFor="contact-name">
                   <span className="text-[13.5px] font-bold">{t("cont.name")}</span>
-                  <input id="contact-name" value={form.name} onChange={(e) => set("name", e.target.value)} required placeholder={kind === "creator" ? t("cont.namePhCreator") : t("cont.namePhBrand")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                  <input id="contact-name" name="name" autoComplete="name" value={form.name} onChange={(e) => set("name", e.target.value)} required placeholder={kind === "creator" ? t("cont.namePhCreator") : t("cont.namePhBrand")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                 </label>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="grid gap-1.5" htmlFor="contact-phone">
                     <span className="text-[13.5px] font-bold">{t("cont.phoneWhatsApp")}</span>
-                    <input id="contact-phone" value={form.phone} onChange={(e) => set("phone", e.target.value)} inputMode="tel" placeholder={t("brand.phPhone")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                    <input id="contact-phone" name="phone" type="tel" autoComplete="tel" aria-describedby="contact-reply-hint" value={form.phone} onChange={(e) => set("phone", e.target.value)} inputMode="tel" placeholder={t("brand.phPhone")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                   </label>
                   <label className="grid gap-1.5" htmlFor="contact-email">
                     <span className="text-[13.5px] font-bold">{t("cont.email")}</span>
-                    <input id="contact-email" value={form.email} onChange={(e) => set("email", e.target.value)} type="email" placeholder="you@gmail.com" className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                    <input id="contact-email" name="email" autoComplete="email" aria-describedby="contact-reply-hint" value={form.email} onChange={(e) => set("email", e.target.value)} type="email" inputMode="email" placeholder="you@gmail.com" className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                   </label>
                 </div>
+                <p id="contact-reply-hint" className="text-[12.5px] font-semibold text-[#6f6862]">{t("cont.errNoContact")}</p>
                 <label className="grid gap-1.5" htmlFor="contact-message">
-                  <span className="text-[13.5px] font-bold">{t("cont.message")} <span className="font-medium text-[#6f6862]">{t("cont.messageHint")}</span></span>
-                  <textarea id="contact-message" value={form.message} onChange={(e) => set("message", e.target.value)} required rows={5} placeholder={info.placeholder} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                  <span className="text-[13.5px] font-bold">{t("cont.message")} <span id="contact-message-hint" className="font-medium text-[#6f6862]">{t("cont.messageHint")}</span></span>
+                  <textarea id="contact-message" name="message" autoComplete="off" aria-describedby="contact-message-hint" value={form.message} onChange={(e) => set("message", e.target.value)} required rows={5} placeholder={info.placeholder} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                 </label>
                 <PrivacyNotice textKey="privacy.contactNotice" />
                 {errKey && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[14px] font-bold text-red-700">{t(errKey)}</p>}

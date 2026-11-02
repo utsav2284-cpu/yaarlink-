@@ -135,6 +135,9 @@ export default function ReportButton({ targetType, targetId, targetName, classNa
           <select
             ref={firstFieldRef}
             id={`${formId}-reason`}
+            name="reason"
+            autoComplete="off"
+            required
             value={reason}
             onChange={(event) => setReason(event.target.value as ReportReason)}
             className="mt-1 w-full rounded-lg border border-[#e9ddc3] bg-white px-2 py-2 text-[12.5px]"
@@ -151,6 +154,8 @@ export default function ReportButton({ targetType, targetId, targetName, classNa
           </label>
           <textarea
             id={`${formId}-details`}
+            name="details"
+            autoComplete="off"
             value={details}
             onChange={(event) => setDetails(event.target.value)}
             placeholder={t("report.detailsPh")}
@@ -164,6 +169,8 @@ export default function ReportButton({ targetType, targetId, targetName, classNa
           </label>
           <input
             id={`${formId}-contact`}
+            name="contact"
+            autoComplete="off"
             value={contact}
             onChange={(event) => setContact(event.target.value)}
             placeholder={t("report.contactPh")}

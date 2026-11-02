@@ -461,7 +461,9 @@ export default function AdminPage() {
           <label htmlFor="admin-password" className="sr-only">{t("admin.passwordPlaceholder")}</label>
           <input
             id="admin-password"
+            name="password"
             type="password"
+            required
             maxLength={256}
             value={key}
             onChange={(e) => setKey(e.target.value)}
@@ -472,6 +474,7 @@ export default function AdminPage() {
           <label htmlFor="admin-totp" className="sr-only">{t("admin.totpPlaceholder")}</label>
           <input
             id="admin-totp"
+            name="totp"
             type="text"
             value={totp}
             onChange={(e) => setTotp(e.target.value.replace(/[^0-9 ]/g, "").slice(0, 7))}
@@ -669,11 +672,11 @@ export default function AdminPage() {
       <form onSubmit={applyAdminFilters} className="mt-4 grid gap-2 rounded-2xl border border-[#e9ddc3] bg-white p-3 md:grid-cols-2 xl:grid-cols-[1fr_190px_190px_190px_auto]">
         <label htmlFor="admin-search">
           <span className="sr-only">{t("listing.searchLabel")}</span>
-          <input id="admin-search" value={adminDraft.q} onChange={(e) => setAdminDraft((current) => ({ ...current, q: e.target.value }))} placeholder={t("listing.searchItems")} className={adminControlClass} />
+          <input id="admin-search" name="q" type="search" autoComplete="off" value={adminDraft.q} onChange={(e) => setAdminDraft((current) => ({ ...current, q: e.target.value }))} placeholder={t("listing.searchItems")} className={adminControlClass} />
         </label>
         <label htmlFor="admin-filter">
           <span className="sr-only">{tab === "contacts" ? t("admin.type") : tab === "audit" ? t("admin.outcome") : t("listing.filterStatus")}</span>
-          <select id="admin-filter" value={adminDraft.filter} onChange={(e) => setAdminDraft((current) => ({ ...current, filter: e.target.value }))} className={adminControlClass}>
+          <select id="admin-filter" name="filter" autoComplete="off" value={adminDraft.filter} onChange={(e) => setAdminDraft((current) => ({ ...current, filter: e.target.value }))} className={adminControlClass}>
             <option value="">{tab === "contacts" ? t("admin.type") : tab === "audit" ? t("admin.outcome") : t("listing.allStatuses")}</option>
             {adminFilterOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
@@ -681,7 +684,7 @@ export default function AdminPage() {
         {(tab === "campaigns" || tab === "creators") && (
           <label htmlFor="admin-verification-filter">
             <span className="sr-only">{t("admin.verification")}</span>
-            <select id="admin-verification-filter" value={adminDraft.verificationStatus} onChange={(e) => setAdminDraft((current) => ({ ...current, verificationStatus: e.target.value }))} className={adminControlClass}>
+            <select id="admin-verification-filter" name="verificationStatus" autoComplete="off" value={adminDraft.verificationStatus} onChange={(e) => setAdminDraft((current) => ({ ...current, verificationStatus: e.target.value }))} className={adminControlClass}>
               <option value="">{t("listing.allVerification")}</option>
               {VERIFICATION_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
             </select>
@@ -689,7 +692,7 @@ export default function AdminPage() {
         )}
         <label htmlFor="admin-sort">
           <span className="sr-only">{t("listing.sort")}</span>
-          <select id="admin-sort" value={adminDraft.sort} onChange={(e) => setAdminDraft((current) => ({ ...current, sort: e.target.value }))} className={adminControlClass}>
+          <select id="admin-sort" name="sort" autoComplete="off" value={adminDraft.sort} onChange={(e) => setAdminDraft((current) => ({ ...current, sort: e.target.value }))} className={adminControlClass}>
             {adminSortOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
@@ -822,7 +825,10 @@ export default function AdminPage() {
                       </label>
                       <input
                         id={`verified-followers-${c.id}`}
+                        name="verifiedFollowers"
+                        autoComplete="off"
                         type="number"
+                        inputMode="numeric"
                         min={0}
                         max={100000000}
                         value={followerValue}

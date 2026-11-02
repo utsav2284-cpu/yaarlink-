@@ -1,4 +1,4 @@
-import { applicationContactOptions } from "@/backend/application-contact";
+import { applicationContactOptions, isCompletedCreatorProfile } from "@/backend/application-contact";
 import { db } from "@/backend/db";
 import { applications, campaigns, creators, notifications } from "@/backend/db/schema";
 import { getSessionUser, isSessionUnavailableError, logSessionUnavailable, sessionSecretProblem, sessionUnavailableResponse } from "@/backend/auth";
@@ -19,8 +19,10 @@ import {
 import {
   allConditions,
   cursorCondition,
+  cursorKeysForResponse,
   decodeCursor,
   encodeCursor,
+  resolveCursorValues,
   isListingQueryError,
   ListingQueryError,
   paginateRows,
@@ -42,10 +44,19 @@ export const dynamic = "force-dynamic";
 
 const NO_STORE = { "Cache-Control": "private, no-store" };
 const DASHBOARD_SECTIONS = ["campaigns", "applications", "profiles", "openCampaigns", "notifications"] as const;
-const CAMPAIGN_SORTS = ["newest", "oldest", "title", "budget_desc", "budget_asc", "status"] as const;
+const CAMPAIGN_SORTS = ["newest", "oldest", "title", "budget_desc", "budget_asc", "city", "language", "status"] as const;
 const APPLICATION_SORTS = ["newest", "oldest", "updated", "status"] as const;
-const PROFILE_SORTS = ["newest", "oldest", "name", "followers_desc", "followers_asc", "status"] as const;
-const OPEN_CAMPAIGN_SORTS = ["newest", "oldest", "title", "business"] as const;
+const PROFILE_SORTS = ["newest", "oldest", "name", "followers_desc", "followers_asc", "city", "language", "status"] as const;
+const OPEN_CAMPAIGN_SORTS = [
+  "newest",
+  "oldest",
+  "title",
+  "business",
+  "budget_desc",
+  "budget_asc",
+  "city",
+  "language",
+] as const;
 const NOTIFICATION_SORTS = ["newest", "oldest", "unread"] as const;
 
 type CampaignSortRow = {
@@ -54,6 +65,8 @@ type CampaignSortRow = {
   businessName: string;
   budget: number;
   status: string;
+  location: string | null;
+  language: string;
   createdAt: Date;
 };
 
@@ -70,6 +83,8 @@ type ProfileSortRow = {
   followers: number;
   verifiedFollowers: number | null;
   status: string;
+  location: string | null;
+  languages: string;
   createdAt: Date;
 };
 
@@ -103,6 +118,18 @@ function campaignSortKeys(sort: string): Array<SortKey<CampaignSortRow>> {
         { expression: sql`${campaigns.budget}`, direction: "asc", kind: "number", value: (row) => row.budget },
         { expression: sql`${campaigns.createdAt}`, direction: "asc", kind: "date", value: (row) => row.createdAt },
         { expression: sql`${campaigns.id}`, direction: "asc", kind: "uuid", value: (row) => row.id },
+      ];
+    case "city":
+      return [
+        { expression: sql`lower(coalesce(${campaigns.location}, ''))`, direction: "asc", kind: "string", value: (row) => (row.location ?? "").toLocaleLowerCase("en-US") },
+        { expression: sql`${campaigns.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`${campaigns.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
+      ];
+    case "language":
+      return [
+        { expression: sql`lower(${campaigns.language})`, direction: "asc", kind: "string", value: (row) => row.language.toLocaleLowerCase("en-US") },
+        { expression: sql`${campaigns.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`${campaigns.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
       ];
     case "status":
       return [
@@ -170,6 +197,18 @@ function profileSortKeys(sort: string): Array<SortKey<ProfileSortRow>> {
         { expression: sql`${creators.createdAt}`, direction: "asc", kind: "date", value: (row) => row.createdAt },
         { expression: sql`${creators.id}`, direction: "asc", kind: "uuid", value: (row) => row.id },
       ];
+    case "city":
+      return [
+        { expression: sql`lower(coalesce(${creators.location}, ''))`, direction: "asc", kind: "string", value: (row) => (row.location ?? "").toLocaleLowerCase("en-US") },
+        { expression: sql`${creators.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`${creators.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
+      ];
+    case "language":
+      return [
+        { expression: sql`lower(${creators.languages})`, direction: "asc", kind: "string", value: (row) => row.languages.toLocaleLowerCase("en-US") },
+        { expression: sql`${creators.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`${creators.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
+      ];
     case "status":
       return [
         { expression: sql`${creators.status}`, direction: "asc", kind: "string", value: (row) => row.status },
@@ -200,6 +239,30 @@ function openCampaignSortKeys(sort: string): Array<SortKey<CampaignSortRow>> {
     case "business":
       return [
         { expression: sql`lower(${campaigns.businessName})`, direction: "asc", kind: "string", value: (row) => row.businessName.toLocaleLowerCase("en-US") },
+        { expression: sql`${campaigns.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`${campaigns.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
+      ];
+    case "budget_desc":
+      return [
+        { expression: sql`${campaigns.budget}`, direction: "desc", kind: "number", value: (row) => row.budget, sensitive: true },
+        { expression: sql`${campaigns.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`${campaigns.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
+      ];
+    case "budget_asc":
+      return [
+        { expression: sql`${campaigns.budget}`, direction: "asc", kind: "number", value: (row) => row.budget, sensitive: true },
+        { expression: sql`${campaigns.createdAt}`, direction: "asc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`${campaigns.id}`, direction: "asc", kind: "uuid", value: (row) => row.id },
+      ];
+    case "city":
+      return [
+        { expression: sql`lower(coalesce(${campaigns.location}, ''))`, direction: "asc", kind: "string", value: (row) => (row.location ?? "").toLocaleLowerCase("en-US") },
+        { expression: sql`${campaigns.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`${campaigns.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
+      ];
+    case "language":
+      return [
+        { expression: sql`lower(${campaigns.language})`, direction: "asc", kind: "string", value: (row) => row.language.toLocaleLowerCase("en-US") },
         { expression: sql`${campaigns.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
         { expression: sql`${campaigns.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
       ];
@@ -260,7 +323,7 @@ function canonicalCampaign<
 function canonicalProfile<T extends { platform: string; category: string | null; languages: string; contentTypes: string }>(row: T) {
   return {
     ...row,
-    platform: normalizePlatform(row.platform) ?? "Instagram",
+    platform: normalizePlatform(row.platform) ?? row.platform,
     category: normalizeCategory(row.category) ?? row.category,
     languages: row.languages ? (normalizeLanguageList(row.languages, true) ?? []).join(", ") : row.languages,
     contentTypes: row.contentTypes ? (normalizeContentTypeList(row.contentTypes, true) ?? []).join(", ") : row.contentTypes,
@@ -361,12 +424,11 @@ async function loadBrandCounts(userId: string) {
 }
 
 async function loadCreatorCounts(userId: string) {
-  const [[profileRow], [completedRow], [applicationRow], [openRow]] = await Promise.all([
+  const [[profileRow], profileRows, [applicationRow], [openRow]] = await Promise.all([
     db.select({ count: sql<number>`count(*)::int` }).from(creators).where(eq(creators.userId, userId)),
-    db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(creators)
-      .where(and(eq(creators.userId, userId), ne(creators.status, "incomplete"))),
+    // Completion now depends on required profile fields as well as review
+    // status, so evaluate the same canonical gate applications use.
+    db.select().from(creators).where(eq(creators.userId, userId)),
     db.select({ count: sql<number>`count(*)::int` }).from(applications).where(eq(applications.userId, userId)),
     db
       .select({ count: sql<number>`count(*)::int` })
@@ -375,7 +437,7 @@ async function loadCreatorCounts(userId: string) {
   ]);
   return {
     profiles: Number(profileRow?.count ?? 0),
-    completedProfiles: Number(completedRow?.count ?? 0),
+    completedProfiles: profileRows.filter((profile) => isCompletedCreatorProfile(profile)).length,
     applications: Number(applicationRow?.count ?? 0),
     openCampaigns: Number(openRow?.count ?? 0),
   };
@@ -818,16 +880,18 @@ async function loadOpenCampaigns(userId: string, params: URLSearchParams) {
   const format = parseNormalizedParam(params, "format", normalizeContentType, { prefix: "open", aliases: ["contentType"] });
   const scope = scopeFrom({ listing: "dashboard-open-campaigns", userId, q: listing.q, language, category, promotionType, format });
   const keys = openCampaignSortKeys(listing.sort);
-  const cursorValues = decodeCursor(listing.cursor, { sort: listing.sort, scope, keys });
   const search = searchCondition(
     [
       textExpression(sql`${campaigns.title}`),
       textExpression(sql`${campaigns.businessName}`),
+      textExpression(sql`${campaigns.description}`),
       textExpression(sql`${campaigns.location}`),
+      textExpression(sql`${campaigns.targetAudience}`),
       textExpression(sql`${campaigns.language}`),
       textExpression(sql`${campaigns.format}`),
       textExpression(sql`${campaigns.promotionType}`),
       textExpression(sql`${campaigns.category}`),
+      textExpression(sql`${campaigns.website}`),
     ],
     listing.q,
   );
@@ -843,6 +907,39 @@ async function loadOpenCampaigns(userId: string, params: URLSearchParams) {
     format ? eq(campaigns.format, format) : undefined,
     search,
   ]);
+  // Other brands' exact budgets are private. Budget-sorted pages therefore
+  // carry only the boundary campaign ID in the cursor and resolve the tuple
+  // inside this same open+verified, not-owned-by-viewer scope.
+  const cursorIdKey: SortKey<CampaignSortRow> = {
+    expression: sql`${campaigns.id}`,
+    direction: listing.sort === "budget_asc" ? "asc" : "desc",
+    kind: "uuid",
+    value: (row) => row.id,
+  };
+  const cursorValues = await resolveCursorValues(listing.cursor, {
+    sort: listing.sort,
+    scope,
+    keys,
+    idKey: cursorIdKey,
+    loadBoundary: async (id) => {
+      const [row] = await db
+        .select({
+          id: campaigns.id,
+          title: campaigns.title,
+          businessName: campaigns.businessName,
+          budget: campaigns.budget,
+          status: campaigns.status,
+          location: campaigns.location,
+          language: campaigns.language,
+          createdAt: campaigns.createdAt,
+        })
+        .from(campaigns)
+        .where(allConditions([baseWhere, eq(campaigns.id, id)]))
+        .limit(1);
+      return row;
+    },
+  });
+  const responseKeys = cursorKeysForResponse(keys, cursorIdKey);
   const pageWhere = allConditions([baseWhere, cursorCondition(keys, cursorValues)]);
   const [[totalRow], rowsWithExtra] = await Promise.all([
     db.select({ count: sql<number>`count(*)::int` }).from(campaigns).where(baseWhere),
@@ -870,7 +967,7 @@ async function loadOpenCampaigns(userId: string, params: URLSearchParams) {
     total: Number(totalRow?.count ?? 0),
     sort: listing.sort,
     scope,
-    keys,
+    keys: responseKeys,
   });
   return {
     // Keep the dashboard preview shape free of private budget/sort-only fields.
@@ -884,6 +981,7 @@ async function loadOpenCampaigns(userId: string, params: URLSearchParams) {
         language: canonical.language,
         format: canonical.format,
         promotionType: canonical.promotionType,
+        createdAt: row.createdAt,
       };
     }),
     pagination: page.pagination,

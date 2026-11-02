@@ -90,10 +90,12 @@ function ForgotPasswordContent() {
               <label htmlFor="forgot-password-email" className="sr-only">{t("auth.email")}</label>
               <input
                 id="forgot-password-email"
+                name="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 type="email"
+                inputMode="email"
                 autoComplete="email"
                 placeholder={t("auth.email")}
                 className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]"

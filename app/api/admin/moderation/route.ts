@@ -5,6 +5,7 @@ import { logAdminAudit } from "@/backend/admin-audit";
 import { createVerificationCode, normalizeReviewStatus } from "@/backend/moderation";
 import { MAX_FOLLOWERS, hasField, parseIntegerField, parseOptionalText, parseUuid, readJsonObject } from "@/backend/validation";
 import { normalizeInstagramUrl, normalizeProfileUrl, normalizeYouTubeUrl } from "@/backend/social-url";
+import { isCompletedCreatorProfile } from "@/backend/application-contact";
 import { and, eq } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
@@ -79,6 +80,9 @@ export async function POST(req: Request) {
       }
 
       if (action === "approve") {
+        if (!isCompletedCreatorProfile(existing)) {
+          return Response.json({ error: "This creator profile is missing required profile information.", code: "creator_profile_incomplete" }, { status: 409, headers: NO_STORE });
+        }
         if (!existing.verificationCode) {
           return Response.json({ error: "Send this creator back to review first so a verification code is issued.", code: "creator_review_required" }, { status: 409, headers: NO_STORE });
         }

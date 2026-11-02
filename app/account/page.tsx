@@ -8,6 +8,7 @@ import { clearLocalFormDrafts } from "@/frontend/session";
 import { buildAuthPath } from "@/shared/return-to";
 import { primaryUserRole, USER_ROLES, type UserRole } from "@/shared/user-roles";
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, isPasswordLengthValid } from "@/shared/password-policy";
+import RequiredMark from "@/frontend/components/RequiredMark";
 
 type AccountUser = {
   id: string;
@@ -428,12 +429,12 @@ export default function AccountPage() {
           )}
           <form onSubmit={submitEmailChange} className="grid gap-3">
             <label className={labelClass} htmlFor="account-new-email">
-              {t("account.newEmail")}
-              <input id="account-new-email" value={emailForm.newEmail} onChange={(e) => setEmailForm((f) => ({ ...f, newEmail: e.target.value }))} required type="email" autoComplete="email" className={inputClass} />
+              <span>{t("account.newEmail")}<RequiredMark /></span>
+              <input id="account-new-email" name="newEmail" value={emailForm.newEmail} onChange={(e) => setEmailForm((f) => ({ ...f, newEmail: e.target.value }))} required type="email" autoComplete="email" className={inputClass} />
             </label>
             <label className={labelClass} htmlFor="account-email-current-password">
-              {t("account.currentPassword")}
-              <input id="account-email-current-password" value={emailForm.currentPassword} onChange={(e) => setEmailForm((f) => ({ ...f, currentPassword: e.target.value }))} required type="password" maxLength={PASSWORD_MAX_LENGTH} autoComplete="current-password" className={inputClass} />
+              <span>{t("account.currentPassword")}<RequiredMark /></span>
+              <input id="account-email-current-password" name="currentPassword" value={emailForm.currentPassword} onChange={(e) => setEmailForm((f) => ({ ...f, currentPassword: e.target.value }))} required type="password" maxLength={PASSWORD_MAX_LENGTH} autoComplete="current-password" className={inputClass} />
             </label>
             <button disabled={busyKey === "change-email"} className={primaryButtonClass}>{t("account.sendChangeLink")}</button>
           </form>
@@ -443,11 +444,11 @@ export default function AccountPage() {
           <form onSubmit={submitPhone} className="grid gap-3">
             <label className={labelClass} htmlFor="account-phone">
               {t("auth.phone")}
-              <input id="account-phone" value={phoneForm.phone} onChange={(e) => setPhoneForm((f) => ({ ...f, phone: e.target.value }))} type="tel" autoComplete="tel" className={inputClass} />
+              <input id="account-phone" name="phone" value={phoneForm.phone} onChange={(e) => setPhoneForm((f) => ({ ...f, phone: e.target.value }))} type="tel" inputMode="tel" autoComplete="tel" className={inputClass} />
             </label>
             <label className={labelClass} htmlFor="account-phone-current-password">
-              {t("account.currentPassword")}
-              <input id="account-phone-current-password" value={phoneForm.currentPassword} onChange={(e) => setPhoneForm((f) => ({ ...f, currentPassword: e.target.value }))} required type="password" maxLength={PASSWORD_MAX_LENGTH} autoComplete="current-password" className={inputClass} />
+              <span>{t("account.currentPassword")}<RequiredMark /></span>
+              <input id="account-phone-current-password" name="currentPassword" value={phoneForm.currentPassword} onChange={(e) => setPhoneForm((f) => ({ ...f, currentPassword: e.target.value }))} required type="password" maxLength={PASSWORD_MAX_LENGTH} autoComplete="current-password" className={inputClass} />
             </label>
             <button disabled={busyKey === "change-phone"} className={primaryButtonClass}>{t("account.savePhone")}</button>
           </form>
@@ -456,16 +457,16 @@ export default function AccountPage() {
         <Section title={t("account.changePassword")} help={t("account.changePasswordHelp")}>
           <form onSubmit={submitPassword} className="grid gap-3">
             <label className={labelClass} htmlFor="account-current-password">
-              {t("account.currentPassword")}
-              <input id="account-current-password" value={passwordForm.currentPassword} onChange={(e) => setPasswordForm((f) => ({ ...f, currentPassword: e.target.value }))} required type="password" maxLength={PASSWORD_MAX_LENGTH} autoComplete="current-password" className={inputClass} />
+              <span>{t("account.currentPassword")}<RequiredMark /></span>
+              <input id="account-current-password" name="currentPassword" value={passwordForm.currentPassword} onChange={(e) => setPasswordForm((f) => ({ ...f, currentPassword: e.target.value }))} required type="password" maxLength={PASSWORD_MAX_LENGTH} autoComplete="current-password" className={inputClass} />
             </label>
             <label className={labelClass} htmlFor="account-new-password">
-              {t("auth.newPassword")}
-              <input id="account-new-password" aria-describedby="account-password-policy" value={passwordForm.newPassword} onChange={(e) => setPasswordForm((f) => ({ ...f, newPassword: e.target.value }))} required type="password" minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} autoComplete="new-password" className={inputClass} />
+              <span>{t("auth.newPassword")}<RequiredMark /></span>
+              <input id="account-new-password" name="newPassword" aria-describedby="account-password-policy" value={passwordForm.newPassword} onChange={(e) => setPasswordForm((f) => ({ ...f, newPassword: e.target.value }))} required type="password" minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} autoComplete="new-password" className={inputClass} />
             </label>
             <label className={labelClass} htmlFor="account-confirm-password">
-              {t("auth.confirmPassword")}
-              <input id="account-confirm-password" aria-describedby="account-password-policy" value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm((f) => ({ ...f, confirmPassword: e.target.value }))} required type="password" minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} autoComplete="new-password" className={inputClass} />
+              <span>{t("auth.confirmPassword")}<RequiredMark /></span>
+              <input id="account-confirm-password" name="confirmPassword" aria-describedby="account-password-policy" value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm((f) => ({ ...f, confirmPassword: e.target.value }))} required type="password" minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} autoComplete="new-password" className={inputClass} />
             </label>
             <p id="account-password-policy" className="text-[13px] text-[#6f6862]">{t("auth.passwordPolicy")}</p>
             <button disabled={busyKey === "change-password"} className={primaryButtonClass}>{t("account.changePassword")}</button>
@@ -509,8 +510,8 @@ export default function AccountPage() {
         <Section title={t("account.exportTitle")} help={t("account.exportHelp")}>
           <form onSubmit={exportData} className="grid gap-3">
             <label className={labelClass} htmlFor="account-export-password">
-              {t("account.currentPassword")}
-              <input id="account-export-password" value={exportPassword} onChange={(e) => setExportPassword(e.target.value)} required type="password" maxLength={PASSWORD_MAX_LENGTH} autoComplete="current-password" className={inputClass} />
+              <span>{t("account.currentPassword")}<RequiredMark /></span>
+              <input id="account-export-password" name="currentPassword" value={exportPassword} onChange={(e) => setExportPassword(e.target.value)} required type="password" maxLength={PASSWORD_MAX_LENGTH} autoComplete="current-password" className={inputClass} />
             </label>
             <button disabled={busyKey === "export"} className={primaryButtonClass}>
               {busyKey === "export" ? t("account.exporting") : t("account.exportBtn")}
@@ -524,12 +525,12 @@ export default function AccountPage() {
           <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13.5px] font-bold text-amber-900">{t("account.deleteWarning")}</p>
           <form onSubmit={deleteAccount} className="mt-4 grid gap-3">
             <label className={labelClass} htmlFor="account-delete-password">
-              {t("account.currentPassword")}
-              <input id="account-delete-password" value={deleteForm.currentPassword} onChange={(e) => setDeleteForm((f) => ({ ...f, currentPassword: e.target.value }))} required type="password" maxLength={PASSWORD_MAX_LENGTH} autoComplete="current-password" className={inputClass} />
+              <span>{t("account.currentPassword")}<RequiredMark /></span>
+              <input id="account-delete-password" name="currentPassword" value={deleteForm.currentPassword} onChange={(e) => setDeleteForm((f) => ({ ...f, currentPassword: e.target.value }))} required type="password" maxLength={PASSWORD_MAX_LENGTH} autoComplete="current-password" className={inputClass} />
             </label>
             <label className={labelClass} htmlFor="account-delete-email">
-              {t("account.confirmEmailLabel")}
-              <input id="account-delete-email" value={deleteForm.confirmationEmail} onChange={(e) => setDeleteForm((f) => ({ ...f, confirmationEmail: e.target.value }))} required type="email" autoComplete="off" placeholder={user.email} className={inputClass} />
+              <span>{t("account.confirmEmailLabel")}<RequiredMark /></span>
+              <input id="account-delete-email" name="confirmationEmail" value={deleteForm.confirmationEmail} onChange={(e) => setDeleteForm((f) => ({ ...f, confirmationEmail: e.target.value }))} required type="email" inputMode="email" autoComplete="off" placeholder={user.email} className={inputClass} />
             </label>
             <button disabled={busyKey === "delete-account"} className="rounded-2xl bg-red-700 px-5 py-3 text-[14.5px] font-extrabold text-white hover:bg-red-800 disabled:opacity-60">
               {busyKey === "delete-account" ? t("account.deleting") : t("account.deleteBtn")}

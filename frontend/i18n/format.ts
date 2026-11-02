@@ -1,6 +1,7 @@
 const numberFormatters = new Map<string, Intl.NumberFormat>();
 const dateFormatters = new Map<string, Intl.DateTimeFormat>();
 const listFormatters = new Map<string, Intl.ListFormat>();
+const relativeTimeFormatters = new Map<string, Intl.RelativeTimeFormat>();
 
 function formatterKey(locale: string, options: unknown) {
   return `${locale}:${JSON.stringify(options ?? {})}`;
@@ -83,4 +84,41 @@ export function formatDateTimeForLocale(
     dateStyle: "medium",
     timeStyle: "short",
   });
+}
+
+/** Format a public listing's age in the selected locale, e.g. “3 days ago”. */
+export function formatRelativeTimeForLocale(
+  locale: string,
+  value: string | number | Date | null | undefined,
+): string {
+  if (value === null || value === undefined || value === "") return "";
+  const date = toDate(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  let formatter = relativeTimeFormatters.get(locale);
+  if (!formatter) {
+    formatter = new Intl.RelativeTimeFormat(locale, { numeric: "auto", style: "long" });
+    relativeTimeFormatters.set(locale, formatter);
+  }
+
+  const diffSeconds = Math.round((date.getTime() - Date.now()) / 1000);
+  const absSeconds = Math.abs(diffSeconds);
+  const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [
+    ["second", 1],
+    ["minute", 60],
+    ["hour", 60 * 60],
+    ["day", 60 * 60 * 24],
+    ["week", 60 * 60 * 24 * 7],
+    ["month", 60 * 60 * 24 * 30.44],
+    ["year", 60 * 60 * 24 * 365.25],
+  ];
+  let unit: Intl.RelativeTimeFormatUnit = "second";
+  let unitSeconds = 1;
+  for (const [candidate, seconds] of units) {
+    if (absSeconds >= seconds) {
+      unit = candidate;
+      unitSeconds = seconds;
+    }
+  }
+  return formatter.format(Math.trunc(diffSeconds / unitSeconds), unit);
 }

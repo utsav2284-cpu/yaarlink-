@@ -1,6 +1,6 @@
 import { db } from "@/backend/db";
 import { creators, type Creator } from "@/backend/db/schema";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { getSessionUser, isSessionUnavailableError, logSessionUnavailable, sessionUnavailableResponse, type SessionUser } from "@/backend/auth";
 import { createVerificationCode } from "@/backend/moderation";
 import { getClientKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
@@ -101,6 +101,10 @@ function validationErrorResponse(result: { error: string; code: string; field?: 
 
 function parseCreatorProfile(body: Record<string, unknown>, user: SessionUser, current?: Creator): ParseResult {
   const supplied = (field: string) => hasField(body, field);
+  // Placeholder rows created during signup carry database placeholder values
+  // for platform/languages/content types/followers. Completing one must use
+  // values the creator actually supplies, never those placeholders.
+  const completedCurrent = current && current.status !== "incomplete" ? current : undefined;
 
   const name = current && !supplied("name")
     ? { ok: true, value: current.name } as ValidationResult<string>
@@ -136,10 +140,8 @@ function parseCreatorProfile(body: Record<string, unknown>, user: SessionUser, c
   }
 
   let platform: string;
-  if (current && !supplied("platform")) {
-    platform = current.platform;
-  } else if (!supplied("platform")) {
-    platform = "Instagram";
+  if (completedCurrent && !supplied("platform")) {
+    platform = completedCurrent.platform;
   } else {
     const normalized = normalizePlatform(body.platform);
     if (!normalized) return { ok: false, error: "Please choose a valid platform.", code: "invalid_platform", field: "platform" };
@@ -147,10 +149,8 @@ function parseCreatorProfile(body: Record<string, unknown>, user: SessionUser, c
   }
 
   let category: string | null;
-  if (!supplied("category")) {
-    category = current?.category ?? null;
-  } else if (body.category == null || (typeof body.category === "string" && !body.category.trim())) {
-    category = null;
+  if (completedCurrent && !supplied("category")) {
+    category = completedCurrent.category;
   } else {
     const normalized = normalizeCategory(body.category);
     if (!normalized) return { ok: false, error: "Please choose a valid category.", code: "invalid_category", field: "category" };
@@ -158,10 +158,8 @@ function parseCreatorProfile(body: Record<string, unknown>, user: SessionUser, c
   }
 
   let languages: string;
-  if (current && !supplied("languages")) {
-    languages = current.languages;
-  } else if (!supplied("languages")) {
-    languages = "English";
+  if (completedCurrent && !supplied("languages")) {
+    languages = completedCurrent.languages;
   } else {
     const parsedLanguages = parseCanonicalList(body.languages, normalizeLanguage, {
       field: "languages",
@@ -175,15 +173,13 @@ function parseCreatorProfile(body: Record<string, unknown>, user: SessionUser, c
   }
 
   let contentTypes: string;
-  if (current && !supplied("contentTypes")) {
-    contentTypes = current.contentTypes;
-  } else if (!supplied("contentTypes")) {
-    contentTypes = "Story";
+  if (completedCurrent && !supplied("contentTypes")) {
+    contentTypes = completedCurrent.contentTypes;
   } else {
     const parsedContentTypes = parseCanonicalList(body.contentTypes, normalizeContentType, {
       field: "contentTypes",
       code: "invalid_content_types",
-      error: "Please select valid content types.",
+      error: "Please select at least one valid content type.",
       maxItems: MAX_CREATOR_CONTENT_TYPES,
       maxJoinedLength: MAX_CREATOR_CONTENT_TYPES_JOINED_LENGTH,
     });
@@ -263,10 +259,8 @@ function parseCreatorProfile(body: Record<string, unknown>, user: SessionUser, c
   }
 
   let followers: number;
-  if (current && !supplied("followers")) {
-    followers = current.followers;
-  } else if (!supplied("followers") || body.followers == null || (typeof body.followers === "string" && !body.followers.trim())) {
-    followers = 0;
+  if (completedCurrent && !supplied("followers")) {
+    followers = completedCurrent.followers;
   } else {
     const parsedFollowers = parseFollowersField(body.followers);
     if (!parsedFollowers.ok) return parsedFollowers;
@@ -326,13 +320,23 @@ const returningProfile = {
   updatedAt: creators.updatedAt,
 };
 
-const PUBLIC_CREATOR_SORTS = ["newest", "oldest", "name", "followers_desc", "followers_asc"] as const;
+const PUBLIC_CREATOR_SORTS = [
+  "newest",
+  "oldest",
+  "name",
+  "followers_desc",
+  "followers_asc",
+  "city",
+  "language",
+] as const;
 
 type PublicCreatorSortRow = {
   id: string;
   name: string;
   followers: number;
   verifiedFollowers: number | null;
+  location: string | null;
+  languages: string;
   createdAt: Date;
 };
 
@@ -361,6 +365,18 @@ function publicCreatorSortKeys(sort: string): Array<SortKey<PublicCreatorSortRow
         { expression: effectiveFollowers, direction: "asc", kind: "number", value: (row) => row.verifiedFollowers ?? row.followers },
         { expression: sql`${creators.createdAt}`, direction: "asc", kind: "date", value: (row) => row.createdAt },
         { expression: sql`${creators.id}`, direction: "asc", kind: "uuid", value: (row) => row.id },
+      ];
+    case "city":
+      return [
+        { expression: sql`lower(coalesce(${creators.location}, ''))`, direction: "asc", kind: "string", value: (row) => (row.location ?? "").toLocaleLowerCase("en-US") },
+        { expression: sql`${creators.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`${creators.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
+      ];
+    case "language":
+      return [
+        { expression: sql`lower(${creators.languages})`, direction: "asc", kind: "string", value: (row) => row.languages.toLocaleLowerCase("en-US") },
+        { expression: sql`${creators.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`${creators.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
       ];
     default:
       return [
@@ -427,6 +443,9 @@ export async function GET(req: Request) {
       // and verified ownership of the linked social account.
       eq(creators.status, "approved"),
       eq(creators.verificationStatus, "verified"),
+      // Category is required profile information; do not republish a legacy
+      // low-information row that predates that completion rule.
+      isNotNull(creators.category),
       language ? tokenListCondition(sql`${creators.languages}`, language) : undefined,
       category ? eq(creators.category, category) : undefined,
       platform ? eq(creators.platform, platform) : undefined,
@@ -469,7 +488,7 @@ export async function GET(req: Request) {
       keys,
     });
     const canonicalRows = items.map((row) => {
-      const canonicalPlatform = normalizePlatform(row.platform) ?? "Instagram";
+      const canonicalPlatform = normalizePlatform(row.platform) ?? row.platform;
       return {
         ...row,
         // Public cards show the count checked during review, not the raw claim.

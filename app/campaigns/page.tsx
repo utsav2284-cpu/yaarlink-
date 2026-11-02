@@ -54,7 +54,7 @@ function campaignListUrl({ q, lang, sort, cursor }: { q: string; lang: string; s
 }
 
 export default function CampaignsPage() {
-  const { t, opt, promo, status: statusLabel, apiErrorKey: getApiErrorKey } = useLang();
+  const { t, opt, promo, status: statusLabel, apiErrorKey: getApiErrorKey, formatDateTime, formatRelativeTime } = useLang();
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [campaignsStatus, setCampaignsStatus] = useState<"loading" | "success" | "error">("loading");
   const [campaignsErrorKey, setCampaignsErrorKey] = useState<TranslationKey>("listing.loadFailed");
@@ -420,10 +420,10 @@ export default function CampaignsPage() {
 
       <div className="mt-6 flex flex-col gap-2 rounded-2xl border border-[#e9ddc3] bg-white p-3 sm:flex-row">
         <label htmlFor="campaign-search" className="sr-only">{t("listing.searchLabel")}</label>
-        <input id="campaign-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("camp.search")} className="min-w-0 flex-1 rounded-xl bg-[#fffbf1] border border-[#f0e6cc] px-4 py-3 outline-none" />
+        <input id="campaign-search" name="q" type="search" autoComplete="off" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("camp.search")} className="min-w-0 flex-1 rounded-xl bg-[#fffbf1] border border-[#f0e6cc] px-4 py-3 outline-none" />
         <label className="relative block sm:w-48" htmlFor="campaign-language-filter">
           <span className="sr-only">{t("browse.filterLang")}</span>
-          <select id="campaign-language-filter" value={lang} onChange={(e) => setLang(e.target.value)} className="w-full min-w-0 appearance-none truncate rounded-xl border border-[#f0e6cc] bg-[#fffbf1] py-3 pl-4 pr-9 text-[15px] font-semibold text-[#1c1917] outline-none focus:border-[#1c1917]">
+          <select id="campaign-language-filter" name="language" autoComplete="off" value={lang} onChange={(e) => setLang(e.target.value)} className="w-full min-w-0 appearance-none truncate rounded-xl border border-[#f0e6cc] bg-[#fffbf1] py-3 pl-4 pr-9 text-[15px] font-semibold text-[#1c1917] outline-none focus:border-[#1c1917]">
             <option value="">{t("browse.allLang")}</option>
             {LANGUAGES.map((l) => <option key={l} value={l}>{opt(l)}</option>)}
           </select>
@@ -431,11 +431,15 @@ export default function CampaignsPage() {
         </label>
         <label className="relative block sm:w-48" htmlFor="campaign-sort">
           <span className="sr-only">{t("listing.sort")}</span>
-          <select id="campaign-sort" value={sort} onChange={(e) => setSort(e.target.value)} className="w-full min-w-0 appearance-none truncate rounded-xl border border-[#f0e6cc] bg-[#fffbf1] py-3 pl-4 pr-9 text-[15px] font-semibold text-[#1c1917] outline-none focus:border-[#1c1917]">
+          <select id="campaign-sort" name="sort" autoComplete="off" value={sort} onChange={(e) => setSort(e.target.value)} className="w-full min-w-0 appearance-none truncate rounded-xl border border-[#f0e6cc] bg-[#fffbf1] py-3 pl-4 pr-9 text-[15px] font-semibold text-[#1c1917] outline-none focus:border-[#1c1917]">
             <option value="newest">{t("listing.sortNewest")}</option>
             <option value="oldest">{t("listing.sortOldest")}</option>
             <option value="title">{t("listing.sortTitle")}</option>
             <option value="business">{t("listing.sortBusiness")}</option>
+            <option value="budget_desc">{t("listing.sortBudgetDesc")}</option>
+            <option value="budget_asc">{t("listing.sortBudgetAsc")}</option>
+            <option value="city">{t("listing.sortCity")}</option>
+            <option value="language">{t("listing.sortLanguage")}</option>
           </select>
           <span aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[11px] text-[#6f6862]">▼</span>
         </label>
@@ -501,14 +505,30 @@ export default function CampaignsPage() {
                 <span className={`rounded-full border px-3 py-1 text-[12px] font-bold ${campaignIsOpen ? "bg-green-50 border-green-200 text-green-800" : "bg-stone-100 border-stone-200 text-stone-700"}`}>{campaignIsOpen ? t("camp.open") : statusLabel(c.status || "closed")}</span>
                 {c.verificationStatus === "verified" && <span className="rounded-full bg-green-50 border border-green-200 px-3 py-1 text-[12px] font-bold text-green-800">{t("listing.reviewed")}</span>}
               </div>
-              <h3 className="mt-3 text-[18px] font-extrabold leading-snug">{c.title}</h3>
-              <p className="mt-1 text-[13.5px] font-semibold text-[#6f6862]">{c.businessName} • {c.location}</p>
+              <h3 className="mt-3 text-[18px] font-extrabold leading-snug">
+                {campaignIsOpen ? (
+                  <Link href={`/campaigns/${c.id}`} aria-label={`${t("detail.viewCampaign")}: ${c.title}`} className="hover:text-[#c7431f] hover:underline">
+                    {c.title}
+                  </Link>
+                ) : c.title}
+              </h3>
+              <p className="mt-1 text-[13.5px] font-semibold text-[#6f6862]">{[c.businessName, c.location].filter(Boolean).join(" • ")}</p>
+              <p className="mt-1 text-[12.5px] font-semibold text-[#6f6862]">
+                <time dateTime={c.createdAt} title={formatDateTime(c.createdAt)}>
+                  {t("listing.posted", { age: formatRelativeTime(c.createdAt) })}
+                </time>
+              </p>
               <p className="mt-3 line-clamp-3 text-[14px] leading-relaxed text-[#57534e]">{c.description || t("camp.noDesc")}</p>
               <div className="mt-3 flex flex-wrap gap-1.5 text-[12px] font-bold">
                 <span className="rounded-full bg-[#fffbf1] border border-[#f0e6cc] px-2.5 py-1">{opt(c.language)}</span>
                 <span className="rounded-full bg-[#fffbf1] border border-[#f0e6cc] px-2.5 py-1">{opt(c.format)}</span>
                 {c.category && <span className="rounded-full bg-[#fffbf1] border border-[#f0e6cc] px-2.5 py-1">{opt(c.category)}</span>}
               </div>
+              {campaignIsOpen && (
+                <Link href={`/campaigns/${c.id}`} className="mt-3 w-fit text-[13.5px] font-bold text-[#c7431f] hover:underline">
+                  {t("detail.viewCampaign")} →
+                </Link>
+              )}
               {hasActiveApplication ? (
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#f5edd8] pt-4">
                   <div>
@@ -580,8 +600,12 @@ export default function CampaignsPage() {
                     </button>
                   </div>
                   {applyId === c.id && (
-                    <div
+                    <form
                       id={`application-form-${c.id}`}
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void apply(c.id);
+                      }}
                       onKeyDown={(event) => {
                         if (event.key !== "Escape") return;
                         event.preventDefault();
@@ -600,10 +624,13 @@ export default function CampaignsPage() {
                       <input
                         autoFocus
                         id={`application-contact-${c.id}`}
+                        name="creatorContact"
+                        autoComplete="off"
                         aria-describedby={`application-contact-note-${c.id}`}
                         value={applyForm.contact}
                         onChange={(e) => setApplyForm({ ...applyForm, contact: e.target.value })}
                         required
+                        minLength={3}
                         aria-required="true"
                         list={`application-contacts-${c.id}`}
                         placeholder={t("camp.applyContact")}
@@ -614,10 +641,12 @@ export default function CampaignsPage() {
                       </datalist>
                       <p id={`application-contact-note-${c.id}`} className="text-[12.5px] font-semibold leading-relaxed text-[#6f6862]">{t("camp.contactMustBeYours")}</p>
                       <label htmlFor={`application-message-${c.id}`} className="sr-only">{t("camp.applyPhMsg")}</label>
-                      <textarea id={`application-message-${c.id}`} value={applyForm.message} onChange={(e) => setApplyForm({ ...applyForm, message: e.target.value })} rows={2} placeholder={t("camp.applyPhMsg")} className="rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-2.5 text-[14px] outline-none" />
+                      <textarea id={`application-message-${c.id}`} name="message" autoComplete="off" value={applyForm.message} onChange={(e) => setApplyForm({ ...applyForm, message: e.target.value })} rows={2} placeholder={t("camp.applyPhMsg")} className="rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-2.5 text-[14px] outline-none" />
                       <label htmlFor={`application-consent-${c.id}`} className="flex w-full min-w-0 cursor-pointer items-start gap-3 rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-3 text-[13px] font-semibold leading-relaxed text-[#57534e]">
                         <input
                           id={`application-consent-${c.id}`}
+                          name="contactSharingConsent"
+                          autoComplete="off"
                           type="checkbox"
                           checked={applyConsent}
                           onChange={(e) => setApplyConsent(e.target.checked)}
@@ -642,8 +671,8 @@ export default function CampaignsPage() {
                           )}
                         </div>
                       )}
-                      <button onClick={() => apply(c.id)} disabled={applyingId === c.id || ownApplicationsStatus === "loading" || ownApplicationsStatus === "error"} className="rounded-xl bg-[#c7431f] py-2.5 text-[14px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-60">{applyingId === c.id ? t("camp.applySending") : t("camp.applySend")}</button>
-                    </div>
+                      <button type="submit" disabled={applyingId === c.id || ownApplicationsStatus === "loading" || ownApplicationsStatus === "error"} className="rounded-xl bg-[#c7431f] py-2.5 text-[14px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-60">{applyingId === c.id ? t("camp.applySending") : t("camp.applySend")}</button>
+                    </form>
                   )}
                 </>
               )}
