@@ -9,6 +9,7 @@ import {
   normalizePlatform,
   normalizePromotionType,
 } from "@/shared/constants";
+import { SITE } from "@/config/site";
 import {
   LANGUAGE_COOKIE,
   LANGUAGE_COOKIE_MAX_AGE_SECONDS,
@@ -27,7 +28,6 @@ import {
   formatNumberForLocale,
   formatRelativeTimeForLocale,
 } from "./i18n/format";
-import { loadLocale } from "./i18n/load-locale";
 import { isPublicDetailPath, ROUTE_TITLE_KEYS } from "./i18n/routes";
 import { translateMessage, type TranslationValues } from "./i18n/translate";
 import type { Dictionary, LocaleData, PromotionDetail, TranslationKey } from "./i18n/types";
@@ -341,6 +341,11 @@ export function LangProvider({
       const requestId = ++languageRequest.current;
       setPendingLang(nextLang);
       try {
+        // Import the loader itself on demand as well as the selected locale,
+        // so neither the locale map nor any dictionary is part of the shared
+        // initial client bundle. The server-rendered language is already in
+        // state; other languages download only for an actual switch.
+        const { loadLocale } = await import("./i18n/load-locale");
         const nextLocaleData = localeCache.current[nextLang] ?? (await loadLocale(nextLang));
         localeCache.current[nextLang] = nextLocaleData;
         if (requestId !== languageRequest.current) return;
@@ -388,7 +393,11 @@ export function LangProvider({
     if (pathname && isPublicDetailPath(pathname)) return;
     const titleKey = pathname ? ROUTE_TITLE_KEYS[pathname] : undefined;
     try {
-      document.title = titleKey ? `${t(titleKey)} · YaarLink` : `YaarLink · ${t("foot.tagline")}`;
+      document.title = titleKey
+        ? `${t(titleKey)} · YaarLink`
+        : pathname === "/"
+          ? `YaarLink · ${SITE.domain} — ${t("foot.tagline")}`
+          : `${t("nf.title")} · YaarLink`;
     } catch {}
   }, [pathname, t]);
 

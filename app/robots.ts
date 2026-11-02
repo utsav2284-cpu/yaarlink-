@@ -3,7 +3,23 @@ import { SITE } from "@/config/site";
 
 export default function robots(): MetadataRoute.Robots {
   return {
-    rules: [{ userAgent: "*", allow: "/", disallow: ["/admin", "/dashboard", "/api/"] }],
+    rules: [
+      {
+        userAgent: "*",
+        allow: "/",
+        disallow: [
+          "/account",
+          "/admin",
+          "/api/",
+          "/dashboard",
+          "/forgot-password",
+          "/reset-password",
+          "/verify-account-email",
+          "/verify-email",
+        ],
+      },
+    ],
     sitemap: `${SITE.url}/sitemap.xml`,
+    host: SITE.url,
   };
 }

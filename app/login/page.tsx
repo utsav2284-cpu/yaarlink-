@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLang, type TranslationKey } from "@/frontend/i18n";
-import { fetchSessionUser } from "@/frontend/session";
+import { useSession } from "@/frontend/session-context";
 import { buildAuthPath, DEFAULT_RETURN_TO, safeReturnTo } from "@/shared/return-to";
 import { normalizeUserRole } from "@/shared/user-roles";
 import { PASSWORD_MAX_LENGTH } from "@/shared/password-policy";
@@ -12,6 +12,7 @@ import { PASSWORD_MAX_LENGTH } from "@/shared/password-policy";
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user } = useSession();
   const { t, apiErrorKey } = useLang();
   const returnTo = safeReturnTo(searchParams.get("returnTo"));
   const requestedRole = normalizeUserRole(searchParams.get("role"));
@@ -20,18 +21,10 @@ function LoginContent() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    let active = true;
-    fetchSessionUser()
-      .then((user) => {
-        if (active && user) router.replace(returnTo);
-      })
-      .catch(() => {
-        // An unavailable session service should not prevent showing the form.
-      });
-    return () => {
-      active = false;
-    };
-  }, [returnTo, router]);
+    // The session was resolved by the server layout. If that lookup failed,
+    // `user` stays empty and the login form remains available, as before.
+    if (user) router.replace(returnTo);
+  }, [returnTo, router, user]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();

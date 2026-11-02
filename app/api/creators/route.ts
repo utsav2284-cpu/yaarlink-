@@ -3,6 +3,7 @@ import { creators, type Creator } from "@/backend/db/schema";
 import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { getSessionUser, isSessionUnavailableError, logSessionUnavailable, sessionUnavailableResponse, type SessionUser } from "@/backend/auth";
 import { createVerificationCode } from "@/backend/moderation";
+import { listPublicCreators } from "@/backend/public-listings";
 import { getClientKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
 import {
   MAX_INSTAGRAM_URL_LENGTH,
@@ -37,21 +38,7 @@ import {
   normalizeLanguageList,
   normalizePlatform,
 } from "@/shared/constants";
-import {
-  allConditions,
-  cursorCondition,
-  decodeCursor,
-  isListingQueryError,
-  paginateRows,
-  parseListingParams,
-  parseNormalizedParam,
-  scopeFrom,
-  searchCondition,
-  sortOrder,
-  textExpression,
-  tokenListCondition,
-  type SortKey,
-} from "@/backend/pagination";
+import { isListingQueryError } from "@/backend/pagination";
 
 export const dynamic = "force-dynamic";
 
@@ -320,192 +307,10 @@ const returningProfile = {
   updatedAt: creators.updatedAt,
 };
 
-const PUBLIC_CREATOR_SORTS = [
-  "newest",
-  "oldest",
-  "name",
-  "followers_desc",
-  "followers_asc",
-  "city",
-  "language",
-] as const;
-
-type PublicCreatorSortRow = {
-  id: string;
-  name: string;
-  followers: number;
-  verifiedFollowers: number | null;
-  location: string | null;
-  languages: string;
-  createdAt: Date;
-};
-
-function publicCreatorSortKeys(sort: string): Array<SortKey<PublicCreatorSortRow>> {
-  const effectiveFollowers = sql`coalesce(${creators.verifiedFollowers}, ${creators.followers})`;
-  switch (sort) {
-    case "oldest":
-      return [
-        { expression: sql`${creators.createdAt}`, direction: "asc", kind: "date", value: (row) => row.createdAt },
-        { expression: sql`${creators.id}`, direction: "asc", kind: "uuid", value: (row) => row.id },
-      ];
-    case "name":
-      return [
-        { expression: sql`lower(${creators.name})`, direction: "asc", kind: "string", value: (row) => row.name.toLocaleLowerCase("en-US") },
-        { expression: sql`${creators.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
-        { expression: sql`${creators.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
-      ];
-    case "followers_desc":
-      return [
-        { expression: effectiveFollowers, direction: "desc", kind: "number", value: (row) => row.verifiedFollowers ?? row.followers },
-        { expression: sql`${creators.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
-        { expression: sql`${creators.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
-      ];
-    case "followers_asc":
-      return [
-        { expression: effectiveFollowers, direction: "asc", kind: "number", value: (row) => row.verifiedFollowers ?? row.followers },
-        { expression: sql`${creators.createdAt}`, direction: "asc", kind: "date", value: (row) => row.createdAt },
-        { expression: sql`${creators.id}`, direction: "asc", kind: "uuid", value: (row) => row.id },
-      ];
-    case "city":
-      return [
-        { expression: sql`lower(coalesce(${creators.location}, ''))`, direction: "asc", kind: "string", value: (row) => (row.location ?? "").toLocaleLowerCase("en-US") },
-        { expression: sql`${creators.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
-        { expression: sql`${creators.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
-      ];
-    case "language":
-      return [
-        { expression: sql`lower(${creators.languages})`, direction: "asc", kind: "string", value: (row) => row.languages.toLocaleLowerCase("en-US") },
-        { expression: sql`${creators.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
-        { expression: sql`${creators.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
-      ];
-    default:
-      return [
-        { expression: sql`${creators.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
-        { expression: sql`${creators.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
-      ];
-  }
-}
-
 export async function GET(req: Request) {
   try {
-    const params = new URL(req.url).searchParams;
-    const listing = parseListingParams(params, {
-      defaultLimit: 50,
-      defaultSort: "newest",
-      allowedSorts: PUBLIC_CREATOR_SORTS,
-    });
-    const language = parseNormalizedParam(params, "language", normalizeLanguage, { aliases: ["lang"] });
-    const category = parseNormalizedParam(params, "category", normalizeCategory);
-    const platform = parseNormalizedParam(params, "platform", normalizePlatform);
-    const contentType = parseNormalizedParam(params, "contentType", normalizeContentType, { aliases: ["format"] });
-
-    const textSearch = searchCondition(
-      [
-        textExpression(sql`${creators.name}`),
-        textExpression(sql`${creators.category}`),
-        textExpression(sql`${creators.languages}`),
-        textExpression(sql`${creators.location}`),
-        textExpression(sql`${creators.contentTypes}`),
-        textExpression(sql`${creators.bio}`),
-        textExpression(sql`${creators.platform}`),
-        textExpression(sql`${creators.instagram}`),
-        textExpression(sql`${creators.youtube}`),
-        textExpression(sql`${creators.profileUrl}`),
-      ],
-      listing.q,
-    );
-    const aliasSearch = [
-      normalizeCategory(listing.q) ? eq(creators.category, normalizeCategory(listing.q)!) : undefined,
-      normalizePlatform(listing.q) ? eq(creators.platform, normalizePlatform(listing.q)!) : undefined,
-      normalizeLanguage(listing.q)
-        ? tokenListCondition(sql`${creators.languages}`, normalizeLanguage(listing.q)!)
-        : undefined,
-      normalizeContentType(listing.q)
-        ? tokenListCondition(sql`${creators.contentTypes}`, normalizeContentType(listing.q)!)
-        : undefined,
-    ].filter(Boolean);
-    const search = textSearch && aliasSearch.length
-      ? sql`(${textSearch} or ${sql.join(aliasSearch.map((condition) => sql`${condition}`), sql` or `)})`
-      : textSearch;
-
-    const scope = scopeFrom({
-      listing: "public-creators",
-      q: listing.q,
-      language,
-      category,
-      platform,
-      contentType,
-    });
-    const keys = publicCreatorSortKeys(listing.sort);
-    const cursorValues = decodeCursor(listing.cursor, { sort: listing.sort, scope, keys });
-    const baseWhere = allConditions([
-      // Fail closed: a profile is public only after an admin has approved it
-      // and verified ownership of the linked social account.
-      eq(creators.status, "approved"),
-      eq(creators.verificationStatus, "verified"),
-      // Category is required profile information; do not republish a legacy
-      // low-information row that predates that completion rule.
-      isNotNull(creators.category),
-      language ? tokenListCondition(sql`${creators.languages}`, language) : undefined,
-      category ? eq(creators.category, category) : undefined,
-      platform ? eq(creators.platform, platform) : undefined,
-      contentType ? tokenListCondition(sql`${creators.contentTypes}`, contentType) : undefined,
-      search,
-    ]);
-    const pageWhere = allConditions([baseWhere, cursorCondition(keys, cursorValues)]);
-
-    const [[totalRow], rowsWithExtra] = await Promise.all([
-      db.select({ count: sql<number>`count(*)::int` }).from(creators).where(baseWhere),
-      db
-        .select({
-          id: creators.id,
-          name: creators.name,
-          instagram: creators.instagram,
-          youtube: creators.youtube,
-          profileUrl: creators.profileUrl,
-          platform: creators.platform,
-          followers: creators.followers,
-          verifiedFollowers: creators.verifiedFollowers,
-          category: creators.category,
-          languages: creators.languages,
-          location: creators.location,
-          contentTypes: creators.contentTypes,
-          bio: creators.bio,
-          status: creators.status,
-          verificationStatus: creators.verificationStatus,
-          createdAt: creators.createdAt,
-        })
-        .from(creators)
-        .where(pageWhere)
-        .orderBy(...sortOrder(keys))
-        .limit(listing.limit + 1),
-    ]);
-    const { items, pagination } = paginateRows(rowsWithExtra, {
-      limit: listing.limit,
-      total: Number(totalRow?.count ?? 0),
-      sort: listing.sort,
-      scope,
-      keys,
-    });
-    const canonicalRows = items.map((row) => {
-      const canonicalPlatform = normalizePlatform(row.platform) ?? row.platform;
-      return {
-        ...row,
-        // Public cards show the count checked during review, not the raw claim.
-        followers: row.verifiedFollowers ?? row.followers,
-        // Re-run stored links through the same profile/public-host rules used
-        // on write, so legacy non-profile or private destinations are not
-        // republished as creator profile links.
-        instagram: normalizeInstagramUrl(row.instagram),
-        youtube: normalizeYouTubeUrl(row.youtube),
-        profileUrl: normalizeProfileUrl(row.profileUrl, canonicalPlatform),
-        platform: canonicalPlatform,
-        category: normalizeCategory(row.category) ?? row.category,
-        languages: row.languages ? (normalizeLanguageList(row.languages, true) ?? []).join(", ") : row.languages,
-        contentTypes: row.contentTypes ? (normalizeContentTypeList(row.contentTypes, true) ?? []).join(", ") : row.contentTypes,
-      };
-    });
-    return Response.json({ creators: canonicalRows, pagination }, { headers: NO_STORE });
+    const result = await listPublicCreators(new URL(req.url).searchParams);
+    return Response.json(result, { headers: NO_STORE });
   } catch (e) {
     if (isListingQueryError(e)) {
       return Response.json({ error: e.message, code: e.code }, { status: e.status, headers: NO_STORE });

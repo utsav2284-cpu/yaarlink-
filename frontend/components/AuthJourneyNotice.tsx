@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useLang, type TranslationKey } from "@/frontend/i18n";
-import type { SessionLoadStatus, SessionUserSummary } from "@/frontend/session";
+import type { SessionLoadStatus } from "@/frontend/session";
+import type { SessionStateUser } from "@/frontend/session-context";
 import { buildAuthPath } from "@/shared/return-to";
 import type { UserRole } from "@/shared/user-roles";
 
@@ -17,7 +18,7 @@ export default function AuthJourneyNotice({
   id,
 }: {
   status: SessionLoadStatus;
-  user: SessionUserSummary | null;
+  user: SessionStateUser | null;
   messageKey: TranslationKey;
   returnTo: string;
   role: UserRole;

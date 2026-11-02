@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useLang } from "@/frontend/i18n";
+import { useSession } from "@/frontend/session-context";
 import { buildAuthPath, DEFAULT_RETURN_TO, safeReturnTo } from "@/shared/return-to";
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, isPasswordLengthValid } from "@/shared/password-policy";
 
@@ -15,6 +16,7 @@ function fragmentValue(name: string) {
 }
 
 export default function ResetPasswordPage() {
+  const { markLoggedOut } = useSession();
   const { t } = useLang();
   const mounted = useSyncExternalStore(subscribeNoop, () => true, () => false);
   const [token, setToken] = useState(() => fragmentValue("token"));
@@ -60,6 +62,7 @@ export default function ResetPasswordPage() {
         else setErr(t("auth.resetFailed"));
         return;
       }
+      markLoggedOut();
       setSuccess(true);
       setToken("");
       setNewPassword("");

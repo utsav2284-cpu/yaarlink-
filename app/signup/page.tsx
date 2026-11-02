@@ -4,7 +4,7 @@ import { useLang } from "@/frontend/i18n";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { fetchSessionUser } from "@/frontend/session";
+import { useSession } from "@/frontend/session-context";
 import { buildAuthPath, DEFAULT_RETURN_TO, safeReturnTo } from "@/shared/return-to";
 import { primaryUserRole, type UserRole } from "@/shared/user-roles";
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/shared/password-policy";
@@ -19,6 +19,7 @@ type SignupForm = {
 
 function SignupContent() {
   const { t } = useLang();
+  const { user } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
   const returnTo = safeReturnTo(searchParams.get("returnTo"));
@@ -33,18 +34,9 @@ function SignupContent() {
   const set = <K extends keyof SignupForm>(k: K, v: SignupForm[K]) => setForm((f) => ({ ...f, [k]: v }));
 
   useEffect(() => {
-    let active = true;
-    fetchSessionUser()
-      .then((user) => {
-        if (active && user) router.replace(returnTo);
-      })
-      .catch(() => {
-        // Keep signup available if only the optional session probe fails.
-      });
-    return () => {
-      active = false;
-    };
-  }, [returnTo, router]);
+    // Keep signup available when the server-side session state is unknown.
+    if (user) router.replace(returnTo);
+  }, [returnTo, router, user]);
 
   useEffect(() => {
     if (resendSeconds <= 0) return;
