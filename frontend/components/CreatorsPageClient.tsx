@@ -14,6 +14,7 @@ import AuthJourneyNotice from "@/frontend/components/AuthJourneyNotice";
 import { useSession } from "@/frontend/session-context";
 import { readFormDraft, removeFormDraft, writeFormDraft } from "@/frontend/form-drafts";
 import { buildPathWithReturnTo, safeReturnTo } from "@/shared/return-to";
+import { sanitizePhoneInput } from "@/shared/phone-input";
 
 // v2 ignores v1 drafts captured while platform/category were pre-selected.
 const CREATOR_DRAFT_KEY = "yaarlink:creator-profile-draft:v2";
@@ -212,7 +213,7 @@ export default function CreatorsPageClient({ initialCampaigns }: { initialCampai
     });
   };
 
-  const canNext1 = form.name.trim().length >= 2 && Boolean(form.phone.trim() || form.email.trim()) && Boolean(form.platform);
+  const canNext1 = form.name.trim().length >= 2 && Boolean(form.phone.trim()) && Boolean(form.email.trim()) && Boolean(form.platform);
   const hasSocialProfile = Boolean(form.profileUrl.trim() || form.instagram.trim() || form.youtube.trim());
   const canNext2 = hasSocialProfile && Boolean(form.followers.trim()) && Boolean(form.category);
 
@@ -385,11 +386,11 @@ export default function CreatorsPageClient({ initialCampaigns }: { initialCampai
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="grid gap-1.5" htmlFor="creator-phone">
                     <span className="text-[13.5px] font-bold">{t("cr.phone")}</span>
-                    <input id="creator-phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" aria-describedby="creator-contact-hint" value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder={t("brand.phPhone")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                    <input id="creator-phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" required aria-describedby="creator-contact-hint" value={form.phone} onChange={(e) => set("phone", sanitizePhoneInput(e.target.value))} placeholder={t("brand.phPhone")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                   </label>
                   <label className="grid gap-1.5" htmlFor="creator-email">
                     <span className="text-[13.5px] font-bold">{t("cr.email")}</span>
-                    <input id="creator-email" name="email" type="email" inputMode="email" autoComplete="email" aria-describedby="creator-contact-hint" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder={t("cr.phEmail")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                    <input id="creator-email" name="email" type="email" inputMode="email" autoComplete="email" required aria-describedby="creator-contact-hint" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder={t("cr.phEmail")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                   </label>
                 </div>
                 <p id="creator-contact-hint" className="text-[13px] font-semibold text-[#6f6862]">{t("cr.needContact")}</p>

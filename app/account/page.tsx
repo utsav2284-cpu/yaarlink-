@@ -9,6 +9,7 @@ import { useSession } from "@/frontend/session-context";
 import { buildAuthPath } from "@/shared/return-to";
 import { primaryUserRole, USER_ROLES, type UserRole } from "@/shared/user-roles";
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, isPasswordLengthValid } from "@/shared/password-policy";
+import { sanitizePhoneInput } from "@/shared/phone-input";
 import RequiredMark from "@/frontend/components/RequiredMark";
 
 type AccountUser = {
@@ -448,7 +449,7 @@ export default function AccountPage() {
           <form onSubmit={submitPhone} className="grid gap-3">
             <label className={labelClass} htmlFor="account-phone">
               {t("auth.phone")}
-              <input id="account-phone" name="phone" value={phoneForm.phone} onChange={(e) => setPhoneForm((f) => ({ ...f, phone: e.target.value }))} type="tel" inputMode="tel" autoComplete="tel" className={inputClass} />
+              <input id="account-phone" name="phone" value={phoneForm.phone} onChange={(e) => setPhoneForm((f) => ({ ...f, phone: sanitizePhoneInput(e.target.value) }))} type="tel" inputMode="tel" autoComplete="tel" className={inputClass} />
             </label>
             <label className={labelClass} htmlFor="account-phone-current-password">
               <span>{t("account.currentPassword")}<RequiredMark /></span>

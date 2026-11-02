@@ -28,6 +28,7 @@ import AuthJourneyNotice from "@/frontend/components/AuthJourneyNotice";
 import { useSession } from "@/frontend/session-context";
 import { readFormDraft, removeFormDraft, writeFormDraft } from "@/frontend/form-drafts";
 import { safeReturnTo } from "@/shared/return-to";
+import { sanitizePhoneInput } from "@/shared/phone-input";
 
 
 const CREATOR_PAGE_SIZE = 8;
@@ -286,6 +287,10 @@ function BrandInner({ initialCreators }: { initialCreators: BrandsInitialCreator
       setErrKey("brand.errMissing");
       return;
     }
+    if (!form.phone.trim() || !form.email.trim()) {
+      setErrKey("brand.needContact");
+      return;
+    }
     if (!normalizePromotionType(form.promotionType)) {
       setErrKey("api.invalidPromotionType");
       requestAnimationFrame(() => document.getElementById("brand-promotion-type-group")?.focus());
@@ -522,12 +527,12 @@ function BrandInner({ initialCreators }: { initialCreators: BrandsInitialCreator
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="grid gap-1.5" htmlFor="brand-phone">
-                  <span className="text-[13.5px] font-bold">{t("brand.phone")}</span>
-                  <input id="brand-phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder={t("brand.phPhone")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                  <span className="text-[13.5px] font-bold">{t("brand.phone")}<RequiredMark /></span>
+                  <input id="brand-phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" required value={form.phone} onChange={(e) => set("phone", sanitizePhoneInput(e.target.value))} placeholder={t("brand.phPhone")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                 </label>
                 <label className="grid gap-1.5" htmlFor="brand-email">
-                  <span className="text-[13.5px] font-bold">{t("brand.email")}</span>
-                  <input id="brand-email" name="email" type="email" inputMode="email" autoComplete="email" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder={t("brand.phEmail")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                  <span className="text-[13.5px] font-bold">{t("brand.email")}<RequiredMark /></span>
+                  <input id="brand-email" name="email" type="email" inputMode="email" autoComplete="email" required value={form.email} onChange={(e) => set("email", e.target.value)} placeholder={t("brand.phEmail")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                 </label>
               </div>
 
