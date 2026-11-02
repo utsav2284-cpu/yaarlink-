@@ -1,4 +1,4 @@
-import { logError, normalizeRoutePath, requestIdFromHeaders } from "@/shared/observability";
+import { logError, logEvent, normalizeRoutePath, requestIdFromHeaders } from "@/shared/observability";
 
 type RequestErrorContext = {
   routerKind: "Pages Router" | "App Router";
@@ -25,6 +25,25 @@ export async function register() {
     // runtimes still fail initialization by rethrowing.
     if (process.env.NEXT_RUNTIME === "nodejs") process.exit(1);
     throw error;
+  }
+
+  // Public contact/social settings live in source (config/site.ts), so a typo
+  // there would otherwise become a silently broken WhatsApp/Instagram/email
+  // link. Warn once at startup with field/code pairs only — never the values.
+  // The link builders already return "" for malformed entries, so this is a
+  // warning, not a startup failure.
+  try {
+    const { SITE, validateSiteConfig } = await import("@/config/site");
+    const siteIssues = validateSiteConfig(SITE);
+    if (siteIssues.length > 0) {
+      logEvent("warn", "startup.site_configuration_warning", {
+        component: "site-config",
+        issueCount: siteIssues.length,
+        issues: siteIssues,
+      });
+    }
+  } catch (error) {
+    logError("startup.site_configuration_failed", error, { component: "site-config" });
   }
 }
 

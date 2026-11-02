@@ -173,6 +173,17 @@ export default function ContactLink({ kind, href, value, title, webHref, classNa
           ? t("contactLink.scanEmail")
           : t("contactLink.scanInstagram");
 
+  if (!href) {
+    // A malformed/unconfigured contact value is reported at startup by
+    // validateSiteConfig; render the value as plain text rather than an
+    // anchor with an empty (page-reloading) href.
+    return (
+      <span className={className} aria-label={ariaLabel} aria-disabled="true">
+        {children}
+      </span>
+    );
+  }
+
   return (
     <>
       <a

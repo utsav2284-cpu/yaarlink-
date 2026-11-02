@@ -6,31 +6,51 @@ repository root, so an import reads like the folder it comes from: `@/backend/au
 
 ```
 .
-├── app/                     # Next.js App Router — the route tree
-│   ├── api/**/route.ts      #   HTTP route handlers
-│   ├── **/page.tsx          #   pages, layouts, globals.css, robots/sitemap/icon
-│   └── layout.tsx
-├── frontend/                # Client-side UI
-│   ├── components/          #   shared React components (Navbar, Footer, …)
-│   └── i18n.tsx             #   language provider + dictionaries
-├── backend/                 # Server-side only
-│   ├── db/                  #   Drizzle client, verified-TLS pool, schema, baseline migrations
-│   ├── observability.ts     #   request-scoped server logging context
-│   ├── auth.ts              #   password hashing + session cookies
-│   ├── admin.ts             #   owner/admin session
-│   ├── bot-challenge.ts     #   signed one-time public-form proof-of-work challenges
-│   └── rate-limit.ts        #   PostgreSQL-backed distributed request limiter + auth lockouts
-├── shared/                  # Isomorphic domain code (usable on both sides)
-│   ├── constants.ts         #   categories, languages, budgets, formatINR
-│   └── observability.ts     #   dependency-free redacted JSON logging primitives
-├── config/                  # Site configuration
-│   └── site.ts              #   contact details + WhatsApp/e-mail/Instagram links
-├── scripts/                 # Operator scripts (empty-database bootstrap/verifier)
-├── tests/                   # Node test suite
-├── .github/workflows/       # CI: quality checks + disposable-PostgreSQL bootstrap
-├── docs/                    # This folder — structure, deployment and observability notes
-├── proxy.ts                 # Document CSP nonce/reporting + API/document request IDs
-└── <tooling configs>        # next/tsconfig/drizzle/postcss/eslint at the root
+├── app/                         # Next.js App Router — the route tree
+│   ├── api/**/route.ts          #   HTTP route handlers
+│   ├── **/page.tsx + layout.tsx #   pages and layouts
+│   └── globals.css, fonts/, icon.svg, manifest.ts, opengraph-image.tsx,
+│       robots.ts, sitemap.ts    #   global styles and generated metadata routes
+├── frontend/                    # Client-side UI and browser helpers
+│   ├── components/              #   shared React components (Navbar, Footer, page clients)
+│   ├── i18n.tsx                 #   language provider and dynamic-value helpers
+│   ├── i18n/                    #   config, locale loading/formatting, server and route helpers
+│   │   └── locales/             #   en.ts, hi.ts, pa.ts dictionaries
+│   └── api-json.ts, bot-challenge.ts, form-drafts.ts, session-context.tsx
+├── backend/                     # Server-side only
+│   ├── db/                      #   Drizzle schema/client, verified-TLS pool, health,
+│   │                            #   slow-query fingerprints, baseline + historical migrations
+│   ├── account*.ts, admin*.ts, auth.ts, email-verification.ts,
+│   │   identity-sync.ts         #   accounts, sessions, admin access, identity changes
+│   ├── bot-challenge.ts, password-policy.ts, public-env.ts,
+│   │   rate-limit.ts, secret-config.ts
+│   │                            #   abuse controls, credential policy, startup validation
+│   ├── application-*.ts, campaign-lifecycle.ts, content-moderation.ts,
+│   │   moderation.ts, notifications.ts, own-applications.ts,
+│   │   platform-settings.ts, public-listings.ts
+│   │                            #   marketplace workflows, review state, notices, listings
+│   ├── audit-events.ts, health-diagnostics.ts, observability.ts
+│   │                            #   domain history, protected diagnostics, request logging
+│   ├── email.ts, pagination.ts, validation.ts
+│   │                            #   mail transport, cursor pagination, input parsing
+│   └── social-url.ts            #   server-facing re-export of shared/social-url.ts
+├── shared/                      # Isomorphic domain code (usable on both sides)
+│   ├── constants.ts             #   categories, languages, formats, statuses, limits, formatINR
+│   ├── contact-links.ts         #   validated contact/social link construction
+│   ├── social-url.ts            #   Instagram/YouTube/profile URL normalization
+│   ├── observability.ts         #   dependency-free redacted JSON logging primitives
+│   └── password-policy.ts, return-to.ts, user-roles.ts
+├── config/                      # Site configuration
+│   ├── site.ts                  #   canonical origin, contact details, validated link builders
+│   └── metadata.ts              #   per-route canonical/social metadata from SITE.url
+├── scripts/                     # Operator scripts (empty-database bootstrap/verifier)
+├── tests/                       # Node test suite
+├── .github/workflows/           # CI: quality checks + disposable-PostgreSQL bootstrap
+├── .github/dependabot.yml       # Scheduled npm and GitHub Actions update PRs
+├── docs/                        # Structure, deployment, backup and observability notes
+├── instrumentation.ts           # Startup secret/site-config checks + unhandled-error logging
+├── proxy.ts                     # Document CSP nonce/reporting + API/document request IDs
+└── <tooling configs>            # next/tsconfig/drizzle/postcss/eslint and .nvmrc at the root
 ```
 
 ## Why `app/` is at the root and not inside `frontend/`

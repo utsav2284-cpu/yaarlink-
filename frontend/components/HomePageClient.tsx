@@ -222,30 +222,27 @@ export default function HomePageClient({ initialListings }: { initialListings: H
       <section className="border-y border-[#e9ddc3] bg-[#fff4de]">
         <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-4 sm:px-6">
           <span className="shrink-0 text-[13px] font-bold uppercase tracking-widest text-[#6f6862]">{t("home.madeFor")}</span>
-          <div className="marquee min-w-0 flex-1 overflow-hidden">
-            <div className="marquee-track gap-2">
-              {[0, 1].map((copy) =>
-                [
-                  t("home.audienceKirana"),
-                  t("home.audienceCafes"),
-                  t("home.audienceSalons"),
-                  t("home.audienceD2C"),
-                  t("home.audienceApps"),
-                  t("home.audienceCoaching"),
-                  t("home.audienceEvents"),
-                  t("home.audienceYouTubers"),
-                  t("home.audienceMemes"),
-                  t("home.audienceUGC"),
-                ].map((x) => (
-                  <span
-                    key={`${copy}-${x}`}
-                    aria-hidden={copy === 1}
-                    className={`mr-2 shrink-0 rounded-full border border-[#e9ddc3] bg-white px-4 py-2 text-[13.5px] font-bold ${copy === 1 ? "motion-reduce:hidden" : ""}`}
-                  >
-                    {x}
-                  </span>
-                )),
-              )}
+          <div className="min-w-0 flex-1 overflow-x-auto">
+            <div className="flex w-max gap-2 pb-1 pr-1">
+              {[
+                t("home.audienceKirana"),
+                t("home.audienceCafes"),
+                t("home.audienceSalons"),
+                t("home.audienceD2C"),
+                t("home.audienceApps"),
+                t("home.audienceCoaching"),
+                t("home.audienceEvents"),
+                t("home.audienceYouTubers"),
+                t("home.audienceMemes"),
+                t("home.audienceUGC"),
+              ].map((x) => (
+                <span
+                  key={x}
+                  className="shrink-0 rounded-full border border-[#e9ddc3] bg-white px-4 py-2 text-[13.5px] font-bold"
+                >
+                  {x}
+                </span>
+              ))}
             </div>
           </div>
         </div>
@@ -311,13 +308,6 @@ export default function HomePageClient({ initialListings }: { initialListings: H
             <p className="inline-block rounded-full bg-[#fff4de] border border-[#e9ddc3] px-3 py-1 text-[12.5px] font-bold uppercase tracking-widest text-[#92400e]">{t("exp.badge")}</p>
             <h2 className="font-display mt-4 text-[30px] font-black leading-tight sm:text-[40px]">{t("exp.title")}</h2>
             <p className="mt-4 text-[16px] leading-relaxed text-[#57534e]">{t("exp.desc")}</p>
-            <div className="mt-5 flex flex-wrap gap-2">
-              {[t("home.regionNorth"), t("home.regionSouth"), t("home.regionEast"), t("home.regionWest"), t("home.regionNortheast"), t("home.regionInternational")].map((r) => (
-                <span key={r} className="rounded-full border border-[#e9ddc3] bg-[#fffbf1] px-3 py-1.5 text-[13px] font-bold">
-                  {r}
-                </span>
-              ))}
-            </div>
             <div className="mt-6 grid gap-2.5">
               {[t("home.reach1"), t("home.reach2"), t("home.reach3")].map((x) => (
                 <p key={x} className="flex items-start gap-2.5 text-[15px] font-semibold">
@@ -351,7 +341,7 @@ export default function HomePageClient({ initialListings }: { initialListings: H
             <p className="text-[13px] font-bold uppercase tracking-widest">{t("foot.brands")}</p>
             <h3 className="font-display mt-2 text-[28px] font-black leading-tight">{t("home.brandSplitTitle")}</h3>
             <ul className="mt-4 grid gap-2 text-[15px] font-semibold">
-              <li>{t("home.brandPoint1").replace("{count}", formatNumber(3))}</li>
+              <li>{t("home.brandPoint1")}</li>
               <li>{t("home.brandPoint2")}</li>
               <li>{t("home.brandPoint3")}</li>
             </ul>

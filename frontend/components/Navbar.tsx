@@ -12,8 +12,18 @@ export function Logo({ dark = false }: { dark?: boolean }) {
   const { t } = useLang();
   return (
     <Link href="/" aria-label={t("nav.home")} className="flex items-center gap-2">
-      <span aria-hidden="true" className="grid h-9 w-9 place-items-center rounded-xl bg-[#1c1917] text-[20px] font-black text-[#ffc53d]">
-        ਯਾ
+      <span aria-hidden="true" className="grid h-9 w-9 place-items-center rounded-xl bg-[#1c1917]">
+        {/* Same path-based mark as app/icon.svg — consistent across platforms. */}
+        <svg width="24" height="24" viewBox="0 0 64 64" fill="none" aria-hidden="true" focusable="false">
+          <path
+            d="M16 14 L31 35 L46 14 M31 35 L22.5 50.5 Q18.5 57.5 10.5 55.5"
+            stroke="#ffc53d"
+            strokeWidth="7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <circle cx="47" cy="19" r="5" fill="#e4572e" />
+        </svg>
       </span>
       <span aria-hidden="true" className={`text-[22px] font-extrabold tracking-tight ${dark ? "text-white" : "text-[#1c1917]"}`}>
         yaar<span className="text-[#c7431f]">link</span>

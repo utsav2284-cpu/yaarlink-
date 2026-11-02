@@ -6,7 +6,6 @@ import {
 } from "@/backend/application-contact";
 import { db } from "@/backend/db";
 import { applications, campaigns, creators, users } from "@/backend/db/schema";
-import { adminSessionUnavailableResponse, isAdmin, isAdminSessionUnavailableError, logAdminSessionUnavailable } from "@/backend/admin";
 import { getSessionUser, isSessionUnavailableError, logSessionUnavailable, sessionUnavailableResponse } from "@/backend/auth";
 import { findDisallowedContent, hasSuspiciousUrl } from "@/backend/content-moderation";
 import {
@@ -18,12 +17,10 @@ import {
   type ValidationResult,
 } from "@/backend/validation";
 import { createApplicationNotification, sendApplicationNotificationEmailBestEffort } from "@/backend/notifications";
-import { attachApplicationStatusHistory } from "@/backend/application-history";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getClientKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
 import {
   APPLICATION_QUOTE_MAX,
-  APPLICATION_STATUSES,
   APPLICATION_TIMELINE_DAYS_MAX,
   APPLICATION_TIMELINE_MAX_LENGTH,
   type ApplicationStatus,
@@ -32,21 +29,6 @@ import {
 import { changedFieldNames, recordAuditEvent } from "@/backend/audit-events";
 import { buildCreatorProfileSnapshot } from "@/backend/application-snapshot";
 import { isCampaignPastExpiry, markCampaignExpired } from "@/backend/campaign-lifecycle";
-import {
-  allConditions,
-  cursorCondition,
-  decodeCursor,
-  isListingQueryError,
-  paginateRows,
-  parseEnumParam,
-  parseListingParams,
-  parseUuidParam,
-  scopeFrom,
-  searchCondition,
-  sortOrder,
-  textExpression,
-  type SortKey,
-} from "@/backend/pagination";
 
 export const dynamic = "force-dynamic";
 
@@ -216,141 +198,10 @@ type EmailNotice = {
   decisionNote?: string | null;
 };
 
-const ADMIN_APPLICATION_SORTS = ["newest", "oldest", "updated", "status"] as const;
-
-type AdminApplicationSortRow = {
-  application: {
-    id: string;
-    status: string;
-    createdAt: Date;
-    updatedAt: Date;
-  };
-};
-
-function adminApplicationSortKeys(sort: string): Array<SortKey<AdminApplicationSortRow>> {
-  switch (sort) {
-    case "oldest":
-      return [
-        { expression: sql`${applications.createdAt}`, direction: "asc", kind: "date", value: (row) => row.application.createdAt },
-        { expression: sql`${applications.id}`, direction: "asc", kind: "uuid", value: (row) => row.application.id },
-      ];
-    case "updated":
-      return [
-        { expression: sql`${applications.updatedAt}`, direction: "desc", kind: "date", value: (row) => row.application.updatedAt },
-        { expression: sql`${applications.id}`, direction: "desc", kind: "uuid", value: (row) => row.application.id },
-      ];
-    case "status":
-      return [
-        { expression: sql`${applications.status}`, direction: "asc", kind: "string", value: (row) => row.application.status },
-        { expression: sql`${applications.createdAt}`, direction: "desc", kind: "date", value: (row) => row.application.createdAt },
-        { expression: sql`${applications.id}`, direction: "desc", kind: "uuid", value: (row) => row.application.id },
-      ];
-    default:
-      return [
-        { expression: sql`${applications.createdAt}`, direction: "desc", kind: "date", value: (row) => row.application.createdAt },
-        { expression: sql`${applications.id}`, direction: "desc", kind: "uuid", value: (row) => row.application.id },
-      ];
-  }
-}
-
-// Applications contain creators' contact details — owner (admin) only.
-// Brands see applications for their own campaigns via /api/me/dashboard.
-export async function GET(req: Request) {
-  try {
-    if (!(await isAdmin())) return Response.json({ error: "Not allowed", code: "unauthorized" }, { status: 401, headers: NO_STORE });
-    const params = new URL(req.url).searchParams;
-    const listing = parseListingParams(params, {
-      defaultLimit: 50,
-      defaultSort: "newest",
-      allowedSorts: ADMIN_APPLICATION_SORTS,
-    });
-    const status = parseEnumParam(params, "status", APPLICATION_STATUSES);
-    const campaignId = parseUuidParam(params, "campaignId");
-    const creatorId = parseUuidParam(params, "creatorId");
-    const userId = parseUuidParam(params, "userId");
-    const scope = scopeFrom({ listing: "admin-applications", q: listing.q, status, campaignId, creatorId, userId });
-    const keys = adminApplicationSortKeys(listing.sort);
-    const cursorValues = decodeCursor(listing.cursor, { sort: listing.sort, scope, keys });
-    const search = searchCondition(
-      [
-        textExpression(sql`${applications.id}`),
-        textExpression(sql`${applications.campaignId}`),
-        textExpression(sql`${applications.userId}`),
-        textExpression(sql`${applications.creatorId}`),
-        textExpression(sql`${applications.creatorName}`),
-        textExpression(sql`${applications.creatorContact}`),
-        textExpression(sql`${applications.message}`),
-        textExpression(sql`${applications.decisionNote}`),
-        textExpression(sql`${applications.status}`),
-        textExpression(sql`${campaigns.title}`),
-        textExpression(sql`${campaigns.businessName}`),
-        textExpression(sql`${creators.name}`),
-      ],
-      listing.q,
-    );
-    const baseWhere = allConditions([
-      status ? eq(applications.status, status) : undefined,
-      campaignId ? eq(applications.campaignId, campaignId) : undefined,
-      creatorId ? eq(applications.creatorId, creatorId) : undefined,
-      userId ? eq(applications.userId, userId) : undefined,
-      search,
-    ]);
-    const pageWhere = allConditions([baseWhere, cursorCondition(keys, cursorValues)]);
-    const [[totalRow], rowsWithExtra] = await Promise.all([
-      db
-        .select({ count: sql<number>`count(distinct ${applications.id})::int` })
-        .from(applications)
-        .leftJoin(campaigns, eq(applications.campaignId, campaigns.id))
-        .leftJoin(creators, eq(applications.creatorId, creators.id))
-        .where(baseWhere),
-      db
-        .select({
-          application: applications,
-          campaignTitle: campaigns.title,
-          campaignBusinessName: campaigns.businessName,
-          creatorLabel: creators.name,
-        })
-        .from(applications)
-        .leftJoin(campaigns, eq(applications.campaignId, campaigns.id))
-        .leftJoin(creators, eq(applications.creatorId, creators.id))
-        .where(pageWhere)
-        .orderBy(...sortOrder(keys))
-        .limit(listing.limit + 1),
-    ]);
-    const { items, pagination } = paginateRows(rowsWithExtra, {
-      limit: listing.limit,
-      total: Number(totalRow?.count ?? 0),
-      sort: listing.sort,
-      scope,
-      keys,
-    });
-    return Response.json(
-      {
-        applications: await attachApplicationStatusHistory(
-          items.map(({ application, campaignTitle, campaignBusinessName, creatorLabel }) => ({
-            ...application,
-            campaignLabel: campaignTitle ? `${campaignTitle} (${campaignBusinessName ?? ""})` : null,
-            campaignMissing: campaignTitle === null,
-            creatorLabel: creatorLabel ?? application.creatorName,
-          })),
-        ),
-        pagination,
-      },
-      { headers: NO_STORE },
-    );
-  } catch (e) {
-    if (isAdminSessionUnavailableError(e)) {
-      logAdminSessionUnavailable(e, req);
-      return adminSessionUnavailableResponse(NO_STORE);
-    }
-    if (isListingQueryError(e)) {
-      return Response.json({ error: e.message, code: e.code }, { status: e.status, headers: NO_STORE });
-    }
-    logRouteError(req, e);
-    return Response.json({ error: "Could not load applications", code: "load_failed" }, { status: 500, headers: NO_STORE });
-  }
-}
-
+// No GET handler here by design: admin application reads live in
+// /api/admin/data?entity=applications, and account owners read through
+// /api/me/dashboard and /api/me/applications. This route only creates and
+// updates applications.
 export async function POST(req: Request) {
   const rl = await rateLimit(getClientKey(req, "application-create"), 20, 60 * 60_000);
   if (!rl.ok) return limitedResponse(rl.retryAfter);

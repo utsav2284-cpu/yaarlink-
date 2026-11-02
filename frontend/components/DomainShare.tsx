@@ -2,13 +2,13 @@
 
 import { useLang } from "@/frontend/i18n";
 import { useState } from "react";
-import { SITE } from "@/config/site";
+import { SITE, splitSiteDomain } from "@/config/site";
 
 /** Big, memorable domain strip with Copy + Share on WhatsApp. */
 export default function DomainShare() {
   const { t } = useLang();
   const [copied, setCopied] = useState(false);
-  const tld = SITE.domain.match(/\.[^.]+$/)?.[0] ?? "";
+  const domainParts = splitSiteDomain(SITE.domain);
   const shareText = t("dom.shareText").replace("{url}", SITE.url);
 
   const copy = async () => {
@@ -41,9 +41,9 @@ export default function DomainShare() {
       <div className="dotted-bg pointer-events-none absolute inset-0 opacity-[0.07]" />
       <div className="relative">
         <p className="text-[12.5px] font-bold uppercase tracking-[0.2em] text-[#ffc53d]">{t("dom.kicker")}</p>
-        <p className="font-display mt-3 whitespace-nowrap text-[clamp(30px,10vw,44px)] font-black leading-none tracking-tight sm:text-[76px]">
-          the<span className="text-[#ffc53d]">yaar</span>
-          <span className="text-[#ff8a5c]">{tld}</span>
+        <p className="font-display mt-3 break-all text-[clamp(28px,9vw,44px)] font-black leading-[1.05] tracking-tight sm:text-[76px]">
+          {domainParts.prefix}<span className="text-[#ffc53d]">{domainParts.highlight}</span>
+          <span className="text-[#ff8a5c]">{domainParts.suffix}</span>
         </p>
         <p className="mx-auto mt-4 max-w-md text-[15.5px] text-white/70">
           {t("dom.sub")}
@@ -51,7 +51,7 @@ export default function DomainShare() {
         <div className="mt-6 flex flex-col justify-center gap-2.5 sm:flex-row">
           <button
             onClick={copy}
-            className="rounded-2xl bg-white px-6 py-3.5 text-[15px] font-extrabold text-[#1c1917] hover:bg-[#ffc53d]"
+            className="break-all rounded-2xl bg-white px-6 py-3.5 text-[15px] font-extrabold text-[#1c1917] hover:bg-[#ffc53d]"
           >
             {copied ? t("dom.copied") : <><span aria-hidden="true">🔗</span> {t("dom.copy")} {SITE.host}</>}
           </button>

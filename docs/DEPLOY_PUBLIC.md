@@ -1,6 +1,6 @@
 # YaarLink — Public Deployment Checklist
 
-Vercel + Supabase is the only supported production deployment path for this repository. Keeping one authoritative path prevents a second host configuration from drifting on environment variables, database TLS, client-IP trust, or security headers.
+Vercel + Supabase is the only supported production deployment path for this repository. Keeping one authoritative path prevents a second host configuration from drifting on environment variables, database TLS, client-IP trust, or security headers. Do not add a Cloudflare/OpenNext/Wrangler configuration, another hosting adapter, or a custom build-output directory; the standard Vercel Next.js build output is the deployable artifact.
 
 ### Canonical production project
 
@@ -59,7 +59,7 @@ Generate each signing secret independently with:
 openssl rand -hex 32
 ```
 
-Use different values for `SESSION_SECRET` and `ADMIN_SESSION_SECRET`, and use a unique `ADMIN_PASSWORD` of at least 16 characters stored in a password manager. At server startup the app validates these values and refuses to start when a required value is missing, weak, copied from `.env.example`, or shared with another signing secret. Request-level fail-closed checks are also present: for example, a missing/weak/shared admin signing secret makes `/api/admin/login` and `/api/admin/logout` return HTTP 503 instead of sharing a signing key. Human passphrases are not accepted as signing secrets—use generated key material such as the OpenSSL output above.
+Use different values for `SESSION_SECRET` and `ADMIN_SESSION_SECRET`, and use a unique `ADMIN_PASSWORD` of at least 16 characters stored in a password manager. At server startup the app validates these values and refuses to start when a required value is missing, weak, copied from `.env.example`, or shared with another signing secret. Startup also validates the public origin/contact/social settings in `config/site.ts`; malformed entries emit a `startup.site_configuration_warning` containing only field/code pairs, and the corresponding link builders return no link rather than rendering a broken WhatsApp, email, or Instagram URL. Request-level fail-closed checks are also present: for example, a missing/weak/shared admin signing secret makes `/api/admin/login` and `/api/admin/logout` return HTTP 503 instead of sharing a signing key. Human passphrases are not accepted as signing secrets—use generated key material such as the OpenSSL output above.
 
 Optional admin MFA: set `ADMIN_TOTP_SECRET` to a valid Base32 TOTP secret (at least 16 Base32 characters) after enrolling that secret in the owner's authenticator app. When set, `/admin` requires the current six-digit code in addition to `ADMIN_PASSWORD`. If the value is invalid or too short, startup/admin login fail closed; it does not fall back to password-only access.
 

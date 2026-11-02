@@ -65,7 +65,7 @@ Never use `sslmode=no-verify`, `disable`, `prefer`, `require`, or `verify-ca` fo
 3. Set:
    - Install Command: `npm ci`
    - Build Command: `npm run build`
-   - Output Directory: leave as the Next.js default
+   - Output Directory: leave as the Next.js default (do not set a custom `dist`, `out`, Cloudflare/OpenNext, or other adapter output)
    - Production Branch: `main`
 4. In **Settings → Environment Variables**, add these server-side values for Production:
 
@@ -105,7 +105,7 @@ HTTPS certificates are provisioned by Vercel automatically.
 - `https://www.theyaar.com/admin` → your `ADMIN_PASSWORD` → all data, budgets and contacts
 - Contact page → WhatsApp / Call / Email / Instagram all open on your phone
 
-Logs: Vercel → your project → **Logs**. Application errors are one-line JSON with `level`, a stable `event`, `route`/`component`, and `requestId`; the same request ID is returned in the `x-request-id` response header. CSP violations use the `security.csp_report` event after being sanitized by `/api/security/csp-report`. See [`docs/OBSERVABILITY.md`](./docs/OBSERVABILITY.md) for slow-query logging, external log-drain setup, and uptime-monitor configuration.
+Logs: Vercel → your project → **Logs**. Application errors are one-line JSON with `level`, a stable `event`, `route`/`component`, and `requestId`; the same request ID is returned in the `x-request-id` response header. CSP violations use the `security.csp_report` event after being sanitized by `/api/security/csp-report`. A malformed public contact/social entry in `config/site.ts` produces a `startup.site_configuration_warning` with field/code pairs only (never the values), and the affected link builder returns no link instead of a broken one. See [`docs/OBSERVABILITY.md`](./docs/OBSERVABILITY.md) for slow-query logging, external log-drain setup, and uptime-monitor configuration.
 
 ---
 
@@ -116,7 +116,7 @@ Logs: Vercel → your project → **Logs**. Application errors are one-line JSON
 | Phone, WhatsApp, email, Instagram, city, domain | `config/site.ts` |
 | Admin password and other secrets | Vercel → Settings → Environment Variables (redeploy after changing them) |
 | All data | `/admin` on your site, or Supabase → Table Editor |
-| Hindi / Punjabi text | `frontend/i18n.tsx` |
+| English / Hindi / Punjabi text | `frontend/i18n/locales/en.ts`, `hi.ts`, and `pa.ts` |
 | Categories, languages, formats | `shared/constants.ts` |
 | Colours, fonts, animations | `app/globals.css` |
 
@@ -132,6 +132,7 @@ For an existing database that predates the data-model/reporting fields, run the 
 
 ```bash
 cp .env.example .env     # fill in DATABASE_URL and generate fresh auth secrets; placeholders refuse to start
+nvm use                  # Node version pinned in .nvmrc; npm is pinned by packageManager in package.json
 npm ci
 npm run dev              # http://localhost:3000
 ```

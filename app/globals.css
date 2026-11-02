@@ -58,7 +58,7 @@ body {
  * column shrinkable; responsive utilities like sm:grid-cols-2 still override this.
  */
 @layer base {
-  .grid {
+  :where(.grid) {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -72,6 +72,12 @@ html, body {
   html, body { overflow-x: clip; }
 }
 
+/*
+ * 16px control text prevents mobile browsers from auto-zooming on focus, and
+ * min/max width keeps controls from overflowing their field container. This
+ * stays unlayered on purpose; a text-size utility should not silently
+ * reintroduce focus zoom.
+ */
 input, select, textarea {
   font-size: 16px;
   min-width: 0;
@@ -79,12 +85,15 @@ input, select, textarea {
 }
 
 /*
- * Text-like controls should fill their field container. Checkboxes and radios
- * must keep their compact utility size; forcing them to 100% wide pushes the
- * accompanying consent text outside its label/card.
+ * Text-like controls fill their field container by default. The width lives
+ * in the base layer so a component utility (`w-auto`, `w-fit`, …) can always
+ * override it. Checkboxes and radios keep their compact utility size instead
+ * of pushing consent text outside its label/card.
  */
-input:not([type="checkbox"]):not([type="radio"]), select, textarea {
-  width: 100%;
+@layer base {
+  input:not([type="checkbox"]):not([type="radio"]), select, textarea {
+    width: 100%;
+  }
 }
 
 /*
@@ -139,21 +148,6 @@ h1, h2, h3, p {
 .float-a { animation: float-a 5s ease-in-out infinite; }
 .float-b { animation: float-b 6s ease-in-out infinite; }
 
-@keyframes marquee {
-  from { transform: translateX(0); }
-  to { transform: translateX(-50%); }
-}
-.marquee-track {
-  display: flex;
-  width: max-content;
-  animation: marquee 32s linear infinite;
-}
-.marquee:hover .marquee-track { animation-play-state: paused; }
-.marquee {
-  -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
-  mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
-}
-
 @keyframes hero-in {
   from { opacity: 0; transform: translateY(16px); }
   to { opacity: 1; transform: none; }
@@ -182,8 +176,6 @@ h1, h2, h3, p {
   html { scroll-behavior: auto; }
   .reveal, .reveal.reveal-in { opacity: 1; transform: none; transition: none; }
   .float-a, .float-b, .hero-in, .hero-in-2, .hero-in-3, .marker-underline { animation: none; }
-  .marquee-track { animation: none; flex-wrap: wrap; width: auto; }
-  .marquee { -webkit-mask-image: none; mask-image: none; }
   .lift:hover { transform: none; }
 }
 
