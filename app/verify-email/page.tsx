@@ -101,6 +101,7 @@ export default function VerifyEmailPage() {
               <label htmlFor="verify-email-password" className="sr-only">{t("auth.password")}</label>
               <input
                 id="verify-email-password"
+                name="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required

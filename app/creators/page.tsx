@@ -4,17 +4,20 @@ import { useLang, type TranslationKey } from "@/frontend/i18n";
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { ApiResponseError, fetchJsonList } from "@/frontend/api-json";
-import { ListingError, ListingLoading } from "@/frontend/components/ListingState";
-import { CATEGORIES, LANGUAGES, CONTENT_TYPES, PLATFORMS } from "@/shared/constants";
+import { ApiResponseError, appendUniqueById, fetchJsonPage, type ListPagination } from "@/frontend/api-json";
+import { ListingError, ListingLoading, ListingPagination } from "@/frontend/components/ListingState";
+import { CATEGORIES, LANGUAGES, CONTENT_TYPES, PLATFORMS, normalizeCategory, normalizePlatform } from "@/shared/constants";
 import PrivacyNotice from "@/frontend/components/PrivacyNotice";
 import ReportButton from "@/frontend/components/ReportButton";
+import RequiredMark from "@/frontend/components/RequiredMark";
 import AuthJourneyNotice from "@/frontend/components/AuthJourneyNotice";
 import { useSessionUser } from "@/frontend/session";
 import { readFormDraft, removeFormDraft, writeFormDraft } from "@/frontend/form-drafts";
 import { buildPathWithReturnTo, safeReturnTo } from "@/shared/return-to";
 
-const CREATOR_DRAFT_KEY = "yaarlink:creator-profile-draft:v1";
+// v2 ignores v1 drafts captured while platform/category were pre-selected.
+const CREATOR_DRAFT_KEY = "yaarlink:creator-profile-draft:v2";
+const AVAILABLE_CAMPAIGN_PAGE_SIZE = 6;
 
 function initialAfterProfileReturnTo() {
   if (typeof window === "undefined") return "";
@@ -22,7 +25,7 @@ function initialAfterProfileReturnTo() {
 }
 
 export default function CreatorsPage() {
-  const { t, opt, platform: platformLabel, apiErrorKey, formatNumber } = useLang();
+  const { t, opt, platform: platformLabel, apiErrorKey, formatNumber, formatDateTime, formatRelativeTime } = useLang();
   const session = useSessionUser();
   const [afterProfileReturnTo] = useState(initialAfterProfileReturnTo);
   const creatorReturnTo = afterProfileReturnTo
@@ -32,16 +35,19 @@ export default function CreatorsPage() {
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [campaignsStatus, setCampaignsStatus] = useState<"loading" | "success" | "error">("loading");
   const [campaignsErrorKey, setCampaignsErrorKey] = useState<TranslationKey>("listing.loadFailed");
+  const [campaignSort, setCampaignSort] = useState("newest");
+  const [campaignPagination, setCampaignPagination] = useState<ListPagination | null>(null);
+  const [loadingMoreCampaigns, setLoadingMoreCampaigns] = useState(false);
   const [form, setForm] = useState({
     name: "",
     phone: "",
     email: "",
-    platform: "Instagram",
+    platform: "",
     instagram: "",
     youtube: "",
     profileUrl: "",
     followers: "",
-    category: "Memes & Comedy",
+    category: "",
     languages: [] as string[],
     location: "",
     contentTypes: [] as string[],
@@ -55,12 +61,20 @@ export default function CreatorsPage() {
   const [draftReady, setDraftReady] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);
 
-  const requestCampaigns = useCallback(
-    () => fetchJsonList<any>("/api/campaigns?limit=6&sort=newest", "campaigns", { cache: "no-store" }),
-    [],
+  const requestCampaignPage = useCallback(
+    (cursor?: string | null) => {
+      const params = new URLSearchParams({
+        limit: String(AVAILABLE_CAMPAIGN_PAGE_SIZE),
+        sort: campaignSort,
+      });
+      if (cursor) params.set("cursor", cursor);
+      return fetchJsonPage<any>(`/api/campaigns?${params.toString()}`, "campaigns", { cache: "no-store" });
+    },
+    [campaignSort],
   );
-  const handleCampaignsSuccess = useCallback((rows: any[]) => {
-    setCampaigns(rows);
+  const handleCampaignsSuccess = useCallback((page: { items: any[]; pagination: ListPagination }, append = false) => {
+    setCampaigns((current) => (append ? appendUniqueById(current, page.items) : page.items));
+    setCampaignPagination(page.pagination);
     setCampaignsStatus("success");
   }, []);
   const handleCampaignsError = useCallback((error: unknown) => {
@@ -72,22 +86,31 @@ export default function CreatorsPage() {
 
   const fetchCampaigns = useCallback(async () => {
     try {
-      handleCampaignsSuccess(await requestCampaigns());
+      handleCampaignsSuccess(await requestCampaignPage());
     } catch (error) {
       handleCampaignsError(error);
     }
-  }, [handleCampaignsError, handleCampaignsSuccess, requestCampaigns]);
+  }, [handleCampaignsError, handleCampaignsSuccess, requestCampaignPage]);
 
   const loadCampaigns = useCallback(async () => {
     setCampaignsStatus("loading");
     await fetchCampaigns();
   }, [fetchCampaigns]);
 
+  const loadMoreCampaigns = useCallback(() => {
+    if (!campaignPagination?.nextCursor || loadingMoreCampaigns) return;
+    setLoadingMoreCampaigns(true);
+    requestCampaignPage(campaignPagination.nextCursor)
+      .then((page) => handleCampaignsSuccess(page, true))
+      .catch(handleCampaignsError)
+      .finally(() => setLoadingMoreCampaigns(false));
+  }, [campaignPagination, handleCampaignsError, handleCampaignsSuccess, loadingMoreCampaigns, requestCampaignPage]);
+
   useEffect(() => {
     let alive = true;
-    requestCampaigns()
-      .then((rows) => {
-        if (alive) handleCampaignsSuccess(rows);
+    requestCampaignPage()
+      .then((page) => {
+        if (alive) handleCampaignsSuccess(page);
       })
       .catch((error: unknown) => {
         if (alive) handleCampaignsError(error);
@@ -95,7 +118,7 @@ export default function CreatorsPage() {
     return () => {
       alive = false;
     };
-  }, [handleCampaignsError, handleCampaignsSuccess, requestCampaigns]);
+  }, [handleCampaignsError, handleCampaignsSuccess, requestCampaignPage]);
 
   useEffect(() => {
     let active = true;
@@ -107,7 +130,19 @@ export default function CreatorsPage() {
       let restored = false;
       if (draft.form && typeof draft.form === "object" && !Array.isArray(draft.form)) {
         const draftForm = draft.form as Record<string, unknown>;
-        const meaningfulTextFields = ["name", "phone", "email", "instagram", "youtube", "profileUrl", "followers", "location", "bio"] as const;
+        const meaningfulTextFields = [
+          "name",
+          "phone",
+          "email",
+          "platform",
+          "instagram",
+          "youtube",
+          "profileUrl",
+          "followers",
+          "category",
+          "location",
+          "bio",
+        ] as const;
         restored =
           meaningfulTextFields.some((field) => typeof draftForm[field] === "string" && draftForm[field].trim() !== "") ||
           (Array.isArray(draftForm.languages) && draftForm.languages.some((item) => typeof item === "string" && LANGUAGES.includes(item as never))) ||
@@ -124,6 +159,10 @@ export default function CreatorsPage() {
               if (Array.isArray(value)) {
                 next.contentTypes = value.filter((item): item is string => typeof item === "string" && CONTENT_TYPES.includes(item as never));
               }
+            } else if (field === "platform") {
+              next.platform = normalizePlatform(value) ?? "";
+            } else if (field === "category") {
+              next.category = normalizeCategory(value) ?? "";
             } else if (typeof value === "string" && value.length <= 5000) {
               next[field] = value as never;
             }
@@ -160,8 +199,9 @@ export default function CreatorsPage() {
     });
   };
 
-  const canNext1 = form.name.trim().length >= 2 && (form.phone.trim() || form.email.trim());
-  const canNext2 = form.profileUrl.trim() || form.instagram.trim() || form.youtube.trim();
+  const canNext1 = form.name.trim().length >= 2 && Boolean(form.phone.trim() || form.email.trim()) && Boolean(form.platform);
+  const hasSocialProfile = Boolean(form.profileUrl.trim() || form.instagram.trim() || form.youtube.trim());
+  const canNext2 = hasSocialProfile && Boolean(form.followers.trim()) && Boolean(form.category);
 
   const submit = async () => {
     setErrKey("");
@@ -180,8 +220,28 @@ export default function CreatorsPage() {
       return;
     }
     setAuthRequired(false);
+    if (!canNext1) {
+      setErrKey(form.platform ? "cr.needContact" : "api.invalidPlatform");
+      setStep(1);
+      return;
+    }
+    if (!hasSocialProfile) {
+      setErrKey("api.profileLinkRequired");
+      setStep(2);
+      return;
+    }
+    if (!form.followers.trim()) {
+      setErrKey("api.invalidFollowers");
+      setStep(2);
+      return;
+    }
     if (!form.category || form.languages.length === 0) {
       setErrKey("cr.err");
+      if (!form.category) setStep(2);
+      return;
+    }
+    if (form.contentTypes.length === 0) {
+      setErrKey("api.invalidContentTypes");
       return;
     }
     setSaving(true);
@@ -189,7 +249,7 @@ export default function CreatorsPage() {
       const res = await fetch("/api/creators", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, followers: form.followers.trim() ? form.followers : 0 }),
+        body: JSON.stringify({ ...form, followers: form.followers.trim() }),
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -210,6 +270,20 @@ export default function CreatorsPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleFormSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setErrKey("");
+    if (step === 1) {
+      if (canNext1) setStep(2);
+      return;
+    }
+    if (step === 2) {
+      if (canNext2) setStep(3);
+      return;
+    }
+    void submit();
   };
 
   if (done) {
@@ -258,7 +332,7 @@ export default function CreatorsPage() {
       <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
         <div className="grid gap-8 grid-cols-1 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
           {/* FORM */}
-          <div className="rounded-[24px] border border-[#e9ddc3] bg-white p-6 sm:p-8 card-shadow">
+          <form onSubmit={handleFormSubmit} className="rounded-[24px] border border-[#e9ddc3] bg-white p-6 sm:p-8 card-shadow">
             <div className="flex items-center justify-between">
               <h2 className="font-display text-[24px] font-black">{t("cr.formTitle")}</h2>
               <span className="text-[13px] font-bold text-[#6f6862]">{t("cr.step")} {formatNumber(step, { useGrouping: false })} {t("cr.of")}</span>
@@ -286,73 +360,80 @@ export default function CreatorsPage() {
                 {t("authFlow.draftRestored")}
               </p>
             )}
+            {errKey && <p role="alert" className="mt-3 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-[14px] font-bold text-red-700">{t(errKey)}</p>}
 
             {step === 1 && (
               <div className="mt-6 grid gap-4">
                 <p className="text-[14px] font-bold text-[#6f6862]">{t("cr.s1")}</p>
                 <label className="grid gap-1.5" htmlFor="creator-name">
                   <span className="text-[13.5px] font-bold">{t("cr.name")}</span>
-                  <input id="creator-name" value={form.name} onChange={(e) => set("name", e.target.value)} placeholder={t("cr.phName")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                  <input id="creator-name" name="name" autoComplete="name" required minLength={2} value={form.name} onChange={(e) => set("name", e.target.value)} placeholder={t("cr.phName")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                 </label>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="grid gap-1.5" htmlFor="creator-phone">
                     <span className="text-[13.5px] font-bold">{t("cr.phone")}</span>
-                    <input id="creator-phone" value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder={t("brand.phPhone")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                    <input id="creator-phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" aria-describedby="creator-contact-hint" value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder={t("brand.phPhone")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                   </label>
                   <label className="grid gap-1.5" htmlFor="creator-email">
                     <span className="text-[13.5px] font-bold">{t("cr.email")}</span>
-                    <input id="creator-email" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder={t("cr.phEmail")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                    <input id="creator-email" name="email" type="email" inputMode="email" autoComplete="email" aria-describedby="creator-contact-hint" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder={t("cr.phEmail")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                   </label>
                 </div>
+                <p id="creator-contact-hint" className="text-[13px] font-semibold text-[#6f6862]">{t("cr.needContact")}</p>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="grid gap-1.5" htmlFor="creator-location">
                     <span className="text-[13.5px] font-bold">{t("cr.city")}</span>
-                    <input id="creator-location" value={form.location} onChange={(e) => set("location", e.target.value)} placeholder={t("cr.phCity")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                    <input id="creator-location" name="location" autoComplete="address-level2" value={form.location} onChange={(e) => set("location", e.target.value)} placeholder={t("cr.phCity")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                   </label>
                   <label className="grid gap-1.5" htmlFor="creator-platform">
-                    <span className="text-[13.5px] font-bold">{t("cr.platform")}</span>
-                    <select id="creator-platform" value={form.platform} onChange={(e) => set("platform", e.target.value)} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3">
+                    <span className="text-[13.5px] font-bold">{t("cr.platform")}<RequiredMark /></span>
+                    <select id="creator-platform" name="platform" autoComplete="off" required value={form.platform} onChange={(e) => set("platform", e.target.value)} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3">
+                      <option value="" disabled>{t("form.chooseOption")}</option>
                       {PLATFORMS.map((p) => <option key={p} value={p}>{platformLabel(p)}</option>)}
                     </select>
                   </label>
                 </div>
-                <button disabled={!canNext1} onClick={() => setStep(2)} className="mt-2 rounded-2xl bg-[#1c1917] py-3.5 text-[15.5px] font-bold text-white disabled:opacity-40">{t("cr.continue")}</button>
-                {!canNext1 && <p className="text-[13px] text-[#6f6862]">{t("cr.needContact")}</p>}
+                <button type="submit" disabled={!canNext1} className="mt-2 rounded-2xl bg-[#1c1917] py-3.5 text-[15.5px] font-bold text-white disabled:opacity-40">{t("cr.continue")}</button>
               </div>
             )}
 
             {step === 2 && (
               <div className="mt-6 grid gap-4">
                 <p className="text-[14px] font-bold text-[#6f6862]">{t("cr.s2")}</p>
+                <p id="creator-social-hint" className="text-[13px] font-semibold leading-relaxed text-[#6f6862]">{t("cr.socialHint")}</p>
                 <label className="grid gap-1.5" htmlFor="creator-profile-url">
                   <span className="text-[13.5px] font-bold">{t("cr.profileLink")}</span>
-                  <input id="creator-profile-url" value={form.profileUrl} onChange={(e) => set("profileUrl", e.target.value)} placeholder={t("cr.phProfile")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                  <input id="creator-profile-url" name="profileUrl" autoComplete="url" inputMode="url" aria-describedby="creator-social-hint" value={form.profileUrl} onChange={(e) => set("profileUrl", e.target.value)} placeholder={t("cr.phProfile")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                 </label>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="grid gap-1.5" htmlFor="creator-instagram">
                     <span className="text-[13.5px] font-bold">{t("cr.instagram")}</span>
-                    <input id="creator-instagram" value={form.instagram} onChange={(e) => set("instagram", e.target.value)} placeholder={t("cr.phIg")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                    <input id="creator-instagram" name="instagram" autoComplete="url" inputMode="url" aria-describedby="creator-social-hint" value={form.instagram} onChange={(e) => set("instagram", e.target.value)} placeholder={t("cr.phIg")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                   </label>
                   <label className="grid gap-1.5" htmlFor="creator-youtube">
                     <span className="text-[13.5px] font-bold">{t("cr.youtube")}</span>
-                    <input id="creator-youtube" value={form.youtube} onChange={(e) => set("youtube", e.target.value)} placeholder={t("cr.phYt")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                    <input id="creator-youtube" name="youtube" autoComplete="url" inputMode="url" aria-describedby="creator-social-hint" value={form.youtube} onChange={(e) => set("youtube", e.target.value)} placeholder={t("cr.phYt")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                   </label>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="grid gap-1.5" htmlFor="creator-followers">
-                    <span className="text-[13.5px] font-bold">{t("cr.followers")}</span>
-                    <input id="creator-followers" value={form.followers} onChange={(e) => set("followers", e.target.value)} placeholder={t("cr.phFollowers")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
-                  </label>
+                  <div>
+                    <label className="grid gap-1.5" htmlFor="creator-followers">
+                      <span className="text-[13.5px] font-bold">{t("cr.followers")}<RequiredMark /></span>
+                      <input id="creator-followers" name="followers" autoComplete="off" required aria-describedby="creator-followers-hint" value={form.followers} onChange={(e) => set("followers", e.target.value)} placeholder={t("cr.phFollowers")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                    </label>
+                    <p id="creator-followers-hint" className="mt-1.5 text-[12.5px] font-semibold text-[#6f6862]">{t("cr.followersHint")}</p>
+                  </div>
                   <label className="grid gap-1.5" htmlFor="creator-category">
-                    <span className="text-[13.5px] font-bold">{t("cr.category")}</span>
-                    <select id="creator-category" value={form.category} onChange={(e) => set("category", e.target.value)} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3">
+                    <span className="text-[13.5px] font-bold">{t("cr.category")}<RequiredMark /></span>
+                    <select id="creator-category" name="category" autoComplete="off" required value={form.category} onChange={(e) => set("category", e.target.value)} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3">
+                      <option value="" disabled>{t("form.chooseOption")}</option>
                       {CATEGORIES.map((c) => <option key={c} value={c}>{opt(c)}</option>)}
                     </select>
                   </label>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => setStep(1)} className="flex-1 rounded-2xl border border-[#e9ddc3] py-3.5 text-[15px] font-bold">{t("cr.back")}</button>
-                  <button disabled={!canNext2} onClick={() => setStep(3)} className="flex-[2] rounded-2xl bg-[#1c1917] py-3.5 text-[15px] font-bold text-white disabled:opacity-40">{t("cr.continue")}</button>
+                  <button type="button" onClick={() => setStep(1)} className="flex-1 rounded-2xl border border-[#e9ddc3] py-3.5 text-[15px] font-bold">{t("cr.back")}</button>
+                  <button type="submit" disabled={!canNext2} className="flex-[2] rounded-2xl bg-[#1c1917] py-3.5 text-[15px] font-bold text-white disabled:opacity-40">{t("cr.continue")}</button>
                 </div>
               </div>
             )}
@@ -361,8 +442,9 @@ export default function CreatorsPage() {
               <div className="mt-6 grid gap-4">
                 <p className="text-[14px] font-bold text-[#6f6862]">{t("cr.s3")}</p>
                 <div>
-                  <p id="creator-languages-label" className="text-[13.5px] font-bold">{t("cr.langs")}</p>
-                  <div role="group" aria-labelledby="creator-languages-label" className="mt-2 flex flex-wrap gap-2">
+                  <p id="creator-languages-label" className="text-[13.5px] font-bold">{t("cr.langs")}<span className="sr-only"> ({t("form.required")})</span></p>
+                  <p id="creator-languages-hint" className="mt-1 text-[12.5px] font-semibold text-[#6f6862]">{t("form.chooseAtLeastOne")}</p>
+                  <div role="group" aria-labelledby="creator-languages-label" aria-describedby="creator-languages-hint" className="mt-2 flex flex-wrap gap-2">
                     {LANGUAGES.map((l) => (
                       <button key={l} type="button" onClick={() => toggle("languages", l)} aria-pressed={form.languages.includes(l)}
                         className={`rounded-full border px-4 py-2 text-[13.5px] font-bold ${form.languages.includes(l) ? "border-[#1c1917] bg-[#1c1917] text-white" : "border-[#e9ddc3] bg-[#fffbf1]"}`}>
@@ -372,8 +454,9 @@ export default function CreatorsPage() {
                   </div>
                 </div>
                 <div>
-                  <p id="creator-content-types-label" className="text-[13.5px] font-bold">{t("cr.content")}</p>
-                  <div role="group" aria-labelledby="creator-content-types-label" className="mt-2 flex flex-wrap gap-2">
+                  <p id="creator-content-types-label" className="text-[13.5px] font-bold">{t("cr.content")}<RequiredMark /></p>
+                  <p id="creator-content-types-hint" className="mt-1 text-[12.5px] font-semibold text-[#6f6862]">{t("form.chooseAtLeastOne")}</p>
+                  <div role="group" aria-labelledby="creator-content-types-label" aria-describedby="creator-content-types-hint" className="mt-2 flex flex-wrap gap-2">
                     {CONTENT_TYPES.map((c) => (
                       <button key={c} type="button" onClick={() => toggle("contentTypes", c)} aria-pressed={form.contentTypes.includes(c)}
                         className={`rounded-full border px-4 py-2 text-[13.5px] font-bold ${form.contentTypes.includes(c) ? "border-[#c7431f] bg-[#c7431f] text-white" : "border-[#e9ddc3] bg-[#fffbf1]"}`}>
@@ -384,25 +467,38 @@ export default function CreatorsPage() {
                 </div>
                 <label className="grid gap-1.5" htmlFor="creator-bio">
                   <span className="text-[13.5px] font-bold">{t("cr.bio")} <span className="font-medium text-[#6f6862]">{t("cr.optional")}</span></span>
-                  <textarea id="creator-bio" value={form.bio} onChange={(e) => set("bio", e.target.value)} rows={3} placeholder={t("cr.phBio")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                  <textarea id="creator-bio" name="bio" autoComplete="off" value={form.bio} onChange={(e) => set("bio", e.target.value)} rows={3} placeholder={t("cr.phBio")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                 </label>
                 <PrivacyNotice textKey="privacy.creatorNotice" />
-                {errKey && <p role="alert" className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-[14px] font-bold text-red-700">{t(errKey)}</p>}
                 <div className="flex gap-2">
-                  <button onClick={() => setStep(2)} className="flex-1 rounded-2xl border border-[#e9ddc3] py-3.5 text-[15px] font-bold">{t("cr.back")}</button>
-                  <button onClick={submit} disabled={saving} className="flex-[2] rounded-2xl bg-[#c7431f] py-3.5 text-[15.5px] font-extrabold text-white hover:bg-[#a93618] disabled:opacity-60">
+                  <button type="button" onClick={() => setStep(2)} className="flex-1 rounded-2xl border border-[#e9ddc3] py-3.5 text-[15px] font-bold">{t("cr.back")}</button>
+                  <button type="submit" disabled={saving} className="flex-[2] rounded-2xl bg-[#c7431f] py-3.5 text-[15.5px] font-extrabold text-white hover:bg-[#a93618] disabled:opacity-60">
                     {saving ? t("cr.submitting") : t("cr.submit")}
                   </button>
                 </div>
               </div>
             )}
-          </div>
+          </form>
 
           {/* AVAILABLE CAMPAIGNS */}
           <div className="grid content-start gap-4">
             <div className="rounded-[24px] bg-[#ffc53d] p-6">
               <h3 className="font-display text-[22px] font-black">{t("cr.avail")}</h3>
               <p className="text-[14px] font-semibold text-[#57534e]">{t("cr.availSub")}</p>
+              <label className="relative mt-4 block" htmlFor="creator-available-campaign-sort">
+                <span className="sr-only">{t("listing.sort")}</span>
+                <select id="creator-available-campaign-sort" name="availableCampaignSort" autoComplete="off" value={campaignSort} onChange={(e) => { setCampaignPagination(null); setCampaignsStatus("loading"); setCampaignSort(e.target.value); }} className="w-full min-w-0 appearance-none truncate rounded-xl border border-black/15 bg-white py-3 pl-4 pr-9 text-[14px] font-bold text-[#1c1917] outline-none focus:border-[#1c1917]">
+                  <option value="newest">{t("listing.sortNewest")}</option>
+                  <option value="oldest">{t("listing.sortOldest")}</option>
+                  <option value="title">{t("listing.sortTitle")}</option>
+                  <option value="business">{t("listing.sortBusiness")}</option>
+                  <option value="budget_desc">{t("listing.sortBudgetDesc")}</option>
+                  <option value="budget_asc">{t("listing.sortBudgetAsc")}</option>
+                  <option value="city">{t("listing.sortCity")}</option>
+                  <option value="language">{t("listing.sortLanguage")}</option>
+                </select>
+                <span aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[11px] text-[#6f6862]">▼</span>
+              </label>
               <div className="mt-4 grid gap-3">
                 {campaignsStatus === "loading" && campaigns.length === 0 ? (
                   <ListingLoading
@@ -420,11 +516,20 @@ export default function CreatorsPage() {
                     {campaigns.length === 0 && <p className="rounded-2xl bg-white/70 p-4 text-[14px] font-semibold">{t("cr.availEmpty")}</p>}
                     {campaigns.map((c) => (
                   <div key={c.id} className="rounded-2xl border border-black/10 bg-white p-4">
-                    <p className="text-[15px] font-extrabold leading-snug">{c.title}</p>
-                    <p className="mt-1 text-[13px] text-[#6f6862]">{c.businessName} • {c.location} • {opt(c.language)}</p>
-                    <div className="mt-2 flex items-center justify-between">
+                    <p className="text-[15px] font-extrabold leading-snug">
+                      <Link href={`/campaigns/${c.id}`} aria-label={`${t("detail.viewCampaign")}: ${c.title}`} className="hover:text-[#c7431f] hover:underline">
+                        {c.title}
+                      </Link>
+                    </p>
+                    <p className="mt-1 text-[13px] text-[#6f6862]">{[c.businessName, c.location, opt(c.language)].filter(Boolean).join(" • ")}</p>
+                    <p className="mt-1 text-[12px] font-semibold text-[#6f6862]">
+                      <time dateTime={c.createdAt} title={formatDateTime(c.createdAt)}>
+                        {t("listing.posted", { age: formatRelativeTime(c.createdAt) })}
+                      </time>
+                    </p>
+                    <div className="mt-2 flex items-center justify-between gap-2">
                       <span className="rounded-full bg-[#17452e] px-3 py-1 text-[12.5px] font-bold text-white">{t("cr.paid")} • {opt(c.format)}</span>
-                      <Link href={`/campaigns?apply=${encodeURIComponent(c.id)}`} className="text-[13.5px] font-bold text-[#c7431f]">{t("cr.view")}</Link>
+                      <Link href={`/campaigns/${c.id}`} className="shrink-0 text-[13.5px] font-bold text-[#c7431f] hover:underline">{t("detail.viewCampaign")}</Link>
                     </div>
                     <div className="mt-2">
                       <span className="text-[11.5px] font-bold text-green-800">{t("listing.reviewed")}</span>
@@ -435,6 +540,16 @@ export default function CreatorsPage() {
                   </>
                 )}
               </div>
+              <ListingPagination
+                loaded={campaigns.length}
+                total={campaignPagination?.total ?? campaigns.length}
+                hasMore={Boolean(campaignPagination?.hasMore)}
+                loading={loadingMoreCampaigns}
+                onLoadMore={loadMoreCampaigns}
+                className="mt-4 flex flex-col items-center gap-2"
+                textClassName="text-[12.5px] font-bold text-[#57534e]"
+                buttonClassName="rounded-xl bg-[#1c1917] px-5 py-2.5 text-[13px] font-extrabold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+              />
               <Link href="/campaigns" className="mt-4 block rounded-2xl bg-[#1c1917] py-3 text-center text-[14.5px] font-bold text-white">{t("cr.seeAll")}</Link>
             </div>
             <div className="rounded-[24px] border border-[#e9ddc3] bg-white p-6">

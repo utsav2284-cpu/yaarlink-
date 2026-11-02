@@ -19,6 +19,7 @@ type Campaign = {
   location: string;
   language: string;
   format: string;
+  createdAt: string;
 };
 
 type Creator = {
@@ -30,10 +31,11 @@ type Creator = {
   languages: string;
   contentTypes: string;
   instagram: string;
+  createdAt: string;
 };
 
 export default function HomePage() {
-  const { t, opt, promo, promoDetail, apiErrorKey, formatNumber, formatCompactNumber } = useLang();
+  const { t, opt, promo, promoDetail, apiErrorKey, formatNumber, formatCompactNumber, formatDateTime, formatRelativeTime } = useLang();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [campaignsStatus, setCampaignsStatus] = useState<"loading" | "success" | "error">("loading");
   const [campaignsErrorKey, setCampaignsErrorKey] = useState<TranslationKey>("listing.loadFailed");
@@ -427,10 +429,15 @@ export default function HomePage() {
                       </div>
                     )}
                     {campaigns.map((c) => (
-                  <Link key={c.id} href={`/campaigns?apply=${encodeURIComponent(c.id)}`} className="flex items-center justify-between gap-3 rounded-2xl border border-[#e9ddc3] bg-white p-4 hover:border-[#1c1917]">
+                  <Link key={c.id} href={`/campaigns/${c.id}`} aria-label={`${t("detail.viewCampaign")}: ${c.title}`} className="flex items-center justify-between gap-3 rounded-2xl border border-[#e9ddc3] bg-white p-4 hover:border-[#1c1917]">
                     <div>
                       <p className="text-[15px] font-extrabold">{c.title}</p>
-                      <p className="text-[13px] text-[#6f6862]">{c.businessName} • {c.location} • {opt(c.language)} • {opt(c.format)} • {t("listing.reviewed")}</p>
+                      <p className="text-[13px] text-[#6f6862]">{[c.businessName, c.location, opt(c.language), opt(c.format), t("listing.reviewed")].filter(Boolean).join(" • ")}</p>
+                      <p className="mt-1 text-[12px] font-semibold text-[#6f6862]">
+                        <time dateTime={c.createdAt} title={formatDateTime(c.createdAt)}>
+                          {t("listing.posted", { age: formatRelativeTime(c.createdAt) })}
+                        </time>
+                      </p>
                     </div>
                     <span className="shrink-0 rounded-full bg-[#17452e] px-3 py-1.5 text-[13px] font-bold text-white">{promo(c.promotionType)}</span>
                   </Link>
@@ -472,11 +479,23 @@ export default function HomePage() {
                         {cr.name.charAt(0).toUpperCase()}
                       </span>
                       <div>
-                        <p className="text-[14.5px] font-extrabold leading-tight">{cr.name}</p>
-                        <p className="text-[12px] text-[#6f6862]">{opt(cr.category)} • {cr.followers ? `${formatCompactNumber(cr.followers)} ${t("browse.followers")}` : "—"}</p>
+                        <p className="text-[14.5px] font-extrabold leading-tight">
+                          <Link href={`/creators/${cr.id}`} aria-label={`${t("detail.viewCreator")}: ${cr.name}`} className="hover:text-[#c7431f] hover:underline">
+                            {cr.name}
+                          </Link>
+                        </p>
+                        <p className="text-[12px] text-[#6f6862]">{opt(cr.category)} • {cr.followers ? `${formatCompactNumber(cr.followers)} ${t("browse.followers")}` : `— ${t("browse.followers")}`}</p>
                       </div>
                     </div>
-                    <p className="mt-2 text-[12.5px] font-semibold text-[#57534e]">{cr.location} • {opt(cr.languages)}</p>
+                    <p className="mt-2 text-[12.5px] font-semibold text-[#57534e]">{[cr.location, opt(cr.languages)].filter(Boolean).join(" • ")}</p>
+                    <p className="mt-1 text-[12px] font-semibold text-[#6f6862]">
+                      <time dateTime={cr.createdAt} title={formatDateTime(cr.createdAt)}>
+                        {t("listing.listed", { age: formatRelativeTime(cr.createdAt) })}
+                      </time>
+                    </p>
+                    <Link href={`/creators/${cr.id}`} className="mt-2 block text-[12.5px] font-bold text-[#c7431f] hover:underline">
+                      {t("detail.viewCreator")} →
+                    </Link>
                     <div className="mt-2">
                       <span className="text-[11.5px] font-bold text-green-800">{t("listing.reviewed")}</span>
                       <ReportButton targetType="creator" targetId={cr.id} targetName={cr.name} className="mt-1 text-right" />

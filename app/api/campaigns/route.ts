@@ -22,8 +22,9 @@ import { normalizeCategory, normalizeContentType, normalizeLanguage, normalizePr
 import {
   allConditions,
   cursorCondition,
-  decodeCursor,
+  cursorKeysForResponse,
   isListingQueryError,
+  resolveCursorValues,
   paginateRows,
   parseListingParams,
   parseNormalizedParam,
@@ -153,8 +154,6 @@ function parseCampaign(body: Record<string, unknown>, user: SessionUser, current
   let promotionType: string;
   if (current && !supplied("promotionType")) {
     promotionType = current.promotionType;
-  } else if (!supplied("promotionType")) {
-    promotionType = "Product";
   } else {
     const normalized = normalizePromotionType(body.promotionType);
     if (!normalized) {
@@ -177,8 +176,6 @@ function parseCampaign(body: Record<string, unknown>, user: SessionUser, current
   let language: string;
   if (current && !supplied("language")) {
     language = current.language;
-  } else if (!supplied("language")) {
-    language = "English";
   } else {
     const normalized = normalizeLanguage(body.language);
     if (!normalized) return { ok: false, error: "Please choose a valid language.", code: "invalid_language", field: "language" };
@@ -188,8 +185,6 @@ function parseCampaign(body: Record<string, unknown>, user: SessionUser, current
   let format: string;
   if (current && !supplied("format")) {
     format = current.format;
-  } else if (!supplied("format")) {
-    format = "Story";
   } else {
     const normalized = normalizeContentType(body.format);
     if (!normalized) return { ok: false, error: "Please choose a valid format.", code: "invalid_format", field: "format" };
@@ -281,12 +276,24 @@ async function requireCampaignManager() {
   return { user };
 }
 
-const PUBLIC_CAMPAIGN_SORTS = ["newest", "oldest", "title", "business"] as const;
+const PUBLIC_CAMPAIGN_SORTS = [
+  "newest",
+  "oldest",
+  "title",
+  "business",
+  "budget_desc",
+  "budget_asc",
+  "city",
+  "language",
+] as const;
 
 type PublicCampaignSortRow = {
   id: string;
   title: string;
   businessName: string;
+  budget: number;
+  location: string | null;
+  language: string;
   createdAt: Date;
 };
 
@@ -306,6 +313,30 @@ function publicCampaignSortKeys(sort: string): Array<SortKey<PublicCampaignSortR
     case "business":
       return [
         { expression: sql`lower(${campaigns.businessName})`, direction: "asc", kind: "string", value: (row) => row.businessName.toLocaleLowerCase("en-US") },
+        { expression: sql`${campaigns.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`${campaigns.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
+      ];
+    case "budget_desc":
+      return [
+        { expression: sql`${campaigns.budget}`, direction: "desc", kind: "number", value: (row) => row.budget, sensitive: true },
+        { expression: sql`${campaigns.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`${campaigns.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
+      ];
+    case "budget_asc":
+      return [
+        { expression: sql`${campaigns.budget}`, direction: "asc", kind: "number", value: (row) => row.budget, sensitive: true },
+        { expression: sql`${campaigns.createdAt}`, direction: "asc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`${campaigns.id}`, direction: "asc", kind: "uuid", value: (row) => row.id },
+      ];
+    case "city":
+      return [
+        { expression: sql`lower(coalesce(${campaigns.location}, ''))`, direction: "asc", kind: "string", value: (row) => (row.location ?? "").toLocaleLowerCase("en-US") },
+        { expression: sql`${campaigns.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
+        { expression: sql`${campaigns.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
+      ];
+    case "language":
+      return [
+        { expression: sql`lower(${campaigns.language})`, direction: "asc", kind: "string", value: (row) => row.language.toLocaleLowerCase("en-US") },
         { expression: sql`${campaigns.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
         { expression: sql`${campaigns.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
       ];
@@ -365,7 +396,6 @@ export async function GET(req: Request) {
       format,
     });
     const keys = publicCampaignSortKeys(listing.sort);
-    const cursorValues = decodeCursor(listing.cursor, { sort: listing.sort, scope, keys });
     const baseWhere = allConditions([
       // Fail closed: pending, paused, rejected, suspended, closed, and
       // unverified campaigns stay private.
@@ -377,6 +407,38 @@ export async function GET(req: Request) {
       format ? eq(campaigns.format, format) : undefined,
       search,
     ]);
+    // Budget ordering must not put the exact private budget in the opaque
+    // cursor. Sensitive budget sorts return only the boundary campaign ID;
+    // resolve its sort tuple server-side inside this same public scope.
+    const cursorIdKey: SortKey<PublicCampaignSortRow> = {
+      expression: sql`${campaigns.id}`,
+      direction: listing.sort === "budget_asc" ? "asc" : "desc",
+      kind: "uuid",
+      value: (row) => row.id,
+    };
+    const cursorValues = await resolveCursorValues(listing.cursor, {
+      sort: listing.sort,
+      scope,
+      keys,
+      idKey: cursorIdKey,
+      loadBoundary: async (id) => {
+        const [row] = await db
+          .select({
+            id: campaigns.id,
+            title: campaigns.title,
+            businessName: campaigns.businessName,
+            budget: campaigns.budget,
+            location: campaigns.location,
+            language: campaigns.language,
+            createdAt: campaigns.createdAt,
+          })
+          .from(campaigns)
+          .where(allConditions([baseWhere, eq(campaigns.id, id)]))
+          .limit(1);
+        return row;
+      },
+    });
+    const responseKeys = cursorKeysForResponse(keys, cursorIdKey);
     const pageWhere = allConditions([baseWhere, cursorCondition(keys, cursorValues)]);
 
     const [[totalRow], rowsWithExtra] = await Promise.all([
@@ -389,6 +451,7 @@ export async function GET(req: Request) {
           promotionType: campaigns.promotionType,
           category: campaigns.category,
           description: campaigns.description,
+          budget: campaigns.budget,
           location: campaigns.location,
           language: campaigns.language,
           targetAudience: campaigns.targetAudience,
@@ -408,18 +471,23 @@ export async function GET(req: Request) {
       total: Number(totalRow?.count ?? 0),
       sort: listing.sort,
       scope,
-      keys,
+      keys: responseKeys,
     });
-    const canonicalRows = items.map((row) => ({
-      ...row,
-      // Apply the write-time public-host/profile rules again on read so a
-      // legacy private or non-profile destination is not republished.
-      website: normalizeProfileUrl(row.website, "Instagram"),
-      promotionType: normalizePromotionType(row.promotionType) ?? row.promotionType,
-      category: normalizeCategory(row.category) ?? row.category,
-      language: normalizeLanguage(row.language) ?? row.language,
-      format: normalizeContentType(row.format) ?? row.format,
-    }));
+    const canonicalRows = items.map((row) => {
+      // Budget is selected only so the server can offer budget ordering; the
+      // exact owner-only amount must never be serialized in a public row.
+      const { budget: _budget, ...publicRow } = row;
+      return {
+        ...publicRow,
+        // Apply the write-time public-host/profile rules again on read so a
+        // legacy private or non-profile destination is not republished.
+        website: normalizeProfileUrl(row.website, "Instagram"),
+        promotionType: normalizePromotionType(row.promotionType) ?? row.promotionType,
+        category: normalizeCategory(row.category) ?? row.category,
+        language: normalizeLanguage(row.language) ?? row.language,
+        format: normalizeContentType(row.format) ?? row.format,
+      };
+    });
     // Campaign openness is application-critical state; never let a browser
     // or intermediary reuse a stale public listing after pause/close.
     return Response.json({ campaigns: canonicalRows, pagination }, { headers: NO_STORE });

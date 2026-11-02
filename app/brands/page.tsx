@@ -14,11 +14,15 @@ import {
   CONTENT_TYPES,
   LANGUAGES,
   PROMOTION_TYPES,
+  normalizeCategory,
+  normalizeContentType,
+  normalizeLanguage,
   normalizePromotionType,
 } from "@/shared/constants";
 import ContactLink from "@/frontend/components/ContactLink";
 import PrivacyNotice from "@/frontend/components/PrivacyNotice";
 import ReportButton from "@/frontend/components/ReportButton";
+import RequiredMark from "@/frontend/components/RequiredMark";
 import { SITE, instagramDmLink, whatsappWithText } from "@/config/site";
 import AuthJourneyNotice from "@/frontend/components/AuthJourneyNotice";
 import { useSessionUser } from "@/frontend/session";
@@ -27,7 +31,9 @@ import { safeReturnTo } from "@/shared/return-to";
 
 
 const CREATOR_PAGE_SIZE = 8;
-const BRAND_DRAFT_KEY = "yaarlink:brand-campaign-draft:v1";
+// v2 intentionally ignores v1 drafts captured while campaign-specific fields
+// were pre-filled, so an old untouched form cannot restore those defaults.
+const BRAND_DRAFT_KEY = "yaarlink:brand-campaign-draft:v2";
 
 type BrandCampaignForm = {
   businessName: string;
@@ -68,7 +74,7 @@ function creatorListUrl({
 
 function BrandInner() {
   const params = useSearchParams();
-  const { t, opt, promo, apiErrorKey, formatNumber, formatCurrency } = useLang();
+  const { t, opt, promo, apiErrorKey, formatNumber, formatCurrency, formatDateTime, formatRelativeTime } = useLang();
   const session = useSessionUser();
   const query = params.toString();
   const brandReturnTo = safeReturnTo(`/brands${query ? `?${query}` : ""}`, "/brands");
@@ -90,13 +96,13 @@ function BrandInner() {
     email: "",
     phone: "",
     title: "",
-    promotionType: preset || "Product",
-    category: "Food & Cafe",
+    promotionType: preset || "",
+    category: "",
     website: "",
     targetAudience: "",
-    location: "Ludhiana",
-    language: "Punjabi",
-    format: "Story",
+    location: "",
+    language: "",
+    format: "",
     description: "",
   });
   const [done, setDone] = useState(false);
@@ -165,7 +171,7 @@ function BrandInner() {
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
-  const [budgetAmount, setBudgetAmount] = useState("8000");
+  const [budgetAmount, setBudgetAmount] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -177,25 +183,25 @@ function BrandInner() {
       let restored = false;
       if (draft.form && typeof draft.form === "object" && !Array.isArray(draft.form)) {
         const draftForm = draft.form as Record<string, unknown>;
-        const meaningfulFields: Array<keyof BrandCampaignForm> = [
-          "businessName",
-          "contactName",
-          "email",
-          "phone",
-          "title",
-          "website",
-          "targetAudience",
-          "description",
-        ];
-        restored = meaningfulFields.some((field) => {
+        restored = (Object.keys(draftForm) as Array<keyof BrandCampaignForm>).some((field) => {
           const value = draftForm[field];
-          return typeof value === "string" && value.trim() !== "" && value.length <= 5000;
+          return (
+            typeof value === "string" &&
+            value.trim() !== "" &&
+            value.length <= 5000 &&
+            !(field === "promotionType" && presetRef.current && value === presetRef.current)
+          );
         });
         setForm((current) => {
           const next = { ...current };
           for (const field of Object.keys(current) as Array<keyof typeof current>) {
             const value = draftForm[field];
-            if (typeof value === "string" && value.length <= 5000) next[field] = value;
+            if (typeof value !== "string" || value.length > 5000) continue;
+            if (field === "promotionType") next[field] = normalizePromotionType(value) ?? "";
+            else if (field === "category") next[field] = normalizeCategory(value) ?? "";
+            else if (field === "language") next[field] = normalizeLanguage(value) ?? "";
+            else if (field === "format") next[field] = normalizeContentType(value) ?? "";
+            else next[field] = value;
           }
           // An explicit ?type= preset is the newest user intent and should
           // win over a promotion type captured in an earlier same-browser draft.
@@ -205,7 +211,7 @@ function BrandInner() {
       }
       if (typeof draft.budgetAmount === "string" && draft.budgetAmount.length <= 32) {
         setBudgetAmount(draft.budgetAmount);
-        if (draft.budgetAmount !== "8000") restored = true;
+        if (draft.budgetAmount.trim() !== "") restored = true;
       }
       if (restored) setDraftRestored(true);
       } catch {
@@ -260,6 +266,11 @@ function BrandInner() {
     setAuthRequired(false);
     if (!form.businessName.trim() || !form.title.trim()) {
       setErrKey("brand.errMissing");
+      return;
+    }
+    if (!normalizePromotionType(form.promotionType)) {
+      setErrKey("api.invalidPromotionType");
+      requestAnimationFrame(() => document.getElementById("brand-promotion-type-group")?.focus());
       return;
     }
     if (!budgetInRange || budgetNum === null) {
@@ -324,7 +335,7 @@ function BrandInner() {
             <Link href="/dashboard?view=brand" className="rounded-2xl bg-[#1c1917] px-6 py-3.5 text-[15px] font-bold text-white">{t("brand.dashboard")}</Link>
             <Link href="/campaigns" className="rounded-2xl border border-[#e9ddc3] bg-[#fffbf1] px-6 py-3.5 text-[15px] font-bold">{t("brand.viewAll")}</Link>
           </div>
-          <button onClick={() => { setDone(false); setVerificationCode(""); setForm((f) => ({ ...f, title: "", description: "" })); }} className="mt-4 text-[13.5px] font-bold text-[#c7431f]">+ {t("brand.another")}</button>
+          <button onClick={() => { setDone(false); setVerificationCode(""); setBudgetAmount(""); setForm((f) => ({ ...f, title: "", promotionType: preset || "", category: "", targetAudience: "", location: "", language: "", format: "", description: "" })); }} className="mt-4 text-[13.5px] font-bold text-[#c7431f]">+ {t("brand.another")}</button>
         </div>
       </div>
     );
@@ -352,9 +363,9 @@ function BrandInner() {
       <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
         <div className="grid gap-8 grid-cols-1 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
           {/* FORM */}
-          <form onSubmit={submit} className="rounded-[24px] border border-[#e9ddc3] bg-white p-6 sm:p-8 card-shadow">
+          <form onSubmit={submit} aria-describedby="brand-form-sub" className="rounded-[24px] border border-[#e9ddc3] bg-white p-6 sm:p-8 card-shadow">
             <h2 className="font-display text-[24px] font-black">{t("brand.formTitle")}</h2>
-            <p className="text-[14px] text-[#6f6862]">{t("brand.formSub")}</p>
+            <p id="brand-form-sub" className="text-[14px] text-[#6f6862]">{t("brand.formSub")}</p>
             <div className="mt-4">
               <AuthJourneyNotice
                 id="brand-auth-notice"
@@ -377,22 +388,23 @@ function BrandInner() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="grid gap-1.5" htmlFor="brand-business-name">
                   <span className="text-[13.5px] font-bold">{t("brand.businessName")}</span>
-                  <input id="brand-business-name" value={form.businessName} onChange={(e) => set("businessName", e.target.value)} placeholder={t("brand.phBusiness")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                  <input id="brand-business-name" name="businessName" autoComplete="organization" required value={form.businessName} onChange={(e) => set("businessName", e.target.value)} placeholder={t("brand.phBusiness")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                 </label>
                 <label className="grid gap-1.5" htmlFor="brand-contact-name">
                   <span className="text-[13.5px] font-bold">{t("brand.contactName")}</span>
-                  <input id="brand-contact-name" value={form.contactName} onChange={(e) => set("contactName", e.target.value)} placeholder={t("brand.phName")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                  <input id="brand-contact-name" name="contactName" autoComplete="name" value={form.contactName} onChange={(e) => set("contactName", e.target.value)} placeholder={t("brand.phName")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                 </label>
               </div>
 
               <label className="grid gap-1.5" htmlFor="brand-campaign-title">
-                <span className="text-[13.5px] font-bold">{t("brand.titleLabel")} <span className="font-medium text-[#6f6862]">{t("brand.titleHint")}</span></span>
-                <input id="brand-campaign-title" value={form.title} onChange={(e) => set("title", e.target.value)} placeholder={t("brand.phTitle")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                <span className="text-[13.5px] font-bold">{t("brand.titleLabel")} <span id="brand-title-hint" className="font-medium text-[#6f6862]">{t("brand.titleHint")}</span></span>
+                <input id="brand-campaign-title" name="title" autoComplete="off" required aria-describedby="brand-title-hint" value={form.title} onChange={(e) => set("title", e.target.value)} placeholder={t("brand.phTitle")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
               </label>
 
               <div>
-                <p id="brand-promotion-type-label" className="text-[13.5px] font-bold">{t("brand.promoting")}</p>
-                <div role="group" aria-labelledby="brand-promotion-type-label" className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                <p id="brand-promotion-type-label" className="text-[13.5px] font-bold">{t("brand.promoting")}<RequiredMark /></p>
+                <p id="brand-promotion-type-hint" className="mt-1 text-[12.5px] font-semibold text-[#6f6862]">{t("form.chooseOption")}</p>
+                <div id="brand-promotion-type-group" role="group" aria-labelledby="brand-promotion-type-label" aria-describedby="brand-promotion-type-hint" tabIndex={-1} className="mt-2 grid grid-cols-2 gap-2 outline-none sm:grid-cols-3">
                   {PROMOTION_TYPES.map((p) => (
                     <button type="button" key={p.id} onClick={() => set("promotionType", p.id)} aria-pressed={form.promotionType === p.id}
                       className={`rounded-xl border px-3 py-2.5 text-left text-[13.5px] font-bold ${form.promotionType === p.id ? "border-[#1c1917] bg-[#1c1917] text-white" : "border-[#e9ddc3] bg-[#fffbf1]"}`}>
@@ -405,11 +417,12 @@ function BrandInner() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="grid gap-1.5" htmlFor="brand-website">
                   <span className="text-[13.5px] font-bold">{t("brand.website")}</span>
-                  <input id="brand-website" value={form.website} onChange={(e) => set("website", e.target.value)} placeholder={t("brand.phWebsite")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                  <input id="brand-website" name="website" autoComplete="url" inputMode="url" value={form.website} onChange={(e) => set("website", e.target.value)} placeholder={t("brand.phWebsite")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                 </label>
                 <label className="grid gap-1.5" htmlFor="brand-category">
                   <span className="text-[13.5px] font-bold">{t("brand.category")}</span>
-                  <select id="brand-category" value={form.category} onChange={(e) => set("category", e.target.value)} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none">
+                  <select id="brand-category" name="category" autoComplete="off" value={form.category} onChange={(e) => set("category", e.target.value)} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none">
+                    <option value="">{t("form.chooseOption")}</option>
                     {CATEGORIES.map((c) => <option key={c} value={c}>{opt(c)}</option>)}
                   </select>
                 </label>
@@ -418,25 +431,29 @@ function BrandInner() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="grid gap-1.5" htmlFor="brand-target-audience">
                   <span className="text-[13.5px] font-bold">{t("brand.audience")}</span>
-                  <input id="brand-target-audience" value={form.targetAudience} onChange={(e) => set("targetAudience", e.target.value)} placeholder={t("brand.phAudience")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                  <input id="brand-target-audience" name="targetAudience" autoComplete="off" value={form.targetAudience} onChange={(e) => set("targetAudience", e.target.value)} placeholder={t("brand.phAudience")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                 </label>
                 <label className="grid gap-1.5" htmlFor="brand-location">
                   <span className="text-[13.5px] font-bold">{t("brand.location")}</span>
-                  <input id="brand-location" value={form.location} onChange={(e) => set("location", e.target.value)} placeholder={t("brand.phLocation")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                  <input id="brand-location" name="location" autoComplete="address-level2" value={form.location} onChange={(e) => set("location", e.target.value)} placeholder={t("brand.phLocation")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                 </label>
               </div>
 
               {/* Custom budget */}
               <div className="rounded-2xl border border-[#e9ddc3] bg-[#fffbf1] p-4">
                 <div className="flex flex-wrap items-baseline justify-between gap-1">
-                  <label htmlFor="budget" className="text-[13.5px] font-bold">{t("brand.budget")}</label>
+                  <label htmlFor="budget" className="text-[13.5px] font-bold">{t("brand.budget")}<RequiredMark /></label>
                   <span id="brand-budget-private" className="text-[12px] font-semibold text-[#6f6862]">{t("brand.budgetPrivate")}</span>
                 </div>
                 <div className="mt-2 flex items-center rounded-xl border border-[#e9ddc3] bg-white focus-within:border-[#1c1917]">
                   <span className="pl-4 text-[20px] font-extrabold text-[#6f6862]">₹</span>
                   <input
                     id="budget"
+                    name="budget"
+                    autoComplete="off"
+                    required
                     aria-describedby="brand-budget-private brand-budget-hint"
+                    aria-invalid={budgetAmount.trim() ? !budgetInRange : undefined}
                     inputMode="numeric"
                     value={budgetAmount}
                     onChange={(e) => setBudgetAmount(e.target.value)}
@@ -464,14 +481,16 @@ function BrandInner() {
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <label className="grid gap-1.5" htmlFor="brand-language">
-                  <span className="text-[13.5px] font-bold">{t("brand.language")}</span>
-                  <select id="brand-language" value={form.language} onChange={(e) => set("language", e.target.value)} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none">
-                    {LANGUAGES.slice(0, 5).map((l) => <option key={l} value={l}>{opt(l)}</option>)}
+                  <span className="text-[13.5px] font-bold">{t("brand.language")}<RequiredMark /></span>
+                  <select id="brand-language" name="language" autoComplete="off" required value={form.language} onChange={(e) => set("language", e.target.value)} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none">
+                    <option value="" disabled>{t("form.chooseOption")}</option>
+                    {LANGUAGES.map((l) => <option key={l} value={l}>{opt(l)}</option>)}
                   </select>
                 </label>
                 <label className="grid gap-1.5" htmlFor="brand-format">
-                  <span className="text-[13.5px] font-bold">{t("brand.format")}</span>
-                  <select id="brand-format" value={form.format} onChange={(e) => set("format", e.target.value)} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none">
+                  <span className="text-[13.5px] font-bold">{t("brand.format")}<RequiredMark /></span>
+                  <select id="brand-format" name="format" autoComplete="off" required value={form.format} onChange={(e) => set("format", e.target.value)} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none">
+                    <option value="" disabled>{t("form.chooseOption")}</option>
                     {CONTENT_TYPES.map((c) => <option key={c} value={c}>{opt(c)}</option>)}
                   </select>
                 </label>
@@ -480,17 +499,17 @@ function BrandInner() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="grid gap-1.5" htmlFor="brand-phone">
                   <span className="text-[13.5px] font-bold">{t("brand.phone")}</span>
-                  <input id="brand-phone" value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder={t("brand.phPhone")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                  <input id="brand-phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder={t("brand.phPhone")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                 </label>
                 <label className="grid gap-1.5" htmlFor="brand-email">
                   <span className="text-[13.5px] font-bold">{t("brand.email")}</span>
-                  <input id="brand-email" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder={t("brand.phEmail")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                  <input id="brand-email" name="email" type="email" inputMode="email" autoComplete="email" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder={t("brand.phEmail")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                 </label>
               </div>
 
               <label className="grid gap-1.5" htmlFor="brand-description">
-                <span className="text-[13.5px] font-bold">{t("brand.descLabel")} <span className="font-medium text-[#6f6862]">{t("brand.descHint")}</span></span>
-                <textarea id="brand-description" value={form.description} onChange={(e) => set("description", e.target.value)} rows={4} placeholder={t("brand.phDesc")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                <span className="text-[13.5px] font-bold">{t("brand.descLabel")} <span id="brand-description-hint" className="font-medium text-[#6f6862]">{t("brand.descHint")}</span></span>
+                <textarea id="brand-description" name="description" autoComplete="off" aria-describedby="brand-description-hint" value={form.description} onChange={(e) => set("description", e.target.value)} rows={4} placeholder={t("brand.phDesc")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
               </label>
 
               <PrivacyNotice textKey="privacy.campaignNotice" />
@@ -506,13 +525,16 @@ function BrandInner() {
 
           {/* SIDE */}
           <div className="grid content-start gap-4">
-            <div className="rounded-[24px] bg-[#17452e] p-6 text-white">
+            <div id="creator-discovery" className="scroll-mt-24 rounded-[24px] bg-[#17452e] p-6 text-white">
               <p className="text-[12.5px] font-bold uppercase tracking-widest text-[#ffc53d]">{t("browse.title")}</p>
               <h3 className="font-display mt-1 text-[22px] font-black">{t("browse.heading")}</h3>
               <label className="mt-3 block" htmlFor="brand-creator-search">
                 <span className="sr-only">{t("listing.searchLabel")}</span>
                 <input
                   id="brand-creator-search"
+                  name="creatorSearch"
+                  type="search"
+                  autoComplete="off"
                   value={creatorQ}
                   onChange={(e) => setCreatorQ(e.target.value)}
                   placeholder={t("listing.searchCreators")}
@@ -522,7 +544,7 @@ function BrandInner() {
               <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
                 <label className="relative block" htmlFor="brand-creator-language-filter">
                   <span className="sr-only">{t("browse.filterLang")}</span>
-                  <select id="brand-creator-language-filter" value={filter.lang} onChange={(e) => setFilter((f) => ({ ...f, lang: e.target.value }))} className="w-full min-w-0 appearance-none truncate rounded-xl border border-white/25 bg-white/10 py-3 pl-3.5 pr-9 text-[14px] font-bold text-white outline-none focus:border-[#ffc53d] [&>option]:bg-white [&>option]:text-[#1c1917]">
+                  <select id="brand-creator-language-filter" name="creatorLanguage" autoComplete="off" value={filter.lang} onChange={(e) => setFilter((f) => ({ ...f, lang: e.target.value }))} className="w-full min-w-0 appearance-none truncate rounded-xl border border-white/25 bg-white/10 py-3 pl-3.5 pr-9 text-[14px] font-bold text-white outline-none focus:border-[#ffc53d] [&>option]:bg-white [&>option]:text-[#1c1917]">
                     <option value="">{t("browse.allLang")}</option>
                     {LANGUAGES.map((l) => <option key={l} value={l}>{opt(l)}</option>)}
                   </select>
@@ -530,7 +552,7 @@ function BrandInner() {
                 </label>
                 <label className="relative block" htmlFor="brand-creator-category-filter">
                   <span className="sr-only">{t("browse.filterCat")}</span>
-                  <select id="brand-creator-category-filter" value={filter.category} onChange={(e) => setFilter((f) => ({ ...f, category: e.target.value }))} className="w-full min-w-0 appearance-none truncate rounded-xl border border-white/25 bg-white/10 py-3 pl-3.5 pr-9 text-[14px] font-bold text-white outline-none focus:border-[#ffc53d] [&>option]:bg-white [&>option]:text-[#1c1917]">
+                  <select id="brand-creator-category-filter" name="creatorCategory" autoComplete="off" value={filter.category} onChange={(e) => setFilter((f) => ({ ...f, category: e.target.value }))} className="w-full min-w-0 appearance-none truncate rounded-xl border border-white/25 bg-white/10 py-3 pl-3.5 pr-9 text-[14px] font-bold text-white outline-none focus:border-[#ffc53d] [&>option]:bg-white [&>option]:text-[#1c1917]">
                     <option value="">{t("browse.allCat")}</option>
                     {CATEGORIES.map((c) => <option key={c} value={c}>{opt(c)}</option>)}
                   </select>
@@ -539,12 +561,14 @@ function BrandInner() {
               </div>
               <label className="relative mt-2 block" htmlFor="brand-creator-sort">
                 <span className="sr-only">{t("listing.sort")}</span>
-                <select id="brand-creator-sort" value={creatorSort} onChange={(e) => setCreatorSort(e.target.value)} className="w-full min-w-0 appearance-none truncate rounded-xl border border-white/25 bg-white/10 py-3 pl-3.5 pr-9 text-[14px] font-bold text-white outline-none focus:border-[#ffc53d] [&>option]:bg-white [&>option]:text-[#1c1917]">
+                <select id="brand-creator-sort" name="creatorSort" autoComplete="off" value={creatorSort} onChange={(e) => setCreatorSort(e.target.value)} className="w-full min-w-0 appearance-none truncate rounded-xl border border-white/25 bg-white/10 py-3 pl-3.5 pr-9 text-[14px] font-bold text-white outline-none focus:border-[#ffc53d] [&>option]:bg-white [&>option]:text-[#1c1917]">
                   <option value="newest">{t("listing.sortNewest")}</option>
                   <option value="oldest">{t("listing.sortOldest")}</option>
                   <option value="name">{t("listing.sortName")}</option>
                   <option value="followers_desc">{t("listing.sortFollowersDesc")}</option>
                   <option value="followers_asc">{t("listing.sortFollowersAsc")}</option>
+                  <option value="city">{t("listing.sortCity")}</option>
+                  <option value="language">{t("listing.sortLanguage")}</option>
                 </select>
                 <span aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[11px] text-[#ffc53d]">▼</span>
               </label>
@@ -583,12 +607,26 @@ function BrandInner() {
                     <div className="flex items-center gap-3">
                       <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#ffc53d] text-[15px] font-black text-black">{(c.name || "?").charAt(0).toUpperCase()}</span>
                       <div className="min-w-0">
-                        <p className="truncate text-[14px] font-bold">{c.name}</p>
-                        <p className="truncate text-[12px] text-white/80">{opt(c.category)} • {formatNumber(c.followers || 0)} {t("browse.followers")} • {opt(c.languages)}</p>
+                        <p className="truncate text-[14px] font-bold">
+                          <Link href={`/creators/${c.id}`} aria-label={`${t("detail.viewCreator")}: ${c.name}`} className="hover:text-[#ffc53d] hover:underline">
+                            {c.name}
+                          </Link>
+                        </p>
+                        <p className="truncate text-[12px] text-white/80">{[opt(c.category), `${formatNumber(c.followers || 0)} ${t("browse.followers")}`, c.location, opt(c.languages)].filter(Boolean).join(" • ")}</p>
+                        {c.createdAt && (
+                          <p className="mt-0.5 text-[11.5px] font-semibold text-white/65">
+                            <time dateTime={c.createdAt} title={formatDateTime(c.createdAt)}>
+                              {t("listing.listed", { age: formatRelativeTime(c.createdAt) })}
+                            </time>
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div>
                       <span className="text-[11.5px] font-bold text-[#ffc53d]">{t("listing.reviewed")}</span>
+                      <Link href={`/creators/${c.id}`} className="ml-3 text-[12px] font-bold text-white hover:text-[#ffc53d] hover:underline">
+                        {t("detail.viewCreator")}
+                      </Link>
                       <ReportButton targetType="creator" targetId={c.id} targetName={c.name} className="mt-1 text-right" buttonClassName="text-white/85" />
                     </div>
                   </div>

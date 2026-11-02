@@ -72,7 +72,7 @@ function canonicalCampaign<T extends { promotionType: string; category: string |
 function canonicalCreator<T extends { platform: string; category: string | null; languages: string; contentTypes: string }>(row: T) {
   return {
     ...row,
-    platform: normalizePlatform(row.platform) ?? "Instagram",
+    platform: normalizePlatform(row.platform) ?? row.platform,
     category: normalizeCategory(row.category) ?? row.category,
     languages: row.languages ? (normalizeLanguageList(row.languages, true) ?? []).join(", ") : row.languages,
     contentTypes: row.contentTypes ? (normalizeContentTypeList(row.contentTypes, true) ?? []).join(", ") : row.contentTypes,

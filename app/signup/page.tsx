@@ -170,16 +170,18 @@ function SignupContent() {
             </p>
             <form onSubmit={submit} className="mt-5 grid gap-3">
               <label htmlFor="signup-name" className="sr-only">{form.role === "brand" ? t("auth.nameBrand") : t("auth.nameCreator")}</label>
-              <input id="signup-name" value={form.name} onChange={(e) => set("name", e.target.value)} required autoComplete="name" placeholder={form.role === "brand" ? t("auth.nameBrand") : t("auth.nameCreator")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+              <input id="signup-name" name="name" value={form.name} onChange={(e) => set("name", e.target.value)} required autoComplete="name" placeholder={form.role === "brand" ? t("auth.nameBrand") : t("auth.nameCreator")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
               <label htmlFor="signup-email" className="sr-only">{t("auth.email")}</label>
-              <input id="signup-email" value={form.email} onChange={(e) => set("email", e.target.value)} required type="email" autoComplete="email" placeholder={t("auth.email")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+              <input id="signup-email" name="email" value={form.email} onChange={(e) => set("email", e.target.value)} required type="email" inputMode="email" autoComplete="email" placeholder={t("auth.email")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
               <label htmlFor="signup-phone" className="sr-only">{t("auth.phone")}</label>
-              <input id="signup-phone" value={form.phone} onChange={(e) => set("phone", e.target.value)} autoComplete="tel" placeholder={t("auth.phone")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+              <input id="signup-phone" name="phone" type="tel" inputMode="tel" value={form.phone} onChange={(e) => set("phone", e.target.value)} autoComplete="tel" placeholder={t("auth.phone")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
               <label htmlFor="signup-password" className="sr-only">{t("auth.password")}</label>
-              <input id="signup-password" value={form.password} onChange={(e) => set("password", e.target.value)} required type="password" minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} autoComplete="new-password" placeholder={t("auth.pwHint")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+              <input id="signup-password" name="password" value={form.password} onChange={(e) => set("password", e.target.value)} required type="password" minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} autoComplete="new-password" placeholder={t("auth.pwHint")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
               <label htmlFor="signup-legal-consent" className="flex w-full min-w-0 cursor-pointer items-start gap-3 rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 text-[13.5px] font-semibold leading-relaxed text-[#57534e]">
                 <input
                   id="signup-legal-consent"
+                  name="legalConsent"
+                  autoComplete="off"
                   type="checkbox"
                   checked={acceptedLegal}
                   onChange={(e) => setAcceptedLegal(e.target.checked)}

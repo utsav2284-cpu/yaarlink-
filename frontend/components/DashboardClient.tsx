@@ -4,7 +4,22 @@ import { useLang, type TranslationKey } from "@/frontend/i18n";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { APPLICATION_STATUSES, CAMPAIGN_REVIEW_STATUSES, CATEGORIES, CONTENT_TYPES, LANGUAGES, PLATFORMS, PROMOTION_TYPES } from "@/shared/constants";
+import {
+  APPLICATION_STATUSES,
+  CAMPAIGN_REVIEW_STATUSES,
+  CATEGORIES,
+  CONTENT_TYPES,
+  LANGUAGES,
+  PLATFORMS,
+  PROMOTION_TYPES,
+  normalizeCategory,
+  normalizeContentType,
+  normalizeLanguage,
+  normalizePlatform,
+  normalizePromotionType,
+} from "@/shared/constants";
+import { readFormDraft, removeFormDraft, writeFormDraft } from "@/frontend/form-drafts";
+import RequiredMark from "@/frontend/components/RequiredMark";
 import { normalizeInstagramUrl, normalizeProfileUrl, normalizeYouTubeUrl } from "@/shared/social-url";
 import PrivacyNotice from "@/frontend/components/PrivacyNotice";
 import { ListingError, ListingPagination } from "@/frontend/components/ListingState";
@@ -44,6 +59,7 @@ type Campaign = {
   verificationCode?: string | null;
   verificationStatus?: string | null;
   moderationNote?: string | null;
+  createdAt?: string | null;
   updatedAt?: string | null;
 };
 type Application = {
@@ -81,6 +97,7 @@ type Profile = {
   verificationStatus?: string | null;
   verifiedFollowers?: number | null;
   moderationNote?: string | null;
+  createdAt?: string | null;
   updatedAt?: string | null;
 };
 type Notification = {
@@ -207,6 +224,31 @@ function splitList(value: string | null | undefined) {
   return value ? value.split(",").map((item) => item.trim()).filter(Boolean) : [];
 }
 
+function canonicalList<T extends string>(value: unknown, allowed: readonly T[]) {
+  const items = Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : typeof value === "string"
+      ? splitList(value)
+      : [];
+  return [...new Set(items.filter((item): item is T => allowed.includes(item as T)))];
+}
+
+function isCompletedDashboardProfile(profile: Profile) {
+  const followers = profile.verifiedFollowers ?? profile.followers;
+  return Boolean(
+    profile.status && ["pending", "approved", "rejected", "suspended"].includes(profile.status) &&
+      profile.name.trim() &&
+      normalizePlatform(profile.platform) &&
+      normalizeCategory(profile.category) &&
+      canonicalList(profile.languages, LANGUAGES).length > 0 &&
+      canonicalList(profile.contentTypes, CONTENT_TYPES).length > 0 &&
+      typeof followers === "number" && Number.isFinite(followers) && followers >= 0 && followers <= 100_000_000 &&
+      (normalizeProfileUrl(profile.profileUrl, profile.platform ?? undefined) ||
+        normalizeInstagramUrl(profile.instagram) ||
+        normalizeYouTubeUrl(profile.youtube)),
+  );
+}
+
 function campaignToForm(c: Campaign): CampaignForm {
   return {
     businessName: c.businessName ?? "",
@@ -214,34 +256,107 @@ function campaignToForm(c: Campaign): CampaignForm {
     email: c.email ?? "",
     phone: c.phone ?? "",
     title: c.title ?? "",
-    promotionType: c.promotionType ?? "Product",
-    category: c.category ?? "",
+    promotionType: normalizePromotionType(c.promotionType) ?? "",
+    category: normalizeCategory(c.category) ?? "",
     website: c.website ?? "",
     targetAudience: c.targetAudience ?? "",
     location: c.location ?? "",
-    language: c.language ?? "English",
-    format: c.format ?? "Story",
+    language: normalizeLanguage(c.language) ?? "",
+    format: normalizeContentType(c.format) ?? "",
     description: c.description ?? "",
-    budget: String(c.budget ?? 5000),
+    budget: c.budget == null ? "" : String(c.budget),
   };
 }
 
 function profileToForm(p: Profile): ProfileForm {
+  // Signup placeholder rows can carry database defaults that the creator did
+  // not choose. Make completion explicit instead of presenting those values
+  // as an already-completed profile.
+  const incomplete = p.status === "incomplete";
   return {
     name: p.name ?? "",
     phone: p.phone ?? "",
     email: p.email ?? "",
-    platform: p.platform ?? "Instagram",
+    platform: incomplete ? "" : normalizePlatform(p.platform) ?? "",
     instagram: p.instagram ?? "",
     youtube: p.youtube ?? "",
     profileUrl: p.profileUrl ?? "",
-    followers: String(p.followers ?? 0),
-    category: p.category ?? "",
-    languages: splitList(p.languages),
+    followers: incomplete || p.followers == null ? "" : String(p.followers),
+    category: normalizeCategory(p.category) ?? "",
+    languages: incomplete ? [] : canonicalList(p.languages, LANGUAGES),
     location: p.location ?? "",
-    contentTypes: splitList(p.contentTypes),
+    contentTypes: incomplete ? [] : canonicalList(p.contentTypes, CONTENT_TYPES),
     bio: p.bio ?? "",
   };
+}
+
+type DashboardEditDraft<FormType> = {
+  baseUpdatedAt: string | null;
+  form: FormType;
+};
+
+function dashboardEditDraftKey(userId: string, kind: "campaign" | "profile", entityId: string) {
+  return `yaarlink:dashboard-${kind}-edit-draft:${userId}:${entityId}:v1`;
+}
+
+function draftString(value: unknown, fallback: string) {
+  return typeof value === "string" && value.length <= 5000 ? value : fallback;
+}
+
+function sanitizeCampaignForm(value: unknown, fallback: CampaignForm): CampaignForm {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return fallback;
+  const source = value as Record<string, unknown>;
+  return {
+    businessName: draftString(source.businessName, fallback.businessName),
+    contactName: draftString(source.contactName, fallback.contactName),
+    email: draftString(source.email, fallback.email),
+    phone: draftString(source.phone, fallback.phone),
+    title: draftString(source.title, fallback.title),
+    promotionType: normalizePromotionType(source.promotionType) ?? "",
+    category: normalizeCategory(source.category) ?? "",
+    website: draftString(source.website, fallback.website),
+    targetAudience: draftString(source.targetAudience, fallback.targetAudience),
+    location: draftString(source.location, fallback.location),
+    language: normalizeLanguage(source.language) ?? "",
+    format: normalizeContentType(source.format) ?? "",
+    description: draftString(source.description, fallback.description),
+    budget: draftString(source.budget, fallback.budget),
+  };
+}
+
+function sanitizeProfileForm(value: unknown, fallback: ProfileForm): ProfileForm {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return fallback;
+  const source = value as Record<string, unknown>;
+  return {
+    name: draftString(source.name, fallback.name),
+    phone: draftString(source.phone, fallback.phone),
+    email: draftString(source.email, fallback.email),
+    platform: normalizePlatform(source.platform) ?? "",
+    instagram: draftString(source.instagram, fallback.instagram),
+    youtube: draftString(source.youtube, fallback.youtube),
+    profileUrl: draftString(source.profileUrl, fallback.profileUrl),
+    followers: draftString(source.followers, fallback.followers),
+    category: normalizeCategory(source.category) ?? "",
+    languages: canonicalList(source.languages, LANGUAGES),
+    location: draftString(source.location, fallback.location),
+    contentTypes: canonicalList(source.contentTypes, CONTENT_TYPES),
+    bio: draftString(source.bio, fallback.bio),
+  };
+}
+
+function readDashboardEditDraft<FormType>(
+  key: string,
+  baseUpdatedAt: string | null | undefined,
+  sanitize: (value: unknown) => FormType,
+) {
+  const draft = readFormDraft(key) as { baseUpdatedAt?: unknown; form?: unknown } | null;
+  if (!draft || typeof draft !== "object") return null;
+  const draftBase = typeof draft.baseUpdatedAt === "string" ? draft.baseUpdatedAt : draft.baseUpdatedAt === null ? null : undefined;
+  if (draftBase !== (baseUpdatedAt ?? null)) {
+    removeFormDraft(key);
+    return null;
+  }
+  return sanitize(draft.form);
 }
 
 export default function DashboardClient({
@@ -254,7 +369,7 @@ export default function DashboardClient({
   initialSessionUnavailable?: boolean;
 } = {}) {
   const router = useRouter();
-  const { t, opt, promo, platform: platformLabel, status: statusLabel, apiErrorKey, formatNumber, formatCurrency, formatDate } = useLang();
+  const { t, opt, promo, platform: platformLabel, status: statusLabel, apiErrorKey, formatNumber, formatCurrency, formatDate, formatDateTime, formatRelativeTime } = useLang();
   const [data, setData] = useState<Data | null>(null);
   const [activeView, setActiveView] = useState<UserRole>(initialView);
   const activeViewRef = useRef<UserRole>(initialView);
@@ -265,8 +380,12 @@ export default function DashboardClient({
   const [currentHour, setCurrentHour] = useState(() => new Date().getHours());
   const [editingCampaignId, setEditingCampaignId] = useState("");
   const [campaignForm, setCampaignForm] = useState<CampaignForm | null>(null);
+  const [campaignEditBaseUpdatedAt, setCampaignEditBaseUpdatedAt] = useState<string | null>(null);
+  const [campaignDraftRestored, setCampaignDraftRestored] = useState(false);
   const [editingProfileId, setEditingProfileId] = useState("");
   const [profileForm, setProfileForm] = useState<ProfileForm | null>(null);
+  const [profileEditBaseUpdatedAt, setProfileEditBaseUpdatedAt] = useState<string | null>(null);
+  const [profileDraftRestored, setProfileDraftRestored] = useState(false);
   const [editingApplicationId, setEditingApplicationId] = useState("");
   const [reactivatingApplicationId, setReactivatingApplicationId] = useState("");
   const [applicationForm, setApplicationForm] = useState({ creatorContact: "", message: "" });
@@ -276,6 +395,7 @@ export default function DashboardClient({
   const [campaignQuery, setCampaignQuery] = useState<ListQuery>({ q: "", status: "", sort: "newest" });
   const [applicationDraft, setApplicationDraft] = useState<ListQuery>({ q: "", status: "", sort: "newest" });
   const [applicationQuery, setApplicationQuery] = useState<ListQuery>({ q: "", status: "", sort: "newest" });
+  const [profileSort, setProfileSort] = useState("newest");
   const [openSort, setOpenSort] = useState("newest");
   const [listBusyKey, setListBusyKey] = useState("");
   const sectionRequestRef = useRef<Record<string, number>>({});
@@ -283,7 +403,7 @@ export default function DashboardClient({
   const fetchData = useCallback(
     async (
       extra: Record<string, string> = {},
-      overrides: { campaignQuery?: ListQuery; applicationQuery?: ListQuery; openSort?: string; view?: UserRole } = {},
+      overrides: { campaignQuery?: ListQuery; applicationQuery?: ListQuery; profileSort?: string; openSort?: string; view?: UserRole } = {},
     ): Promise<Data | null> => {
       const requestedView = overrides.view ?? activeViewRef.current;
       const activeCampaignQuery = overrides.campaignQuery ?? campaignQuery;
@@ -295,7 +415,7 @@ export default function DashboardClient({
         applicationLimit: "10",
         applicationSort: activeApplicationQuery.sort,
         profileLimit: "10",
-        profileSort: "newest",
+        profileSort: overrides.profileSort ?? profileSort,
         openLimit: "6",
         openSort: overrides.openSort ?? openSort,
         notificationLimit: "20",
@@ -330,7 +450,7 @@ export default function DashboardClient({
       if (result.activeView && result.activeView !== requestedView) return null;
       return result;
     },
-    [apiErrorKey, applicationQuery, campaignQuery, initialView, openSort, returnTo, router],
+    [apiErrorKey, applicationQuery, campaignQuery, initialView, openSort, profileSort, returnTo, router],
   );
   const fetchDataRef = useRef(fetchData);
   useEffect(() => {
@@ -400,7 +520,7 @@ export default function DashboardClient({
     section: string,
     extra: Record<string, string> = {},
     append: Partial<Record<"campaigns" | "applications" | "profiles" | "openCampaigns" | "notifications", boolean>> = {},
-    overrides: { campaignQuery?: ListQuery; applicationQuery?: ListQuery; openSort?: string; view?: UserRole } = {},
+    overrides: { campaignQuery?: ListQuery; applicationQuery?: ListQuery; profileSort?: string; openSort?: string; view?: UserRole } = {},
   ) => {
     const requestKey = extra.applicationCampaignId ? `${section}:${extra.applicationCampaignId}` : section;
     const requestId = (sectionRequestRef.current[requestKey] = (sectionRequestRef.current[requestKey] ?? 0) + 1);
@@ -493,6 +613,11 @@ export default function DashboardClient({
     void loadDashboardSection("openCampaigns", { openCursor: cursor }, { openCampaigns: true });
   };
 
+  const changeProfileSort = (value: string) => {
+    setProfileSort(value);
+    void loadDashboardSection("profiles", {}, {}, { profileSort: value });
+  };
+
   const changeOpenSort = (value: string) => {
     setOpenSort(value);
     void loadDashboardSection("openCampaigns", {}, {}, { openSort: value });
@@ -544,8 +669,12 @@ export default function DashboardClient({
     setActionErrorKey("");
     setEditingCampaignId("");
     setCampaignForm(null);
+    setCampaignEditBaseUpdatedAt(null);
+    setCampaignDraftRestored(false);
     setEditingProfileId("");
     setProfileForm(null);
+    setProfileEditBaseUpdatedAt(null);
+    setProfileDraftRestored(false);
     setEditingApplicationId("");
     setReactivatingApplicationId("");
     setApplicationForm({ creatorContact: "", message: "" });
@@ -555,6 +684,7 @@ export default function DashboardClient({
     setCampaignQuery(emptyQuery);
     setApplicationDraft(emptyQuery);
     setApplicationQuery(emptyQuery);
+    setProfileSort("newest");
     setOpenSort("newest");
     setListBusyKey("");
     window.history.replaceState(null, "", `/dashboard?view=${view}`);
@@ -562,7 +692,7 @@ export default function DashboardClient({
     try {
       const next = await fetchDataRef.current(
         {},
-        { view, campaignQuery: emptyQuery, applicationQuery: emptyQuery, openSort: "newest" },
+        { view, campaignQuery: emptyQuery, applicationQuery: emptyQuery, profileSort: "newest", openSort: "newest" },
       );
       if (next && activeViewRef.current === view) {
         acceptDashboardData(next);
@@ -599,6 +729,22 @@ export default function DashboardClient({
     const id = window.setInterval(() => setCurrentHour(new Date().getHours()), 60_000);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    if (!data?.user?.id || !editingCampaignId || !campaignForm) return;
+    writeFormDraft(dashboardEditDraftKey(data.user.id, "campaign", editingCampaignId), {
+      baseUpdatedAt: campaignEditBaseUpdatedAt,
+      form: sanitizeCampaignForm(campaignForm, campaignForm),
+    });
+  }, [campaignEditBaseUpdatedAt, campaignForm, data?.user?.id, editingCampaignId]);
+
+  useEffect(() => {
+    if (!data?.user?.id || !editingProfileId || !profileForm) return;
+    writeFormDraft(dashboardEditDraftKey(data.user.id, "profile", editingProfileId), {
+      baseUpdatedAt: profileEditBaseUpdatedAt,
+      form: sanitizeProfileForm(profileForm, profileForm),
+    });
+  }, [data?.user?.id, editingProfileId, profileEditBaseUpdatedAt, profileForm]);
 
   const jsonRequest = (url: string, method: string, body?: Record<string, unknown>) =>
     fetch(url, {
@@ -680,7 +826,7 @@ export default function DashboardClient({
           ? "dash.goodEvening"
           : "dash.goodNight";
   const accountLabel = t("dash.bothAccount");
-  const completedProfiles = (data.profiles ?? []).filter((profile) => profile.status !== "incomplete");
+  const completedProfiles = (data.profiles ?? []).filter(isCompletedDashboardProfile);
   const completedProfileCount = data.counts?.completedProfiles ?? completedProfiles.length;
   const notifications = data.notifications ?? [];
   const unreadCount = data.unreadNotificationCount ?? data.counts?.unreadNotifications ?? notifications.filter((n) => !n.readAt).length;
@@ -689,6 +835,51 @@ export default function DashboardClient({
     applicationQuery.q || applicationQuery.status || applicationQuery.sort !== "newest",
   );
   const creatorApplicationHasFilters = Boolean(applicationQuery.q || applicationQuery.status || applicationQuery.sort !== "newest");
+
+  const startCampaignEdit = (campaign: Campaign) => {
+    const baseForm = campaignToForm(campaign);
+    const restoredForm = readDashboardEditDraft(
+      dashboardEditDraftKey(user.id, "campaign", campaign.id),
+      campaign.updatedAt,
+      (value) => sanitizeCampaignForm(value, baseForm),
+    );
+    setCampaignEditBaseUpdatedAt(campaign.updatedAt ?? null);
+    setCampaignDraftRestored(Boolean(restoredForm && JSON.stringify(restoredForm) !== JSON.stringify(baseForm)));
+    setCampaignForm(restoredForm ?? baseForm);
+    setEditingCampaignId(campaign.id);
+  };
+
+  const closeCampaignEdit = (campaign: Campaign, discardDraft = false, focusToggle = false) => {
+    if (discardDraft) removeFormDraft(dashboardEditDraftKey(user.id, "campaign", campaign.id));
+    if (focusToggle) document.getElementById(`dashboard-campaign-${campaign.id}-edit-toggle`)?.focus();
+    setEditingCampaignId("");
+    setCampaignForm(null);
+    setCampaignEditBaseUpdatedAt(null);
+    setCampaignDraftRestored(false);
+  };
+
+  const startProfileEdit = (profile: Profile) => {
+    const baseForm = profileToForm(profile);
+    const restoredForm = readDashboardEditDraft(
+      dashboardEditDraftKey(user.id, "profile", profile.id),
+      profile.updatedAt,
+      (value) => sanitizeProfileForm(value, baseForm),
+    );
+    setProfileEditBaseUpdatedAt(profile.updatedAt ?? null);
+    setProfileDraftRestored(Boolean(restoredForm && JSON.stringify(restoredForm) !== JSON.stringify(baseForm)));
+    setProfileForm(restoredForm ?? baseForm);
+    setEditingProfileId(profile.id);
+  };
+
+  const closeProfileEdit = (profile: Profile, discardDraft = false, focusToggle = false) => {
+    if (discardDraft) removeFormDraft(dashboardEditDraftKey(user.id, "profile", profile.id));
+    if (focusToggle) document.getElementById(`dashboard-profile-${profile.id}-edit-toggle`)?.focus();
+    setEditingProfileId("");
+    setProfileForm(null);
+    setProfileEditBaseUpdatedAt(null);
+    setProfileDraftRestored(false);
+  };
+
   const notificationText = (n: Notification) => {
     const template = t(
       n.kind === "application_received" ? "notify.received" : n.kind === "application_withdrawn" ? "notify.withdrawn" : "notify.status",
@@ -765,60 +956,64 @@ export default function DashboardClient({
         onKeyDown={(event) => {
           if (event.key !== "Escape") return;
           event.preventDefault();
-          document.getElementById(`dashboard-campaign-${c.id}-edit-toggle`)?.focus();
-          setEditingCampaignId("");
-          setCampaignForm(null);
+          closeCampaignEdit(c, false, true);
         }}
         onSubmit={(e) => {
           e.preventDefault();
           runAction(
             `campaign:${c.id}:edit`,
-            () => jsonRequest("/api/campaigns", "PATCH", { id: c.id, ...campaignForm, expectedUpdatedAt: c.updatedAt ?? undefined }),
-            () => {
-              setEditingCampaignId("");
-              setCampaignForm(null);
-            },
+            () => jsonRequest("/api/campaigns", "PATCH", { id: c.id, ...campaignForm, expectedUpdatedAt: campaignEditBaseUpdatedAt ?? undefined }),
+            () => closeCampaignEdit(c, true, true),
           );
         }}
       >
         <h3 className="text-[16px] font-extrabold">{t("dash.editCampaign")}</h3>
         <p className="mt-1 text-[13px] leading-relaxed text-[#6f6862]">{t("dash.editReviewWarning")}</p>
+        {campaignDraftRestored && (
+          <p role="status" className="mt-3 rounded-xl border border-[#bfe3c5] bg-[#f2fbf3] px-4 py-3 text-[13px] font-bold text-[#17452e]">
+            {t("authFlow.draftRestored")}
+          </p>
+        )}
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-business-name`}>{t("brand.businessName")}<input autoFocus id={`dashboard-campaign-${c.id}-business-name`} value={campaignForm.businessName} onChange={(e) => set("businessName", e.target.value)} className={inputClass} /></label>
-          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-contact-name`}>{t("brand.contactName")}<input id={`dashboard-campaign-${c.id}-contact-name`} value={campaignForm.contactName} onChange={(e) => set("contactName", e.target.value)} className={inputClass} /></label>
-          <label className={`${labelClass} sm:col-span-2`} htmlFor={`dashboard-campaign-${c.id}-title`}>{t("brand.titleLabel")}<input id={`dashboard-campaign-${c.id}-title`} value={campaignForm.title} onChange={(e) => set("title", e.target.value)} className={inputClass} /></label>
-          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-promotion-type`}>{t("brand.promoting")}
-            <select id={`dashboard-campaign-${c.id}-promotion-type`} value={campaignForm.promotionType} onChange={(e) => set("promotionType", e.target.value)} className={inputClass}>
+          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-business-name`}>{t("brand.businessName")}<input autoFocus id={`dashboard-campaign-${c.id}-business-name`} name="businessName" autoComplete="organization" required value={campaignForm.businessName} onChange={(e) => set("businessName", e.target.value)} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-contact-name`}>{t("brand.contactName")}<input id={`dashboard-campaign-${c.id}-contact-name`} name="contactName" autoComplete="name" value={campaignForm.contactName} onChange={(e) => set("contactName", e.target.value)} className={inputClass} /></label>
+          <label className={`${labelClass} sm:col-span-2`} htmlFor={`dashboard-campaign-${c.id}-title`}>{t("brand.titleLabel")}<input id={`dashboard-campaign-${c.id}-title`} name="title" autoComplete="off" required value={campaignForm.title} onChange={(e) => set("title", e.target.value)} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-promotion-type`}><span>{t("brand.promoting")}<RequiredMark /></span>
+            <select id={`dashboard-campaign-${c.id}-promotion-type`} name="promotionType" autoComplete="off" required value={campaignForm.promotionType} onChange={(e) => set("promotionType", e.target.value)} className={inputClass}>
+              <option value="" disabled>{t("form.chooseOption")}</option>
               {PROMOTION_TYPES.map((p) => <option key={p.id} value={p.id}>{promo(p.title)}</option>)}
             </select>
           </label>
           <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-category`}>{t("brand.category")}
-            <select id={`dashboard-campaign-${c.id}-category`} value={campaignForm.category} onChange={(e) => set("category", e.target.value)} className={inputClass}>
-              <option value="">—</option>
+            <select id={`dashboard-campaign-${c.id}-category`} name="category" autoComplete="off" value={campaignForm.category} onChange={(e) => set("category", e.target.value)} className={inputClass}>
+              <option value="">{t("brand.noneOption")}</option>
               {CATEGORIES.map((category) => <option key={category} value={category}>{opt(category)}</option>)}
             </select>
           </label>
-          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-website`}>{t("brand.website")}<input id={`dashboard-campaign-${c.id}-website`} value={campaignForm.website} onChange={(e) => set("website", e.target.value)} placeholder={t("brand.phWebsite")} className={inputClass} /></label>
-          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-target-audience`}>{t("brand.audience")}<input id={`dashboard-campaign-${c.id}-target-audience`} value={campaignForm.targetAudience} onChange={(e) => set("targetAudience", e.target.value)} placeholder={t("brand.phAudience")} className={inputClass} /></label>
-          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-location`}>{t("brand.location")}<input id={`dashboard-campaign-${c.id}-location`} value={campaignForm.location} onChange={(e) => set("location", e.target.value)} placeholder={t("brand.phLocation")} className={inputClass} /></label>
-          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-budget`}>{t("brand.budget")}<input id={`dashboard-campaign-${c.id}-budget`} inputMode="numeric" value={campaignForm.budget} onChange={(e) => set("budget", e.target.value)} placeholder={t("brand.budgetPlaceholder")} className={inputClass} /></label>
-          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-language`}>{t("brand.language")}
-            <select id={`dashboard-campaign-${c.id}-language`} value={campaignForm.language} onChange={(e) => set("language", e.target.value)} className={inputClass}>
+          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-website`}>{t("brand.website")}<input id={`dashboard-campaign-${c.id}-website`} name="website" autoComplete="url" inputMode="url" value={campaignForm.website} onChange={(e) => set("website", e.target.value)} placeholder={t("brand.phWebsite")} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-target-audience`}>{t("brand.audience")}<input id={`dashboard-campaign-${c.id}-target-audience`} name="targetAudience" autoComplete="off" value={campaignForm.targetAudience} onChange={(e) => set("targetAudience", e.target.value)} placeholder={t("brand.phAudience")} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-location`}>{t("brand.location")}<input id={`dashboard-campaign-${c.id}-location`} name="location" autoComplete="address-level2" value={campaignForm.location} onChange={(e) => set("location", e.target.value)} placeholder={t("brand.phLocation")} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-budget`}><span>{t("brand.budget")}<RequiredMark /></span><input id={`dashboard-campaign-${c.id}-budget`} name="budget" autoComplete="off" inputMode="numeric" required aria-describedby={`dashboard-campaign-${c.id}-budget-hint`} value={campaignForm.budget} onChange={(e) => set("budget", e.target.value)} placeholder={t("brand.budgetPlaceholder")} className={inputClass} /><span id={`dashboard-campaign-${c.id}-budget-hint`} className="text-[12px] font-semibold text-[#6f6862]">{t("brand.budgetHint")}</span></label>
+          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-language`}><span>{t("brand.language")}<RequiredMark /></span>
+            <select id={`dashboard-campaign-${c.id}-language`} name="language" autoComplete="off" required value={campaignForm.language} onChange={(e) => set("language", e.target.value)} className={inputClass}>
+              <option value="" disabled>{t("form.chooseOption")}</option>
               {LANGUAGES.map((language) => <option key={language} value={language}>{opt(language)}</option>)}
             </select>
           </label>
-          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-format`}>{t("brand.format")}
-            <select id={`dashboard-campaign-${c.id}-format`} value={campaignForm.format} onChange={(e) => set("format", e.target.value)} className={inputClass}>
+          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-format`}><span>{t("brand.format")}<RequiredMark /></span>
+            <select id={`dashboard-campaign-${c.id}-format`} name="format" autoComplete="off" required value={campaignForm.format} onChange={(e) => set("format", e.target.value)} className={inputClass}>
+              <option value="" disabled>{t("form.chooseOption")}</option>
               {CONTENT_TYPES.map((format) => <option key={format} value={format}>{opt(format)}</option>)}
             </select>
           </label>
-          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-phone`}>{t("brand.phone")}<input id={`dashboard-campaign-${c.id}-phone`} value={campaignForm.phone} onChange={(e) => set("phone", e.target.value)} placeholder={t("brand.phPhone")} className={inputClass} /></label>
-          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-email`}>{t("brand.email")}<input id={`dashboard-campaign-${c.id}-email`} value={campaignForm.email} onChange={(e) => set("email", e.target.value)} placeholder={t("brand.phEmail")} className={inputClass} /></label>
-          <label className={`${labelClass} sm:col-span-2`} htmlFor={`dashboard-campaign-${c.id}-description`}>{t("brand.descLabel")}<textarea id={`dashboard-campaign-${c.id}-description`} value={campaignForm.description} onChange={(e) => set("description", e.target.value)} rows={4} placeholder={t("brand.phDesc")} className={inputClass} /></label>
+          <p id={`dashboard-campaign-${c.id}-contact-note`} className="text-[12.5px] font-semibold leading-relaxed text-[#6f6862] sm:col-span-2">{t("brand.contactNote")}</p>
+          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-phone`}>{t("brand.phone")}<input id={`dashboard-campaign-${c.id}-phone`} name="phone" type="tel" inputMode="tel" autoComplete="tel" aria-describedby={`dashboard-campaign-${c.id}-contact-note`} value={campaignForm.phone} onChange={(e) => set("phone", e.target.value)} placeholder={t("brand.phPhone")} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-email`}>{t("brand.email")}<input id={`dashboard-campaign-${c.id}-email`} name="email" type="email" inputMode="email" autoComplete="email" aria-describedby={`dashboard-campaign-${c.id}-contact-note`} value={campaignForm.email} onChange={(e) => set("email", e.target.value)} placeholder={t("brand.phEmail")} className={inputClass} /></label>
+          <label className={`${labelClass} sm:col-span-2`} htmlFor={`dashboard-campaign-${c.id}-description`}>{t("brand.descLabel")}<textarea id={`dashboard-campaign-${c.id}-description`} name="description" autoComplete="off" value={campaignForm.description} onChange={(e) => set("description", e.target.value)} rows={4} placeholder={t("brand.phDesc")} className={inputClass} /></label>
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
           <button type="submit" disabled={busy} className="rounded-xl bg-[#1c1917] px-5 py-2.5 text-[13.5px] font-bold text-white disabled:opacity-50">{busy ? t("dash.saving") : t("dash.saveChanges")}</button>
-          <button type="button" disabled={busy} onClick={() => { document.getElementById(`dashboard-campaign-${c.id}-edit-toggle`)?.focus(); setEditingCampaignId(""); setCampaignForm(null); }} className="rounded-xl border border-[#e9ddc3] bg-white px-5 py-2.5 text-[13.5px] font-bold disabled:opacity-50">{t("dash.cancel")}</button>
+          <button type="button" disabled={busy} onClick={() => closeCampaignEdit(c, true, true)} className="rounded-xl border border-[#e9ddc3] bg-white px-5 py-2.5 text-[13.5px] font-bold disabled:opacity-50">{t("dash.cancel")}</button>
         </div>
       </form>
     );
@@ -860,7 +1055,7 @@ export default function DashboardClient({
             )}
             <label className="grid gap-1 text-[12.5px] font-bold" htmlFor={`dashboard-decision-note-${a.id}`}>
               {t("dash.decisionNote")}
-              <textarea id={`dashboard-decision-note-${a.id}`}
+              <textarea id={`dashboard-decision-note-${a.id}`} name="decisionNote" autoComplete="off"
                 value={decisionNotes[a.id] ?? a.decisionNote ?? ""}
                 onChange={(e) => setDecisionNotes((notes) => ({ ...notes, [a.id]: e.target.value }))}
                 rows={2}
@@ -897,65 +1092,81 @@ export default function DashboardClient({
         onKeyDown={(event) => {
           if (event.key !== "Escape") return;
           event.preventDefault();
-          document.getElementById(`dashboard-profile-${profile.id}-edit-toggle`)?.focus();
-          setEditingProfileId("");
-          setProfileForm(null);
+          closeProfileEdit(profile, false, true);
         }}
         onSubmit={(e) => {
           e.preventDefault();
-          if (profileForm.languages.length === 0) {
-            setActionErrorKey("cr.err");
+          if (!profileForm.profileUrl.trim() && !profileForm.instagram.trim() && !profileForm.youtube.trim()) {
+            setActionErrorKey("api.profileLinkRequired");
             return;
           }
-          runAction(`profile:${profile.id}:edit`, () => jsonRequest("/api/creators", "PATCH", { ...profileForm, expectedUpdatedAt: profile.updatedAt ?? undefined }), () => {
-            setEditingProfileId("");
-            setProfileForm(null);
-          });
+          if (profileForm.languages.length === 0) {
+            setActionErrorKey("api.invalidLanguages");
+            return;
+          }
+          if (profileForm.contentTypes.length === 0) {
+            setActionErrorKey("api.invalidContentTypes");
+            return;
+          }
+          runAction(
+            `profile:${profile.id}:edit`,
+            () => jsonRequest("/api/creators", "PATCH", { ...profileForm, expectedUpdatedAt: profileEditBaseUpdatedAt ?? undefined }),
+            () => closeProfileEdit(profile, true, true),
+          );
         }}
       >
         <h3 className="text-[16px] font-extrabold">{t("dash.editProfile")}</h3>
         <p className="mt-1 text-[13px] leading-relaxed text-[#6f6862]">{t("dash.editReviewWarning")}</p>
+        {profileDraftRestored && (
+          <p role="status" className="mt-3 rounded-xl border border-[#bfe3c5] bg-[#f2fbf3] px-4 py-3 text-[13px] font-bold text-[#17452e]">
+            {t("authFlow.draftRestored")}
+          </p>
+        )}
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-name`}>{t("cr.name")}<input autoFocus id={`dashboard-profile-${profile.id}-name`} value={profileForm.name} onChange={(e) => set("name", e.target.value)} placeholder={t("cr.phName")} className={inputClass} /></label>
-          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-phone`}>{t("cr.phone")}<input id={`dashboard-profile-${profile.id}-phone`} value={profileForm.phone} onChange={(e) => set("phone", e.target.value)} placeholder={t("brand.phPhone")} className={inputClass} /></label>
-          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-email`}>{t("cr.email")}<input id={`dashboard-profile-${profile.id}-email`} value={profileForm.email} onChange={(e) => set("email", e.target.value)} placeholder={t("cr.phEmail")} className={inputClass} /></label>
-          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-location`}>{t("cr.city")}<input id={`dashboard-profile-${profile.id}-location`} value={profileForm.location} onChange={(e) => set("location", e.target.value)} placeholder={t("cr.phCity")} className={inputClass} /></label>
-          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-platform`}>{t("cr.platform")}
-            <select id={`dashboard-profile-${profile.id}-platform`} value={profileForm.platform} onChange={(e) => set("platform", e.target.value)} className={inputClass}>
+          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-name`}>{t("cr.name")}<input autoFocus id={`dashboard-profile-${profile.id}-name`} name="name" autoComplete="name" required value={profileForm.name} onChange={(e) => set("name", e.target.value)} placeholder={t("cr.phName")} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-phone`}>{t("cr.phone")}<input id={`dashboard-profile-${profile.id}-phone`} name="phone" type="tel" inputMode="tel" autoComplete="tel" value={profileForm.phone} onChange={(e) => set("phone", e.target.value)} placeholder={t("brand.phPhone")} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-email`}>{t("cr.email")}<input id={`dashboard-profile-${profile.id}-email`} name="email" type="email" inputMode="email" autoComplete="email" value={profileForm.email} onChange={(e) => set("email", e.target.value)} placeholder={t("cr.phEmail")} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-location`}>{t("cr.city")}<input id={`dashboard-profile-${profile.id}-location`} name="location" autoComplete="address-level2" value={profileForm.location} onChange={(e) => set("location", e.target.value)} placeholder={t("cr.phCity")} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-platform`}><span>{t("cr.platform")}<RequiredMark /></span>
+            <select id={`dashboard-profile-${profile.id}-platform`} name="platform" autoComplete="off" required value={profileForm.platform} onChange={(e) => set("platform", e.target.value)} className={inputClass}>
+              <option value="" disabled>{t("form.chooseOption")}</option>
               {PLATFORMS.map((platform) => <option key={platform} value={platform}>{platformLabel(platform)}</option>)}
             </select>
           </label>
-          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-profile-url`}>{t("cr.profileLink")}<input id={`dashboard-profile-${profile.id}-profile-url`} value={profileForm.profileUrl} onChange={(e) => set("profileUrl", e.target.value)} placeholder={t("cr.phProfile")} className={inputClass} /></label>
-          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-instagram`}>{t("cr.instagram")}<input id={`dashboard-profile-${profile.id}-instagram`} value={profileForm.instagram} onChange={(e) => set("instagram", e.target.value)} placeholder={t("cr.phIg")} className={inputClass} /></label>
-          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-youtube`}>{t("cr.youtube")}<input id={`dashboard-profile-${profile.id}-youtube`} value={profileForm.youtube} onChange={(e) => set("youtube", e.target.value)} placeholder={t("cr.phYt")} className={inputClass} /></label>
-          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-followers`}>{t("cr.followers")}<input id={`dashboard-profile-${profile.id}-followers`} value={profileForm.followers} onChange={(e) => set("followers", e.target.value)} placeholder={t("cr.phFollowers")} className={inputClass} /></label>
-          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-category`}>{t("cr.category")}
-            <select id={`dashboard-profile-${profile.id}-category`} value={profileForm.category} onChange={(e) => set("category", e.target.value)} className={inputClass}>
-              <option value="">—</option>
+          <p id={`dashboard-profile-${profile.id}-social-hint`} className="text-[12.5px] font-semibold leading-relaxed text-[#6f6862] sm:col-span-2">{t("cr.socialHint")}</p>
+          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-profile-url`}>{t("cr.profileLink")}<input id={`dashboard-profile-${profile.id}-profile-url`} name="profileUrl" autoComplete="url" inputMode="url" aria-describedby={`dashboard-profile-${profile.id}-social-hint`} value={profileForm.profileUrl} onChange={(e) => set("profileUrl", e.target.value)} placeholder={t("cr.phProfile")} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-instagram`}>{t("cr.instagram")}<input id={`dashboard-profile-${profile.id}-instagram`} name="instagram" autoComplete="url" inputMode="url" aria-describedby={`dashboard-profile-${profile.id}-social-hint`} value={profileForm.instagram} onChange={(e) => set("instagram", e.target.value)} placeholder={t("cr.phIg")} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-youtube`}>{t("cr.youtube")}<input id={`dashboard-profile-${profile.id}-youtube`} name="youtube" autoComplete="url" inputMode="url" aria-describedby={`dashboard-profile-${profile.id}-social-hint`} value={profileForm.youtube} onChange={(e) => set("youtube", e.target.value)} placeholder={t("cr.phYt")} className={inputClass} /></label>
+          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-followers`}><span>{t("cr.followers")}<RequiredMark /></span><input id={`dashboard-profile-${profile.id}-followers`} name="followers" autoComplete="off" required aria-describedby={`dashboard-profile-${profile.id}-followers-hint`} value={profileForm.followers} onChange={(e) => set("followers", e.target.value)} placeholder={t("cr.phFollowers")} className={inputClass} /><span id={`dashboard-profile-${profile.id}-followers-hint`} className="text-[12px] font-semibold text-[#6f6862]">{t("cr.followersHint")}</span></label>
+          <label className={labelClass} htmlFor={`dashboard-profile-${profile.id}-category`}><span>{t("cr.category")}<RequiredMark /></span>
+            <select id={`dashboard-profile-${profile.id}-category`} name="category" autoComplete="off" required value={profileForm.category} onChange={(e) => set("category", e.target.value)} className={inputClass}>
+              <option value="" disabled>{t("form.chooseOption")}</option>
               {CATEGORIES.map((category) => <option key={category} value={category}>{opt(category)}</option>)}
             </select>
           </label>
         </div>
         <div className="mt-4">
-          <p id={`dashboard-profile-${profile.id}-languages-label`} className="text-[13.5px] font-bold">{t("cr.langs")}</p>
-          <div role="group" aria-labelledby={`dashboard-profile-${profile.id}-languages-label`} className="mt-2 flex flex-wrap gap-2">
+          <p id={`dashboard-profile-${profile.id}-languages-label`} className="text-[13.5px] font-bold">{t("cr.langs")}<span className="sr-only"> ({t("form.required")})</span></p>
+          <p id={`dashboard-profile-${profile.id}-languages-hint`} className="mt-1 text-[12.5px] font-semibold text-[#6f6862]">{t("form.chooseAtLeastOne")}</p>
+          <div role="group" aria-labelledby={`dashboard-profile-${profile.id}-languages-label`} aria-describedby={`dashboard-profile-${profile.id}-languages-hint`} className="mt-2 flex flex-wrap gap-2">
             {LANGUAGES.map((language) => (
               <button key={language} type="button" onClick={() => toggle("languages", language)} aria-pressed={profileForm.languages.includes(language)} className={`rounded-full border px-4 py-2 text-[13px] font-bold ${profileForm.languages.includes(language) ? "border-[#1c1917] bg-[#1c1917] text-white" : "border-[#e9ddc3] bg-white"}`}>{opt(language)}</button>
             ))}
           </div>
         </div>
         <div className="mt-4">
-          <p id={`dashboard-profile-${profile.id}-content-types-label`} className="text-[13.5px] font-bold">{t("cr.content")}</p>
-          <div role="group" aria-labelledby={`dashboard-profile-${profile.id}-content-types-label`} className="mt-2 flex flex-wrap gap-2">
+          <p id={`dashboard-profile-${profile.id}-content-types-label`} className="text-[13.5px] font-bold">{t("cr.content")}<RequiredMark /></p>
+          <p id={`dashboard-profile-${profile.id}-content-types-hint`} className="mt-1 text-[12.5px] font-semibold text-[#6f6862]">{t("form.chooseAtLeastOne")}</p>
+          <div role="group" aria-labelledby={`dashboard-profile-${profile.id}-content-types-label`} aria-describedby={`dashboard-profile-${profile.id}-content-types-hint`} className="mt-2 flex flex-wrap gap-2">
             {CONTENT_TYPES.map((contentType) => (
               <button key={contentType} type="button" onClick={() => toggle("contentTypes", contentType)} aria-pressed={profileForm.contentTypes.includes(contentType)} className={`rounded-full border px-4 py-2 text-[13px] font-bold ${profileForm.contentTypes.includes(contentType) ? "border-[#c7431f] bg-[#c7431f] text-white" : "border-[#e9ddc3] bg-white"}`}>{opt(contentType)}</button>
             ))}
           </div>
         </div>
-        <label className={`${labelClass} mt-4`} htmlFor={`dashboard-profile-${profile.id}-bio`}>{t("cr.bio")}<textarea id={`dashboard-profile-${profile.id}-bio`} value={profileForm.bio} onChange={(e) => set("bio", e.target.value)} rows={3} placeholder={t("cr.phBio")} className={inputClass} /></label>
+        <label className={`${labelClass} mt-4`} htmlFor={`dashboard-profile-${profile.id}-bio`}>{t("cr.bio")}<textarea id={`dashboard-profile-${profile.id}-bio`} name="bio" autoComplete="off" value={profileForm.bio} onChange={(e) => set("bio", e.target.value)} rows={3} placeholder={t("cr.phBio")} className={inputClass} /></label>
         <div className="mt-4 flex flex-wrap gap-2">
           <button type="submit" disabled={busy} className="rounded-xl bg-[#1c1917] px-5 py-2.5 text-[13.5px] font-bold text-white disabled:opacity-50">{busy ? t("dash.saving") : t("dash.saveChanges")}</button>
-          <button type="button" disabled={busy} onClick={() => { document.getElementById(`dashboard-profile-${profile.id}-edit-toggle`)?.focus(); setEditingProfileId(""); setProfileForm(null); }} className="rounded-xl border border-[#e9ddc3] bg-white px-5 py-2.5 text-[13.5px] font-bold disabled:opacity-50">{t("dash.cancel")}</button>
+          <button type="button" disabled={busy} onClick={() => closeProfileEdit(profile, true, true)} className="rounded-xl border border-[#e9ddc3] bg-white px-5 py-2.5 text-[13.5px] font-bold disabled:opacity-50">{t("dash.cancel")}</button>
         </div>
       </form>
     );
@@ -1031,8 +1242,8 @@ export default function DashboardClient({
           >
             <PrivacyNotice textKey={reactivating ? "dash.reactivateNotice" : "privacy.applicationEditNotice"} compact />
             <label className={labelClass} htmlFor={`dashboard-application-${a.id}-contact`}>
-              {t("dash.contactForBrand")}
-              <input autoFocus id={`dashboard-application-${a.id}-contact`}
+              <span>{t("dash.contactForBrand")}<RequiredMark /></span>
+              <input autoFocus id={`dashboard-application-${a.id}-contact`} name="creatorContact" autoComplete="off"
                 value={applicationForm.creatorContact}
                 onChange={(e) => setApplicationForm((f) => ({ ...f, creatorContact: e.target.value }))}
                 required
@@ -1047,11 +1258,13 @@ export default function DashboardClient({
               </datalist>
               <span id={`dashboard-application-${a.id}-contact-note`} className="text-[12.5px] font-semibold leading-relaxed text-[#6f6862]">{t("camp.contactMustBeYours")}</span>
             </label>
-            <label className={labelClass} htmlFor={`dashboard-application-${a.id}-message`}>{t("dash.yourMessage")}<textarea id={`dashboard-application-${a.id}-message`} value={applicationForm.message} onChange={(e) => setApplicationForm((f) => ({ ...f, message: e.target.value }))} rows={3} placeholder={t("camp.applyPhMsg")} className={inputClass} /></label>
+            <label className={labelClass} htmlFor={`dashboard-application-${a.id}-message`}>{t("dash.yourMessage")}<textarea id={`dashboard-application-${a.id}-message`} name="message" autoComplete="off" value={applicationForm.message} onChange={(e) => setApplicationForm((f) => ({ ...f, message: e.target.value }))} rows={3} placeholder={t("camp.applyPhMsg")} className={inputClass} /></label>
             {reactivating && (
               <label htmlFor={`reactivate-consent-${a.id}`} className="flex w-full min-w-0 cursor-pointer items-start gap-3 rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-3 text-[13px] font-semibold leading-relaxed text-[#57534e]">
                 <input
                   id={`reactivate-consent-${a.id}`}
+                  name="contactSharingConsent"
+                  autoComplete="off"
                   type="checkbox"
                   checked={applicationConsent}
                   onChange={(e) => setApplicationConsent(e.target.checked)}
@@ -1216,23 +1429,25 @@ export default function DashboardClient({
             <div className="grid gap-2 md:grid-cols-[1fr_190px_190px]">
               <label htmlFor="dashboard-campaign-search">
                 <span className="sr-only">{t("dash.yourCampaigns")}</span>
-                <input id="dashboard-campaign-search" value={campaignDraft.q} onChange={(e) => setCampaignDraft((current) => ({ ...current, q: e.target.value }))} placeholder={t("camp.search")} className={inputClass} />
+                <input id="dashboard-campaign-search" name="campaignQ" type="search" autoComplete="off" value={campaignDraft.q} onChange={(e) => setCampaignDraft((current) => ({ ...current, q: e.target.value }))} placeholder={t("camp.search")} className={inputClass} />
               </label>
               <label htmlFor="dashboard-campaign-status-filter">
                 <span className="sr-only">{t("listing.filterStatus")}</span>
-                <select id="dashboard-campaign-status-filter" value={campaignDraft.status} onChange={(e) => setCampaignDraft((current) => ({ ...current, status: e.target.value }))} className={inputClass}>
+                <select id="dashboard-campaign-status-filter" name="campaignStatus" autoComplete="off" value={campaignDraft.status} onChange={(e) => setCampaignDraft((current) => ({ ...current, status: e.target.value }))} className={inputClass}>
                   <option value="">{t("listing.allStatuses")}</option>
                   {CAMPAIGN_REVIEW_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
                 </select>
               </label>
               <label htmlFor="dashboard-campaign-sort">
                 <span className="sr-only">{t("listing.sort")}</span>
-                <select id="dashboard-campaign-sort" value={campaignDraft.sort} onChange={(e) => setCampaignDraft((current) => ({ ...current, sort: e.target.value }))} className={inputClass}>
+                <select id="dashboard-campaign-sort" name="campaignSort" autoComplete="off" value={campaignDraft.sort} onChange={(e) => setCampaignDraft((current) => ({ ...current, sort: e.target.value }))} className={inputClass}>
                   <option value="newest">{t("listing.sortNewest")}</option>
                   <option value="oldest">{t("listing.sortOldest")}</option>
                   <option value="title">{t("listing.sortTitle")}</option>
                   <option value="budget_desc">{t("listing.sortBudgetDesc")}</option>
                   <option value="budget_asc">{t("listing.sortBudgetAsc")}</option>
+                  <option value="city">{t("listing.sortCity")}</option>
+                  <option value="language">{t("listing.sortLanguage")}</option>
                   <option value="status">{t("listing.sortStatus")}</option>
                 </select>
               </label>
@@ -1240,18 +1455,18 @@ export default function DashboardClient({
             <div className="grid gap-2 md:grid-cols-[1fr_190px_190px]">
               <label htmlFor="dashboard-brand-application-search">
                 <span className="sr-only">{t("dash.applications")}</span>
-                <input id="dashboard-brand-application-search" value={applicationDraft.q} onChange={(e) => setApplicationDraft((current) => ({ ...current, q: e.target.value }))} placeholder={t("listing.searchItems")} className={inputClass} />
+                <input id="dashboard-brand-application-search" name="applicationQ" type="search" autoComplete="off" value={applicationDraft.q} onChange={(e) => setApplicationDraft((current) => ({ ...current, q: e.target.value }))} placeholder={t("listing.searchItems")} className={inputClass} />
               </label>
               <label htmlFor="dashboard-brand-application-status-filter">
                 <span className="sr-only">{t("listing.filterStatus")}</span>
-                <select id="dashboard-brand-application-status-filter" value={applicationDraft.status} onChange={(e) => setApplicationDraft((current) => ({ ...current, status: e.target.value }))} className={inputClass}>
+                <select id="dashboard-brand-application-status-filter" name="applicationStatus" autoComplete="off" value={applicationDraft.status} onChange={(e) => setApplicationDraft((current) => ({ ...current, status: e.target.value }))} className={inputClass}>
                   <option value="">{t("listing.allStatuses")}</option>
                   {APPLICATION_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
                 </select>
               </label>
               <label htmlFor="dashboard-brand-application-sort">
                 <span className="sr-only">{t("listing.sort")}</span>
-                <select id="dashboard-brand-application-sort" value={applicationDraft.sort} onChange={(e) => setApplicationDraft((current) => ({ ...current, sort: e.target.value }))} className={inputClass}>
+                <select id="dashboard-brand-application-sort" name="applicationSort" autoComplete="off" value={applicationDraft.sort} onChange={(e) => setApplicationDraft((current) => ({ ...current, sort: e.target.value }))} className={inputClass}>
                   <option value="newest">{t("listing.sortNewest")}</option>
                   <option value="oldest">{t("listing.sortOldest")}</option>
                   <option value="updated">{t("listing.sortUpdated")}</option>
@@ -1298,8 +1513,21 @@ export default function DashboardClient({
                 <div key={c.id} className="rounded-2xl border border-[#e9ddc3] bg-white p-5 card-shadow">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-[16px] font-extrabold">{c.title}</p>
+                      <p className="text-[16px] font-extrabold">
+                        {c.status === "open" && c.verificationStatus === "verified" ? (
+                          <Link href={`/campaigns/${c.id}`} aria-label={`${t("detail.viewCampaign")}: ${c.title}`} className="hover:text-[#c7431f] hover:underline">
+                            {c.title}
+                          </Link>
+                        ) : c.title}
+                      </p>
                       <p className="text-[13px] text-[#6f6862]">{[c.businessName, c.location, opt(c.language), opt(c.format)].filter(Boolean).join(" · ")}</p>
+                      {c.createdAt && (
+                        <p className="mt-1 text-[12px] font-semibold text-[#6f6862]">
+                          <time dateTime={c.createdAt} title={formatDateTime(c.createdAt)}>
+                            {t("listing.posted", { age: formatRelativeTime(c.createdAt) })}
+                          </time>
+                        </p>
+                      )}
                     </div>
                     <div className="flex gap-2">
                       <span className="rounded-full bg-[#fff4de] px-3 py-1 text-[12.5px] font-bold">🔒 {formatCurrency(c.budget || 0)}</span>
@@ -1324,15 +1552,17 @@ export default function DashboardClient({
                   )}
 
                   <div className="mt-4 flex flex-wrap gap-2">
+                    {c.status === "open" && c.verificationStatus === "verified" && (
+                      <Link href={`/campaigns/${c.id}`} className="rounded-xl border border-[#1c1917] bg-white px-4 py-2 text-[13px] font-bold text-[#1c1917] hover:bg-[#fff4de]">
+                        {t("detail.viewCampaign")}
+                      </Link>
+                    )}
                     <button
                       type="button"
                       id={`dashboard-campaign-${c.id}-edit-toggle`}
                       aria-expanded={editingCampaignId === c.id}
                       aria-controls={`dashboard-campaign-${c.id}-edit-form`}
-                      onClick={() => {
-                        setEditingCampaignId(c.id);
-                        setCampaignForm(campaignToForm(c));
-                      }}
+                      onClick={() => startCampaignEdit(c)}
                       className="rounded-xl bg-[#1c1917] px-4 py-2 text-[13px] font-bold text-white"
                     >
                       {t("dash.editCampaign")}
@@ -1365,10 +1595,8 @@ export default function DashboardClient({
                       onClick={() => {
                         if (window.confirm(t("dash.confirmDeleteCampaign"))) {
                           runAction(`campaign:${c.id}:delete`, () => jsonRequest("/api/campaigns", "DELETE", { id: c.id }), () => {
-                            if (editingCampaignId === c.id) {
-                              setEditingCampaignId("");
-                              setCampaignForm(null);
-                            }
+                            if (editingCampaignId === c.id) closeCampaignEdit(c, true);
+                            else removeFormDraft(dashboardEditDraftKey(user.id, "campaign", c.id));
                           });
                         }
                       }}
@@ -1426,23 +1654,53 @@ export default function DashboardClient({
             </div>
           )}
 
-          {completedProfiles.length > 0 && (
+          {(data.profiles ?? []).length > 0 && (
             <section className="mt-8">
-              <h2 className="text-[19px] font-extrabold">{t("dash.profileStatus")}</h2>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-[19px] font-extrabold">{t("dash.profileStatus")}</h2>
+                <label htmlFor="dashboard-profile-sort">
+                  <span className="sr-only">{t("listing.sort")}</span>
+                  <select id="dashboard-profile-sort" name="profileSort" autoComplete="off" value={profileSort} onChange={(e) => changeProfileSort(e.target.value)} className="rounded-xl border border-[#e9ddc3] bg-white px-3 py-2 text-[13px] font-bold outline-none">
+                    <option value="newest">{t("listing.sortNewest")}</option>
+                    <option value="oldest">{t("listing.sortOldest")}</option>
+                    <option value="name">{t("listing.sortName")}</option>
+                    <option value="followers_desc">{t("listing.sortFollowersDesc")}</option>
+                    <option value="followers_asc">{t("listing.sortFollowersAsc")}</option>
+                    <option value="city">{t("listing.sortCity")}</option>
+                    <option value="language">{t("listing.sortLanguage")}</option>
+                    <option value="status">{t("listing.sortStatus")}</option>
+                  </select>
+                </label>
+              </div>
               <div className="mt-3 grid gap-3">
-                {completedProfiles.map((profile) => {
+                {(data.profiles ?? []).map((profile) => {
                   const profileLink = [
                     normalizeProfileUrl(profile.profileUrl, profile.platform ?? undefined),
                     normalizeInstagramUrl(profile.instagram),
                     normalizeYouTubeUrl(profile.youtube),
                   ].find((link): link is string => Boolean(link));
                   const followerCount = profile.verifiedFollowers ?? profile.followers ?? 0;
+                  const publicProfile =
+                    profile.status === "approved" && profile.verificationStatus === "verified" && isCompletedDashboardProfile(profile);
                   return (
                     <div key={profile.id} className="rounded-2xl border border-[#e9ddc3] bg-white p-5 card-shadow">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="text-[16px] font-extrabold">{profile.name}</p>
+                          <p className="text-[16px] font-extrabold">
+                            {publicProfile ? (
+                              <Link href={`/creators/${profile.id}`} aria-label={`${t("detail.viewCreator")}: ${profile.name}`} className="hover:text-[#c7431f] hover:underline">
+                                {profile.name}
+                              </Link>
+                            ) : profile.name}
+                          </p>
                           <p className="text-[13px] text-[#6f6862]">{[platformLabel(profile.platform), opt(profile.category), opt(profile.languages), profile.location].filter(Boolean).join(" · ")}</p>
+                          {profile.createdAt && (
+                            <p className="mt-1 text-[12px] font-semibold text-[#6f6862]">
+                              <time dateTime={profile.createdAt} title={formatDateTime(profile.createdAt)}>
+                                {t("listing.listed", { age: formatRelativeTime(profile.createdAt) })}
+                              </time>
+                            </p>
+                          )}
                           <p className="mt-1 text-[13px] font-semibold text-[#57534e]">
                             {profile.verifiedFollowers != null ? t("dash.verifiedFollowers") : t("dash.claimedFollowers")}: {formatNumber(followerCount)}
                           </p>
@@ -1468,15 +1726,17 @@ export default function DashboardClient({
                       )}
 
                       <div className="mt-4 flex flex-wrap gap-2">
+                        {publicProfile && (
+                          <Link href={`/creators/${profile.id}`} className="rounded-xl border border-[#1c1917] bg-white px-4 py-2 text-[13px] font-bold text-[#1c1917] hover:bg-[#fff4de]">
+                            {t("detail.viewCreator")}
+                          </Link>
+                        )}
                         <button
                           type="button"
                           id={`dashboard-profile-${profile.id}-edit-toggle`}
                           aria-expanded={editingProfileId === profile.id}
                           aria-controls={`dashboard-profile-${profile.id}-edit-form`}
-                          onClick={() => {
-                            setEditingProfileId(profile.id);
-                            setProfileForm(profileToForm(profile));
-                          }}
+                          onClick={() => startProfileEdit(profile)}
                           className="rounded-xl bg-[#1c1917] px-4 py-2 text-[13px] font-bold text-white"
                         >
                           {t("dash.editProfile")}
@@ -1487,10 +1747,8 @@ export default function DashboardClient({
                           onClick={() => {
                             if (window.confirm(t("dash.confirmDeleteProfile"))) {
                               runAction(`profile:${profile.id}:delete`, () => jsonRequest("/api/creators", "DELETE"), () => {
-                                if (editingProfileId === profile.id) {
-                                  setEditingProfileId("");
-                                  setProfileForm(null);
-                                }
+                                if (editingProfileId === profile.id) closeProfileEdit(profile, true);
+                                else removeFormDraft(dashboardEditDraftKey(user.id, "profile", profile.id));
                               });
                             }
                           }}
@@ -1521,19 +1779,19 @@ export default function DashboardClient({
               <form onSubmit={applyCreatorApplicationFilters} className="mt-3 grid gap-2 rounded-2xl border border-[#e9ddc3] bg-white p-3">
                 <label htmlFor="dashboard-creator-application-search">
                   <span className="sr-only">{t("listing.searchLabel")}</span>
-                  <input id="dashboard-creator-application-search" value={applicationDraft.q} onChange={(e) => setApplicationDraft((current) => ({ ...current, q: e.target.value }))} placeholder={t("listing.searchItems")} className={inputClass} />
+                  <input id="dashboard-creator-application-search" name="applicationQ" type="search" autoComplete="off" value={applicationDraft.q} onChange={(e) => setApplicationDraft((current) => ({ ...current, q: e.target.value }))} placeholder={t("listing.searchItems")} className={inputClass} />
                 </label>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <label htmlFor="dashboard-creator-application-status-filter">
                     <span className="sr-only">{t("listing.filterStatus")}</span>
-                    <select id="dashboard-creator-application-status-filter" value={applicationDraft.status} onChange={(e) => setApplicationDraft((current) => ({ ...current, status: e.target.value }))} className={inputClass}>
+                    <select id="dashboard-creator-application-status-filter" name="applicationStatus" autoComplete="off" value={applicationDraft.status} onChange={(e) => setApplicationDraft((current) => ({ ...current, status: e.target.value }))} className={inputClass}>
                       <option value="">{t("listing.allStatuses")}</option>
                       {APPLICATION_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
                     </select>
                   </label>
                   <label htmlFor="dashboard-creator-application-sort">
                     <span className="sr-only">{t("listing.sort")}</span>
-                    <select id="dashboard-creator-application-sort" value={applicationDraft.sort} onChange={(e) => setApplicationDraft((current) => ({ ...current, sort: e.target.value }))} className={inputClass}>
+                    <select id="dashboard-creator-application-sort" name="applicationSort" autoComplete="off" value={applicationDraft.sort} onChange={(e) => setApplicationDraft((current) => ({ ...current, sort: e.target.value }))} className={inputClass}>
                       <option value="newest">{t("listing.sortNewest")}</option>
                       <option value="oldest">{t("listing.sortOldest")}</option>
                       <option value="updated">{t("listing.sortUpdated")}</option>
@@ -1582,19 +1840,30 @@ export default function DashboardClient({
                 <h2 className="text-[19px] font-extrabold">{t("dash.fresh")}</h2>
                 <label htmlFor="dashboard-open-campaign-sort">
                   <span className="sr-only">{t("listing.sort")}</span>
-                  <select id="dashboard-open-campaign-sort" value={openSort} onChange={(e) => changeOpenSort(e.target.value)} className="rounded-xl border border-[#e9ddc3] bg-white px-3 py-2 text-[13px] font-bold outline-none">
+                  <select id="dashboard-open-campaign-sort" name="openSort" autoComplete="off" value={openSort} onChange={(e) => changeOpenSort(e.target.value)} className="rounded-xl border border-[#e9ddc3] bg-white px-3 py-2 text-[13px] font-bold outline-none">
                     <option value="newest">{t("listing.sortNewest")}</option>
                     <option value="oldest">{t("listing.sortOldest")}</option>
                     <option value="title">{t("listing.sortTitle")}</option>
                     <option value="business">{t("listing.sortBusiness")}</option>
+                    <option value="budget_desc">{t("listing.sortBudgetDesc")}</option>
+                    <option value="budget_asc">{t("listing.sortBudgetAsc")}</option>
+                    <option value="city">{t("listing.sortCity")}</option>
+                    <option value="language">{t("listing.sortLanguage")}</option>
                   </select>
                 </label>
               </div>
               <div className="mt-3 grid gap-3">
                 {(data.openCampaigns ?? []).map((c) => (
-                  <Link key={c.id} href={`/campaigns?apply=${encodeURIComponent(c.id)}`} className="rounded-2xl border border-[#e9ddc3] bg-white p-4 transition hover:-translate-y-0.5 hover:border-[#1c1917]">
+                  <Link key={c.id} href={`/campaigns/${c.id}`} aria-label={`${t("detail.viewCampaign")}: ${c.title}`} className="rounded-2xl border border-[#e9ddc3] bg-white p-4 transition hover:-translate-y-0.5 hover:border-[#1c1917]">
                     <p className="text-[15px] font-extrabold">{c.title}</p>
                     <p className="text-[13px] text-[#6f6862]">{[c.businessName, c.location, opt(c.language), opt(c.format)].filter(Boolean).join(" · ")}</p>
+                    {c.createdAt && (
+                      <p className="mt-1 text-[12px] font-semibold text-[#6f6862]">
+                        <time dateTime={c.createdAt} title={formatDateTime(c.createdAt)}>
+                          {t("listing.posted", { age: formatRelativeTime(c.createdAt) })}
+                        </time>
+                      </p>
+                    )}
                   </Link>
                 ))}
                 {(data.openCampaigns ?? []).length === 0 && (

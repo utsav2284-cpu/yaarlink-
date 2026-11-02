@@ -15,6 +15,12 @@ export interface SortKey<Row> {
   kind: SortValueKind;
   /** Extract the same logical value represented by `expression` from a DB row. */
   value: (row: Row) => CursorValue | Date | undefined;
+  /**
+   * Set when this value is not safe to place in a client-visible cursor.
+   * Sensitive sorts use an ID-only cursor and resolve the real tuple from the
+   * already-authorized listing scope on the server.
+   */
+  sensitive?: boolean;
 }
 
 export interface PaginationMeta {
@@ -259,6 +265,50 @@ export function decodeCursor<Row>(
     throw new ListingQueryError("invalid_cursor", "This page link is no longer valid. Please start again.");
   }
   return candidate.values.map((value, index) => convertCursorValue(value, options.keys[index].kind));
+}
+
+/** Cursor keys that are safe to serialize back to the caller. */
+export function cursorKeysForResponse<Row>(
+  keys: Array<SortKey<Row>>,
+  idKey: SortKey<Row>,
+): Array<SortKey<Row>> {
+  return keys.some((key) => key.sensitive) ? [idKey] : keys;
+}
+
+/**
+ * Resolve a cursor without trusting or exposing sensitive sort values. For a
+ * sensitive sort the client carries only the boundary row ID; `loadBoundary`
+ * must apply the same authorization/visibility scope as the listing itself.
+ */
+export async function resolveCursorValues<Row>(
+  raw: string | null,
+  options: {
+    sort: string;
+    scope: string;
+    keys: Array<SortKey<Row>>;
+    idKey: SortKey<Row>;
+    loadBoundary: (id: string) => Promise<Row | undefined>;
+  },
+): Promise<Array<string | number | Date> | null> {
+  const responseKeys = cursorKeysForResponse(options.keys, options.idKey);
+  const decoded = decodeCursor(raw, { sort: options.sort, scope: options.scope, keys: responseKeys });
+  if (!decoded || responseKeys === options.keys) return decoded;
+
+  const boundaryId = decoded[0];
+  if (typeof boundaryId !== "string") {
+    throw new ListingQueryError("invalid_cursor", "This page link is no longer valid. Please start again.");
+  }
+  const boundary = await options.loadBoundary(boundaryId);
+  if (!boundary) {
+    throw new ListingQueryError("invalid_cursor", "This page link is no longer valid. Please start again.");
+  }
+  return options.keys.map((key) => {
+    const value = key.value(boundary);
+    if (value === undefined || value === null) {
+      throw new ListingQueryError("invalid_cursor", "This page link is no longer valid. Please start again.");
+    }
+    return value;
+  });
 }
 
 export function sortOrder<Row>(keys: Array<SortKey<Row>>): SQL[] {
