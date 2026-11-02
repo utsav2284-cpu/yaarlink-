@@ -27,6 +27,7 @@ import { appendUniqueById } from "@/frontend/api-json";
 import { requestLogout } from "@/frontend/session";
 import { buildAuthPath } from "@/shared/return-to";
 import { normalizeUserRole, USER_ROLES, type UserRole } from "@/shared/user-roles";
+import { contactLinks } from "@/shared/contact-links";
 
 type User = {
   id: string;
@@ -62,20 +63,54 @@ type Campaign = {
   createdAt?: string | null;
   updatedAt?: string | null;
 };
+type ApplicationStatusHistoryEvent = {
+  status: string;
+  at: string;
+  actorName?: string | null;
+};
+type PublicCreatorProfile = {
+  id: string;
+  name: string;
+  platform?: string | null;
+  category?: string | null;
+  languages?: string | null;
+  location?: string | null;
+  contentTypes?: string | null;
+  bio?: string | null;
+  followers?: number | null;
+  verifiedFollowers?: number | null;
+  status?: string | null;
+  verificationStatus?: string | null;
+  profileUrl?: string | null;
+  instagram?: string | null;
+  youtube?: string | null;
+};
 type Application = {
   id: string;
   campaignId: string | null;
+  creatorId?: string | null;
   creatorName?: string | null;
   creatorContact?: string | null;
+  creatorProfile?: PublicCreatorProfile | null;
   message: string | null;
   status: string | null;
   decisionNote?: string | null;
   decisionAt?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+  statusHistory?: ApplicationStatusHistoryEvent[];
   campaignTitle?: string | null;
   businessName?: string | null;
   format?: string | null;
+};
+type BrandProfile = {
+  id: string;
+  userId: string;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  status?: string | null;
+  createdAt?: string | null;
 };
 type Profile = {
   id: string;
@@ -136,6 +171,7 @@ type DashboardPagination = {
 type Data = {
   user: User;
   activeView?: UserRole;
+  brandProfile?: BrandProfile | null;
   campaigns?: Campaign[];
   applications: Application[];
   profiles?: Profile[];
@@ -890,6 +926,120 @@ export default function DashboardClient({
       .replace("{status}", statusLabel(n.applicationStatus));
   };
 
+  const renderContactActions = (value?: string | null, platform?: string | null) => {
+    const links = contactLinks(value, platform);
+    if (!links.display) return null;
+    const primaryHref =
+      links.kind === "whatsapp"
+        ? links.whatsappHref
+        : links.kind === "phone"
+          ? links.telHref
+          : links.mailtoHref ?? links.profileHref;
+    const external = Boolean(links.profileHref || links.kind === "whatsapp");
+    const actionClass = "rounded-lg border border-[#e9ddc3] bg-white px-2.5 py-1 text-[11.5px] font-bold text-[#1c1917] hover:bg-[#fff4de]";
+    return (
+      <div>
+        {primaryHref ? (
+          <a
+            href={primaryHref}
+            {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+            className="break-all font-semibold text-[#c7431f] hover:underline"
+          >
+            {links.display}
+          </a>
+        ) : (
+          <p className="break-all font-semibold text-[#c7431f]">{links.display}</p>
+        )}
+        {(links.telHref || links.whatsappHref) && (links.kind === "phone" || links.kind === "whatsapp") && (
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {links.telHref && (
+              <a href={links.telHref} aria-label={`${t("contact.call")}: ${links.display}`} className={actionClass}>
+                {t("contact.call")}
+              </a>
+            )}
+            {links.whatsappHref && (
+              <a
+                href={links.whatsappHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`${t("contact.whatsapp")}: ${links.display}`}
+                className={actionClass}
+              >
+                {t("contact.whatsapp")}
+              </a>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderStatusHistory = (a: Application) => {
+    const history = a.statusHistory?.length
+      ? a.statusHistory
+      : [{ status: a.status ?? "applied", at: a.createdAt ?? "", actorName: a.creatorName ?? null }];
+    return (
+      <div className="mt-3 rounded-lg border border-[#f0e6cc] bg-[#fffbf1] p-2.5">
+        <p className="text-[11px] font-bold uppercase tracking-widest text-[#6f6862]">{t("dash.statusHistory")}</p>
+        <ol className="mt-1.5 grid gap-1">
+          {history.map((event, index) => (
+            <li key={`${event.status}-${event.at}-${index}`} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-[12px]">
+              <span className="font-bold text-[#44403c]">{statusLabel(event.status)}</span>
+              {event.at && (
+                <time dateTime={event.at} className="text-[#6f6862]">
+                  {formatDateTime(event.at)}
+                </time>
+              )}
+            </li>
+          ))}
+        </ol>
+      </div>
+    );
+  };
+
+  const renderBrandRecord = () => {
+    const brandProfile = data.brandProfile;
+    return (
+      <section className="mt-6 rounded-2xl border border-[#e9ddc3] bg-white p-5 card-shadow" aria-labelledby="brand-record-heading">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 id="brand-record-heading" className="text-[17px] font-extrabold">{t("dash.brandRecord")}</h2>
+            <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-[#6f6862]">{t("dash.brandRecordHelp")}</p>
+          </div>
+          {brandProfile?.status && (
+            <span className={`rounded-full px-3 py-1 text-[12px] font-bold ${statusPillClass(brandProfile.status)}`}>{statusLabel(brandProfile.status)}</span>
+          )}
+        </div>
+        {brandProfile ? (
+          <div className="mt-4 grid gap-3 text-[13.5px] sm:grid-cols-3">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-widest text-[#6f6862]">{t("account.name")}</p>
+              <p className="mt-1 font-bold">{brandProfile.name}</p>
+              {brandProfile.createdAt && (
+                <p className="mt-1 text-[12px] text-[#6f6862]">
+                  {t("dash.brandRecordCreated")}: <time dateTime={brandProfile.createdAt}>{formatDate(brandProfile.createdAt)}</time>
+                </p>
+              )}
+            </div>
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-widest text-[#6f6862]">{t("brand.email")}</p>
+              <div className="mt-1">{brandProfile.email ? renderContactActions(brandProfile.email) : <span className="text-[#6f6862]">—</span>}</div>
+            </div>
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-widest text-[#6f6862]">{t("brand.phone")}</p>
+              <div className="mt-1">{brandProfile.phone ? renderContactActions(brandProfile.phone) : <span className="text-[#6f6862]">—</span>}</div>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-[#e9ddc3] bg-[#fffbf1] p-4">
+            <p className="text-[13.5px] font-semibold text-[#57534e]">{t("dash.noBrandRecord")}</p>
+            <Link href="/brands" className="rounded-xl bg-[#1c1917] px-4 py-2 text-[13px] font-bold text-white">{t("dash.create")}</Link>
+          </div>
+        )}
+      </section>
+    );
+  };
+
   const renderNotifications = () => (
     <section className="mt-8 rounded-[24px] border border-[#e9ddc3] bg-white p-5 card-shadow" aria-labelledby="notifications-heading">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1021,6 +1171,14 @@ export default function DashboardClient({
 
   const renderBrandApplication = (a: Application) => {
     const actionable = a.status === "applied" || a.status === "shortlisted" || a.status === "hired";
+    const applicantProfile = a.creatorProfile;
+    const applicantSocialLinks = applicantProfile
+      ? [...new Set([
+          normalizeProfileUrl(applicantProfile.profileUrl, applicantProfile.platform ?? undefined),
+          normalizeInstagramUrl(applicantProfile.instagram),
+          normalizeYouTubeUrl(applicantProfile.youtube),
+        ].filter((link): link is string => Boolean(link)))]
+      : [];
     const decide = (action: string) => {
       if (action === "reject" && !window.confirm(t("dash.confirmRejectApplication"))) return;
       runAction(
@@ -1033,19 +1191,60 @@ export default function DashboardClient({
       <div key={a.id} className="rounded-lg bg-white p-3 text-[13.5px]">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <p className="font-bold">{a.creatorName}</p>
+            <p className="font-bold">
+              {applicantProfile ? (
+                <Link href={`/creators/${applicantProfile.id}`} aria-label={`${t("detail.viewCreator")}: ${a.creatorName ?? applicantProfile.name}`} className="hover:text-[#c7431f] hover:underline">
+                  {a.creatorName ?? applicantProfile.name}
+                </Link>
+              ) : a.creatorName}
+            </p>
             {a.creatorContact && (
               <>
-                <p className="break-all text-[#c7431f]">{a.creatorContact}</p>
+                {renderContactActions(a.creatorContact, applicantProfile?.platform)}
                 <p className="mt-0.5 text-[11.5px] font-semibold text-[#6f6862]">🔒 {t("dash.brandContactUse")}</p>
               </>
             )}
-            <p className="mt-0.5 text-[12px] text-[#6f6862]">{t("dash.appliedOn")}: {formatDate(a.createdAt)}</p>
+            <p className="mt-0.5 text-[12px] text-[#6f6862]">
+              {t("dash.appliedOn")}: {a.createdAt ? <time dateTime={a.createdAt}>{formatDateTime(a.createdAt)}</time> : formatDate(a.createdAt)}
+            </p>
+            {a.decisionAt && (
+              <p className="mt-0.5 text-[12px] text-[#6f6862]">
+                {t("dash.updatedOn")}: <time dateTime={a.decisionAt}>{formatDateTime(a.decisionAt)}</time>
+              </p>
+            )}
           </div>
           <span className={`rounded-full px-3 py-1 text-[12px] font-bold ${statusPillClass(a.status)}`}>{statusLabel(a.status)}</span>
         </div>
         {a.message && <p className="mt-2 text-[#57534e]">“{a.message}”</p>}
         {a.decisionNote && <p className="mt-2 rounded-lg bg-[#fffbf1] p-2 text-[12.5px] text-[#57534e]"><b>{t("dash.brandNote")}:</b> {a.decisionNote}</p>}
+        {applicantProfile && (
+          <div className="mt-3 rounded-lg border border-[#f0e6cc] bg-[#fffbf1] p-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-[#6f6862]">{t("dash.applicantProfile")}</p>
+              <Link href={`/creators/${applicantProfile.id}`} className="text-[12px] font-bold text-[#c7431f] hover:underline">
+                {t("detail.viewCreator")}
+              </Link>
+            </div>
+            <p className="mt-1.5 text-[12.5px] font-semibold text-[#44403c]">
+              {[platformLabel(applicantProfile.platform), opt(applicantProfile.category), opt(applicantProfile.languages), applicantProfile.location].filter(Boolean).join(" · ")}
+            </p>
+            <p className="mt-1 text-[12.5px] text-[#57534e]">
+              {applicantProfile.verifiedFollowers != null ? t("dash.verifiedFollowers") : t("dash.claimedFollowers")}: {formatNumber(applicantProfile.verifiedFollowers ?? applicantProfile.followers ?? 0)}
+              {applicantProfile.contentTypes ? ` · ${opt(applicantProfile.contentTypes)}` : ""}
+            </p>
+            {applicantProfile.bio && <p className="mt-1 line-clamp-3 text-[12.5px] leading-relaxed text-[#6f6862]">{applicantProfile.bio}</p>}
+            {applicantSocialLinks.length > 0 && (
+              <div className="mt-2 grid gap-1">
+                {applicantSocialLinks.map((link) => (
+                  <a key={link} href={link} target="_blank" rel="noopener noreferrer" className="break-all text-[12px] font-semibold text-[#c7431f] hover:underline">
+                    {link}
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {renderStatusHistory(a)}
         {actionable && (
           <div className="mt-3 grid gap-2">
             {a.status === "hired" && (
@@ -1184,15 +1383,22 @@ export default function DashboardClient({
           <div className="min-w-0">
             <p className="truncate text-[15px] font-extrabold">{a.campaignTitle ?? t("nav.campaigns")}</p>
             <p className="truncate text-[13px] text-[#6f6862]">{[a.businessName, opt(a.format)].filter(Boolean).join(" · ")}</p>
-            <p className="mt-0.5 text-[12px] text-[#6f6862]">{t("dash.appliedOn")}: {formatDate(a.createdAt)}</p>
+            <p className="mt-0.5 text-[12px] text-[#6f6862]">
+              {t("dash.appliedOn")}: {a.createdAt ? <time dateTime={a.createdAt}>{formatDateTime(a.createdAt)}</time> : formatDate(a.createdAt)}
+            </p>
+            {a.decisionAt && (
+              <p className="mt-0.5 text-[12px] text-[#6f6862]">
+                {t("dash.updatedOn")}: <time dateTime={a.decisionAt}>{formatDateTime(a.decisionAt)}</time>
+              </p>
+            )}
           </div>
           <span className={`shrink-0 rounded-full px-3 py-1 text-[12px] font-bold ${statusPillClass(a.status)}`}>{statusLabel(a.status)}</span>
         </div>
         {a.message && <p className="mt-3 text-[13.5px] text-[#57534e]"><b>{t("dash.yourMessage")}:</b> “{a.message}”</p>}
         {a.creatorContact && (
-          <p className="mt-2 break-all text-[13px] text-[#57534e]">
-            <b>{t("dash.sharedContact")}:</b> {a.creatorContact}
-          </p>
+          <div className="mt-2 text-[13px] text-[#57534e]">
+            <b>{t("dash.sharedContact")}:</b> {renderContactActions(a.creatorContact)}
+          </div>
         )}
         {a.decisionNote && <p className="mt-2 rounded-xl bg-[#fffbf1] p-3 text-[13px] text-[#57534e]"><b>{t("dash.brandNote")}:</b> {a.decisionNote}</p>}
         {a.status === "hired" && (
@@ -1200,6 +1406,7 @@ export default function DashboardClient({
             {t("dash.offPlatformHiredNote")}
           </p>
         )}
+        {renderStatusHistory(a)}
 
         {applicationFormOpen ? (
           <form
@@ -1424,6 +1631,7 @@ export default function DashboardClient({
             <Stat value={formatCurrency(data.counts?.campaignBudgetTotal ?? (data.campaigns ?? []).reduce((s, c) => s + (c.budget || 0), 0))} label={t("dash.statBudget")} />
           </div>
 
+          {renderBrandRecord()}
 
           <form onSubmit={applyBrandFilters} className="mt-6 grid gap-2 rounded-2xl border border-[#e9ddc3] bg-white p-3 card-shadow">
             <div className="grid gap-2 md:grid-cols-[1fr_190px_190px]">
@@ -1706,6 +1914,16 @@ export default function DashboardClient({
                           </p>
                           {profileLink && (
                             <a href={profileLink} target="_blank" rel="noopener noreferrer" className="mt-1 block break-all text-[13px] font-semibold text-[#c7431f]">{profileLink}</a>
+                          )}
+                          {profile.contentTypes && (
+                            <p className="mt-1 text-[13px] font-semibold text-[#57534e]">{opt(profile.contentTypes)}</p>
+                          )}
+                          {profile.bio && <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-[#6f6862]">{profile.bio}</p>}
+                          {(profile.email || profile.phone) && (
+                            <div className="mt-2 grid gap-1 text-[13px]">
+                              {profile.email && renderContactActions(profile.email)}
+                              {profile.phone && renderContactActions(profile.phone)}
+                            </div>
                           )}
                         </div>
                         <span className={`rounded-full px-3 py-1 text-[12.5px] font-bold ${statusPillClass(profile.status)}`}>{statusLabel(profile.status)}</span>
