@@ -1,3 +1,4 @@
+import { logRouteError } from "@/backend/observability";
 import { NextResponse } from "next/server";
 import {
   createSessionToken,
@@ -153,7 +154,7 @@ export async function POST(req: Request) {
     // server error from the caller's perspective; the token is simply no
     // longer usable. The page directs the person to log in in that case.
     if (isUserEmailUniqueViolation(error)) return invalidResponse();
-    console.error(error);
+    logRouteError(req, error);
     return Response.json({ error: "Could not verify email", code: "request_failed" }, { status: 500, headers: NO_STORE });
   }
 }

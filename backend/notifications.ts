@@ -1,6 +1,7 @@
 import { db } from "@/backend/db";
 import { notifications } from "@/backend/db/schema";
 import { sendMarketplaceNotificationEmail } from "@/backend/email";
+import { logRouteError } from "@/backend/observability";
 import type { ApplicationStatus, NotificationKind } from "@/shared/constants";
 
 type NotificationExecutor = Pick<typeof db, "insert">;
@@ -123,7 +124,12 @@ export async function sendApplicationNotificationEmailBestEffort({
   } catch (error) {
     // The marketplace action and its in-app notification are already saved;
     // an email-provider problem must not make the user repeat that action.
-    console.error("[notifications] marketplace email could not be sent", error);
+    logRouteError(req, error, {
+      component: "notifications",
+      operation: "send_marketplace_email",
+      notificationKind: kind,
+      applicationStatus,
+    });
     return false;
   }
 }

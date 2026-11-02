@@ -1,3 +1,4 @@
+import { logRouteError } from "@/backend/observability";
 import {
   changeUserPasswordKeepingSession,
   changeUserPhone,
@@ -69,17 +70,17 @@ async function accountPayload(userId: string, sessionId: string, user: unknown) 
   return { user, sessions, pendingEmailChange };
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const context = await getSessionContext();
     if (!context) return jsonError(401, "Please log in", "unauthorized");
     return Response.json(await accountPayload(context.user.id, context.sessionId, context.user), { headers: NO_STORE });
   } catch (error) {
     if (isSessionUnavailableError(error)) {
-      logSessionUnavailable(error);
+      logSessionUnavailable(error, "lookup", req);
       return sessionUnavailableResponse(NO_STORE);
     }
-    console.error(error);
+    logRouteError(req, error);
     return jsonError(500, "Could not load account settings.", "request_failed");
   }
 }
@@ -119,8 +120,12 @@ export async function PATCH(req: Request) {
           verificationUrl: buildAccountActionUrl(req, "email_verification", claim.token),
         });
         await markAccountTokenEmailSent(claim.tokenId, claim.tokenHash);
-      } catch {
-        console.error("Account email verification email failed", { tokenId: claim.tokenId });
+      } catch (error) {
+        logRouteError(req, error, {
+          component: "email",
+          operation: "send_account_email_verification",
+          claimId: claim.tokenId,
+        });
         return jsonError(503, "Email verification is temporarily unavailable.", "email_unavailable");
       }
       return Response.json({ ok: true, status: "verification_sent" }, { status: 202, headers: NO_STORE });
@@ -162,8 +167,12 @@ export async function PATCH(req: Request) {
           verificationUrl: buildAccountActionUrl(req, "email_change", claim.token),
         });
         await markAccountTokenEmailSent(claim.tokenId, claim.tokenHash);
-      } catch {
-        console.error("Email change verification email failed", { tokenId: claim.tokenId });
+      } catch (error) {
+        logRouteError(req, error, {
+          component: "email",
+          operation: "send_email_change_verification",
+          claimId: claim.tokenId,
+        });
         return jsonError(503, "Email verification is temporarily unavailable.", "email_unavailable");
       }
 
@@ -175,7 +184,13 @@ export async function PATCH(req: Request) {
         message: `A request was made to change your YaarLink account email to ${newEmail}. It will not change until that address confirms the one-time link. If this was not you, change your password immediately.`,
         actionLabel: "Open account settings",
         actionUrl: buildAccountSettingsUrl(req),
-      }).catch(() => console.error("Email change request notice failed", { userId: context.user.id }));
+      }).catch((error) =>
+        logRouteError(req, error, {
+          component: "email",
+          operation: "send_email_change_notice",
+          userId: context.user.id,
+        }),
+      );
 
       return Response.json(
         { ok: true, status: "email_change_sent", pendingEmailChange: { email: newEmail, expiresAt: claim.expiresAt } },
@@ -272,7 +287,13 @@ export async function PATCH(req: Request) {
         message: "Your YaarLink password was changed and your other devices were signed out. If this was not you, reset your password immediately.",
         actionLabel: "Open account settings",
         actionUrl: buildAccountSettingsUrl(req),
-      }).catch(() => console.error("Password change security notice failed", { userId: context.user.id }));
+      }).catch((error) =>
+        logRouteError(req, error, {
+          component: "email",
+          operation: "send_password_change_notice",
+          userId: context.user.id,
+        }),
+      );
 
       return Response.json({ ok: true, status: "password_changed" }, { headers: NO_STORE });
     }
@@ -294,10 +315,10 @@ export async function PATCH(req: Request) {
     return jsonError(400, "Unsupported account action.", "invalid_request");
   } catch (error) {
     if (isSessionUnavailableError(error)) {
-      logSessionUnavailable(error);
+      logSessionUnavailable(error, "lookup", req);
       return sessionUnavailableResponse(NO_STORE);
     }
-    console.error(error);
+    logRouteError(req, error);
     return jsonError(500, "Could not update account settings.", "request_failed");
   }
 }
@@ -335,15 +356,21 @@ export async function DELETE(req: Request) {
       message: "Your YaarLink account and its linked profile, campaigns, applications, notifications and sessions were deleted. If this was not you, contact YaarLink immediately.",
       actionLabel: "Visit YaarLink",
       actionUrl: buildLoginUrl(req),
-    }).catch(() => console.error("Account deletion notice failed", { userId: result.user.id }));
+    }).catch((error) =>
+      logRouteError(req, error, {
+        component: "email",
+        operation: "send_account_deletion_notice",
+        userId: result.user.id,
+      }),
+    );
 
     return Response.json({ ok: true, status: "account_deleted" }, { headers: NO_STORE });
   } catch (error) {
     if (isSessionUnavailableError(error)) {
-      logSessionUnavailable(error);
+      logSessionUnavailable(error, "lookup", req);
       return sessionUnavailableResponse(NO_STORE);
     }
-    console.error(error);
+    logRouteError(req, error);
     return jsonError(500, "Could not delete account.", "request_failed");
   }
 }

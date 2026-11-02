@@ -1,6 +1,7 @@
 import { db } from "@/backend/db";
 import { adminAuditLogs } from "@/backend/db/schema";
 import { getClientIp } from "@/backend/rate-limit";
+import { logRouteError } from "@/backend/observability";
 
 export type AdminAuditOutcome = "success" | "failure";
 
@@ -45,6 +46,13 @@ export async function logAdminAudit(req: Request | undefined, input: AdminAuditI
       ipAddress: clientIp(req),
     });
   } catch (error) {
-    console.error("[admin-audit] could not write audit log", error);
+    logRouteError(req, error, {
+      component: "admin-audit",
+      operation: "write",
+      action: input.action.slice(0, 100),
+      outcome: input.outcome ?? "success",
+      entity: input.entity?.slice(0, 60) ?? undefined,
+      entityId: input.entityId ?? undefined,
+    });
   }
 }

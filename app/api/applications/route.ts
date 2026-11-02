@@ -1,3 +1,4 @@
+import { logRouteError } from "@/backend/observability";
 import {
   isCompletedCreatorProfile,
   resolveApplicationContact,
@@ -339,13 +340,13 @@ export async function GET(req: Request) {
     );
   } catch (e) {
     if (isAdminSessionUnavailableError(e)) {
-      logAdminSessionUnavailable(e);
+      logAdminSessionUnavailable(e, req);
       return adminSessionUnavailableResponse(NO_STORE);
     }
     if (isListingQueryError(e)) {
       return Response.json({ error: e.message, code: e.code }, { status: e.status, headers: NO_STORE });
     }
-    console.error(e);
+    logRouteError(req, e);
     return Response.json({ error: "Could not load applications", code: "load_failed" }, { status: 500, headers: NO_STORE });
   }
 }
@@ -670,10 +671,10 @@ export async function POST(req: Request) {
     return Response.json({ error: "Campaign not found", code: "campaign_not_found" }, { status: 404, headers: NO_STORE });
   } catch (e) {
     if (isSessionUnavailableError(e)) {
-      logSessionUnavailable(e);
+      logSessionUnavailable(e, "lookup", req);
       return sessionUnavailableResponse(NO_STORE);
     }
-    console.error(e);
+    logRouteError(req, e);
     return Response.json({ error: "Could not apply", code: "request_failed" }, { status: 500, headers: NO_STORE });
   }
 }
@@ -1100,10 +1101,10 @@ export async function PATCH(req: Request) {
     );
   } catch (e) {
     if (isSessionUnavailableError(e)) {
-      logSessionUnavailable(e);
+      logSessionUnavailable(e, "lookup", req);
       return sessionUnavailableResponse(NO_STORE);
     }
-    console.error(e);
+    logRouteError(req, e);
     return Response.json({ error: "Could not update application", code: "request_failed" }, { status: 500, headers: NO_STORE });
   }
 }

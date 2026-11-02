@@ -1,3 +1,4 @@
+import { logRouteError } from "@/backend/observability";
 import { buildAccountActionUrl, claimPasswordResetByEmail, markAccountTokenEmailSent } from "@/backend/account-tokens";
 import { emailDeliveryProblem, sendPasswordResetEmail } from "@/backend/email";
 import { getClientKey, hashKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
@@ -49,14 +50,18 @@ export async function POST(req: Request) {
           resetUrl: buildAccountActionUrl(req, "password_reset", claim.token, { returnTo }),
         });
         await markAccountTokenEmailSent(claim.tokenId, claim.tokenHash);
-      } catch {
-        console.error("Password reset email failed", { tokenId: claim.tokenId });
+      } catch (error) {
+        logRouteError(req, error, {
+          component: "email",
+          operation: "send_password_reset",
+          claimId: claim.tokenId,
+        });
       }
     }
 
     return acceptedResponse();
   } catch (error) {
-    console.error(error);
+    logRouteError(req, error);
     return Response.json(
       { error: "Could not request a password reset.", code: "request_failed" },
       { status: 500, headers: NO_STORE },

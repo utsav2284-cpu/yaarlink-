@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
+import { logRouteError } from "@/backend/observability";
 import { listPublicCampaigns, listPublicCreators } from "@/backend/public-listings";
 import { canonicalMetadata } from "@/config/metadata";
 import HomePageClient, { type HomeInitialListings } from "@/frontend/components/HomePageClient";
@@ -15,8 +17,15 @@ export default async function HomePage() {
     listPublicCreators(new URLSearchParams({ limit: "4", sort: "newest" })),
   ]);
 
-  if (campaignResult.status === "rejected") console.error(campaignResult.reason);
-  if (creatorResult.status === "rejected") console.error(creatorResult.reason);
+  if (campaignResult.status === "rejected" || creatorResult.status === "rejected") {
+    const requestHeaders = await headers();
+    if (campaignResult.status === "rejected") {
+      logRouteError(requestHeaders, campaignResult.reason, { operation: "list_homepage_campaigns" }, "GET /");
+    }
+    if (creatorResult.status === "rejected") {
+      logRouteError(requestHeaders, creatorResult.reason, { operation: "list_homepage_creators" }, "GET /");
+    }
+  }
 
   const initialListings: HomeInitialListings = {
     campaigns:

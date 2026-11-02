@@ -237,8 +237,10 @@ health. Never transmit the new password through Git, chat, or a PR.
 
 ## Migration and rollback policy
 
-- Commit the exact reviewed SQL under `backend/db/migrations/` before applying
-  it to production. Do not make dashboard-only DDL changes.
+- Commit the exact reviewed migration before applying it to production:
+  generated/schema migrations and their snapshots under `backend/db/drizzle/`,
+  plus any separately reviewed production upgrade/backfill SQL under
+  `backend/db/migrations/`. Do not make dashboard-only DDL changes.
 - Migrations must be transactional where PostgreSQL permits, idempotent or
   guarded against a safe retry, and prefer an expand → deploy → contract
   sequence so the prior app version can keep running.
@@ -254,9 +256,12 @@ health. Never transmit the new password through Git, chat, or a PR.
   counts, and authenticated health diagnostics before merging/deploying the
   dependent application change.
 
-The repository contains the current Drizzle schema and the latest reviewed SQL
-migration, but Supabase also has earlier migration history that is not fully
-represented as files in this repository. A source checkout alone must not be
-assumed to recreate production roles, policies, settings, and grants exactly.
-That is why the role/schema/data backup and restore rehearsal above are part
-of the release gate.
+The repository now contains a tracked empty-database Drizzle baseline plus a
+reviewed role/RLS/grants migration and bootstrap verifier. That can recreate
+the application schema and direct-app role model on a new PostgreSQL database,
+but it cannot recreate production data, provider-managed settings/passwords,
+Supabase project configuration, or the effect of later production-only
+changes that were not committed as migrations. It therefore does not replace
+the role/schema/data backup and restore rehearsal above, which remain part of
+the release gate. The bootstrap also refuses to replay the baseline over an
+existing unjournalled production database.

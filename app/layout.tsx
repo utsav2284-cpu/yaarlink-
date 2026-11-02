@@ -19,6 +19,7 @@ import { getRequestLanguage, getRequestLocaleData } from "@/frontend/i18n/server
 import { translateMessage } from "@/frontend/i18n/translate";
 import { SITE } from "@/config/site";
 import { getSessionUser, isSessionUnavailableError, logSessionUnavailable } from "@/backend/auth";
+import { logRouteError } from "@/backend/observability";
 
 // Local variable-font files (Fraunces and Plus Jakarta Sans, Latin subsets;
 // OFL licenses sit beside them in app/fonts). Using next/font/local removes
@@ -123,8 +124,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     // Session-store/configuration failure is unknown state, never proof the
     // visitor is logged out. The navbar keeps its retry state in that case.
     initialSessionStatus = "error";
-    if (isSessionUnavailableError(error)) logSessionUnavailable(error);
-    else console.error(error);
+    if (isSessionUnavailableError(error)) logSessionUnavailable(error, "lookup", requestHeaders, "GET /[layout]");
+    else logRouteError(requestHeaders, error, { component: "root-layout", operation: "load_session" }, "GET /[layout]");
   }
 
   return (

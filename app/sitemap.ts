@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { listPublicSitemapEntries } from "@/backend/public-listings";
 import { SITE } from "@/config/site";
+import { logError } from "@/shared/observability";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // A database outage should not make the entire sitemap disappear. The
     // static public routes remain discoverable, while no unverified detail
     // URLs are guessed or advertised.
-    console.error(error);
+    logError("request.failed", error, {
+      route: "GET /sitemap.xml",
+      component: "sitemap",
+      operation: "list_public_entries",
+    });
   }
 
   const latestCampaign = latestDate(

@@ -1,3 +1,4 @@
+import { logRouteError } from "@/backend/observability";
 import { adminSecretProblem, clearAdminSession, isAdmin, isAdminSessionUnavailableError, logAdminSessionUnavailable, revokeAdminSessions } from "@/backend/admin";
 import { logAdminAudit } from "@/backend/admin-audit";
 
@@ -30,8 +31,8 @@ export async function POST(req: Request) {
     }
     await clearAdminSession();
     if (lookupFailure) {
-      if (isAdminSessionUnavailableError(lookupFailure)) logAdminSessionUnavailable(lookupFailure);
-      else console.error("[admin-logout] session lookup failed", lookupFailure);
+      if (isAdminSessionUnavailableError(lookupFailure)) logAdminSessionUnavailable(lookupFailure, req);
+      else logRouteError(req, lookupFailure, { component: "admin-auth", operation: "session_lookup" });
       return Response.json(
         {
           error:
@@ -43,7 +44,7 @@ export async function POST(req: Request) {
     }
     return Response.json({ ok: true, revoked: wasAdmin }, { headers: NO_STORE });
   } catch (error) {
-    console.error("[admin-logout] could not revoke admin sessions", error);
+    logRouteError(req, error, { component: "admin-auth", operation: "revoke_sessions" });
     await clearAdminSession().catch(() => undefined);
     return Response.json(
       { error: "This browser was signed out, but server-side session revocation failed. Log in again and choose Lock admin to revoke all sessions.", code: "admin_session_revoke_failed" },

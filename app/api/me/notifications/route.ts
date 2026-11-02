@@ -1,3 +1,4 @@
+import { logRouteError } from "@/backend/observability";
 import { db } from "@/backend/db";
 import { notifications } from "@/backend/db/schema";
 import { getSessionUser, isSessionUnavailableError, logSessionUnavailable, sessionUnavailableResponse } from "@/backend/auth";
@@ -52,10 +53,10 @@ export async function PATCH(req: Request) {
     return Response.json({ ok: true, unreadNotificationCount: await unreadCount(user.id) }, { headers: NO_STORE });
   } catch (e) {
     if (isSessionUnavailableError(e)) {
-      logSessionUnavailable(e);
+      logSessionUnavailable(e, "lookup", req);
       return sessionUnavailableResponse(NO_STORE);
     }
-    console.error(e);
+    logRouteError(req, e);
     return Response.json({ error: "Could not update notifications", code: "request_failed" }, { status: 500, headers: NO_STORE });
   }
 }

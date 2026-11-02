@@ -42,15 +42,18 @@ git push -u origin main
 
 1. In Supabase, create a project in the region closest to your users.
 2. Download the server root certificate from **Database settings → SSL Configuration**. You need it for verified TLS; downloading it alone is not enough—the app must be configured to use it.
-3. For the one-time initial schema creation, copy the **Direct connection** string (or the **Session pooler** string if your computer's network is IPv4-only), make sure it uses `sslmode=verify-full`, append `&sslrootcert=/absolute/path/to/the/downloaded-certificate.crt`, and run:
+3. For a **brand-new, empty database only**, copy the **Direct connection** string (or the **Session pooler** string if your computer's network is IPv4-only), make sure it uses `sslmode=verify-full`, append `&sslrootcert=/absolute/path/to/the/downloaded-certificate.crt`, store it only in your local shell as `PROVISIONING_DATABASE_URL`, and run the tracked Drizzle baseline:
 
 ```bash
-npx drizzle-kit push --dialect=postgresql --schema=./backend/db/schema.ts --url="PASTE_DIRECT_URL"
+npm run db:check
+npm run db:bootstrap
 ```
 
-You should see `[✓] Changes applied`.
+You should see `Database bootstrap verified: 16 tables, RLS enabled, app-role grants checked.` This creates the schema, enables RLS on every application table, creates the least-privilege `yaarlink_app` role/policies/grants, and refuses to treat an existing unjournalled database as an empty one. Do not use `drizzle-kit push` for initial provisioning; a schema push does not apply the role/RLS migration.
 
-4. For the running application, copy the **Transaction pooler** connection string and set/replace its SSL mode with `sslmode=verify-full`. This becomes `DATABASE_URL`.
+   The newly created `yaarlink_app` role is intentionally `NOLOGIN` with no password in source control. Before deploying, use a provider/admin session to give that role a unique password and `LOGIN`; never put that password in Git, shell history shared with others, an issue, or chat.
+
+4. For the running application, use the **Transaction pooler** connection string **for the `yaarlink_app` role** and set/replace its SSL mode with `sslmode=verify-full`. This becomes `DATABASE_URL`. Do not use the database-owner/`postgres` role as the runtime application user.
 5. On Vercel, set `DATABASE_CA_CERT` to the complete downloaded PEM certificate, including `-----BEGIN CERTIFICATE-----` and `-----END CERTIFICATE-----`. The application passes that CA to node-postgres with hostname verification enabled.
 
 Never use `sslmode=no-verify`, `disable`, `prefer`, `require`, or `verify-ca` for a remote database. Without a configured CA, the application rejects those modes instead of accepting an unverified connection. When `DATABASE_CA_CERT` is set, the application strips the URL's SSL-mode parameters and verifies the certificate chain and hostname against that CA, so a legacy weaker mode cannot downgrade the actual connection; new URLs should still use `verify-full` explicitly.
@@ -76,7 +79,7 @@ Never use `sslmode=no-verify`, `disable`, `prefer`, `require`, or `verify-ca` fo
 | `RESEND_API_KEY` | Resend API key |
 | `EMAIL_FROM` | Verified sender, e.g. `YaarLink <no-reply@theyaar.com>` |
 
-Optional variables are documented in `.env.example`: `APP_URL`, `ADMIN_TOTP_SECRET`, `BOT_CHALLENGE_SECRET`, `HEALTH_DIAGNOSTIC_TOKEN`, and `PWNED_PASSWORDS_RANGE_URL`.
+Optional variables are documented in `.env.example`: `APP_URL`, `ADMIN_TOTP_SECRET`, `BOT_CHALLENGE_SECRET`, `HEALTH_DIAGNOSTIC_TOKEN`, `PWNED_PASSWORDS_RANGE_URL`, and `SLOW_QUERY_THRESHOLD_MS`.
 
 The server refuses to start when a required auth secret is missing, weak, copied from `.env.example`, or shared. The app needs no project-defined `NEXT_PUBLIC_*` variables, and the build fails if an unapproved or secret-like public variable name is configured. Signup also fails closed until the two email settings are present and the sending domain is verified in Resend.
 
@@ -102,7 +105,7 @@ HTTPS certificates are provisioned by Vercel automatically.
 - `https://www.theyaar.com/admin` → your `ADMIN_PASSWORD` → all data, budgets and contacts
 - Contact page → WhatsApp / Call / Email / Instagram all open on your phone
 
-Logs: Vercel → your project → **Logs**. CSP violations are logged with the `[csp-report]` prefix after being sanitized by `/api/security/csp-report`.
+Logs: Vercel → your project → **Logs**. Application errors are one-line JSON with `level`, a stable `event`, `route`/`component`, and `requestId`; the same request ID is returned in the `x-request-id` response header. CSP violations use the `security.csp_report` event after being sanitized by `/api/security/csp-report`. See [`docs/OBSERVABILITY.md`](./docs/OBSERVABILITY.md) for slow-query logging, external log-drain setup, and uptime-monitor configuration.
 
 ---
 
@@ -119,9 +122,9 @@ Logs: Vercel → your project → **Logs**. CSP violations are logged with the `
 
 **Update the live site:** merge or push to `main`; Vercel deploys automatically.
 
-**Changed `backend/db/schema.ts`?** Apply and verify the corresponding database change in Supabase before deploying application code that depends on it. For an existing production database, review the exact SQL/diff and satisfy the verified-backup gate in [`docs/BACKUP_AND_RECOVERY.md`](./docs/BACKUP_AND_RECOVERY.md) first; do not blindly push destructive schema changes or infer that a backup exists from migration success.
+**Changed `backend/db/schema.ts`?** Generate and review a tracked migration under `backend/db/drizzle/` (`npm run db:generate`, then `npm run db:check`) and test it through the empty-database bootstrap before deploying application code that depends on it. For an existing production database, review the exact SQL/diff and satisfy the verified-backup gate in [`docs/BACKUP_AND_RECOVERY.md`](./docs/BACKUP_AND_RECOVERY.md) first; do not blindly push destructive schema changes or infer that a backup exists from migration success. The bootstrap script intentionally refuses an existing database that has application tables but no Drizzle migration journal, because that state requires a separately reviewed history-reconciliation/upgrade plan rather than replaying the empty-database baseline.
 
-For an existing database that predates the data-model/reporting fields, run the reviewed transactional migration `backend/db/migrations/20261102_data_model_reporting.sql` before deploying code that expects it. Use the Direct/Session provisioning connection with verified TLS, for example `psql "$PROVISIONING_DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/db/migrations/20261102_data_model_reporting.sql`, then verify `/api/health`. This migration also performs the historical listed-date, contact-source, brand-link, campaign-expiry, settings, and audit-table backfills that a schema-only push cannot reproduce. A brand-new database provisioned from the current schema does not need those legacy backfills.
+For an existing database that predates the data-model/reporting fields, run the reviewed transactional migration `backend/db/migrations/20261102_data_model_reporting.sql` before deploying code that expects it. Use the Direct/Session provisioning connection with verified TLS, for example `psql "$PROVISIONING_DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/db/migrations/20261102_data_model_reporting.sql`, then verify `/api/health`. This migration also performs the historical listed-date, contact-source, brand-link, campaign-expiry, settings, and audit-table backfills that a schema-only push cannot reproduce. A brand-new database provisioned with `npm run db:bootstrap` does not need those legacy backfills.
 
 ---
 
@@ -135,6 +138,18 @@ npm run dev              # http://localhost:3000
 
 For a remote Supabase database from local development, either set `DATABASE_CA_CERT` to the downloaded PEM or append `&sslrootcert=/absolute/path/to/prod-ca-2021.crt` to the local `DATABASE_URL`. A loopback PostgreSQL URL does not need remote-TLS settings.
 
+Before opening a pull request, run:
+
+```bash
+npm run lint
+npm run typecheck
+npm test
+npm run db:check
+npm run build
+```
+
+GitHub Actions runs the same checks and separately proves `npm run db:bootstrap:verify` against a disposable PostgreSQL service.
+
 ---
 
 ## How it's built (for future developers)
@@ -143,3 +158,4 @@ For a remote Supabase database from local development, either set `DATABASE_CA_C
 - **Privacy:** budgets, phone numbers and applications are never in public APIs. Brands see only their own campaigns + applications (`/api/me/dashboard`); the owner sees everything at `/admin`.
 - **Database:** `backend/db/index.ts` uses one shared node-postgres pool per warm Node/Vercel instance, with an explicit size/timeout policy and an idle-client error handler. `backend/db/connection-config.ts` fails closed when a remote database URL does not require verified TLS. `/api/health` internally verifies connectivity and required tables/columns, but anonymous callers receive only overall status; the detailed checks and pool counters require admin/diagnostic authorization.
 - **Security headers:** `proxy.ts` generates a per-request CSP nonce so the enforcing policy can allow Next.js bootstrap/RSC scripts without `unsafe-inline`; the root layout renders dynamically for that nonce. Static security headers live in `next.config.ts`, and sanitized CSP reports are collected at `/api/security/csp-report`.
+- **Observability:** `proxy.ts` establishes `x-request-id`; `shared/observability.ts` emits bounded, redacted JSON logs; `instrumentation.ts` handles unhandled server errors; and the pooled database client logs slow queries as duration/operation/hash-only fingerprints. External drains and uptime alerting remain owner-configured integrations, as documented in `docs/OBSERVABILITY.md`.

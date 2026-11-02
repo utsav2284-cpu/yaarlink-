@@ -1,3 +1,4 @@
+import { logRouteError } from "@/backend/observability";
 import { buildAccountExport, verifyUserPassword } from "@/backend/account";
 import { getSessionContext, isSessionUnavailableError, logSessionUnavailable, sessionUnavailableResponse } from "@/backend/auth";
 import { PASSWORD_MAX_LENGTH, passwordLength } from "@/backend/password-policy";
@@ -43,10 +44,10 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     if (isSessionUnavailableError(error)) {
-      logSessionUnavailable(error);
+      logSessionUnavailable(error, "lookup", req);
       return sessionUnavailableResponse(NO_STORE);
     }
-    console.error(error);
+    logRouteError(req, error);
     return jsonError(500, "Could not export account data.", "request_failed");
   }
 }

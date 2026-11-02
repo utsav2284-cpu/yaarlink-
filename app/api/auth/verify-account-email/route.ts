@@ -1,3 +1,4 @@
+import { logRouteError } from "@/backend/observability";
 import { consumeEmailVerificationToken, hashAccountToken, isAccountToken } from "@/backend/account-tokens";
 import { getClientKey, hashKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
 import { readJsonObject } from "@/backend/validation";
@@ -29,7 +30,7 @@ export async function POST(req: Request) {
 
     return Response.json({ ok: true, status: "email_verified" }, { headers: NO_STORE });
   } catch (error) {
-    console.error(error);
+    logRouteError(req, error);
     return Response.json({ error: "Could not verify email.", code: "request_failed" }, { status: 500, headers: NO_STORE });
   }
 }

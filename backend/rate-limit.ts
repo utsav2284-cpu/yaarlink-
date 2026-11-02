@@ -1,6 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/backend/db";
 import { authFailureLockouts, rateLimitBuckets } from "@/backend/db/schema";
+import { logError } from "@/backend/observability";
 
 const enc = new TextEncoder();
 const MAX_LOCAL_BUCKETS = 10_000;
@@ -159,7 +160,11 @@ function logDatabaseFallback(operation: string, error: unknown) {
   const now = Date.now();
   if (now - lastDatabaseErrorLogAt < 60_000) return;
   lastDatabaseErrorLogAt = now;
-  console.error(`[rate-limit] database ${operation} unavailable; using bounded per-process fallback`, error);
+  logError("rate_limit.database_unavailable", error, {
+    component: "rate-limit",
+    operation,
+    fallback: "bounded_per_process",
+  });
 }
 
 async function cleanupExpiredRateLimitBuckets(now: Date): Promise<void> {

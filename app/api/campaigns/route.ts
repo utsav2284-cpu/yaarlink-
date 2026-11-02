@@ -1,3 +1,4 @@
+import { logRouteError } from "@/backend/observability";
 import { db } from "@/backend/db";
 import { brands, campaigns, type Campaign } from "@/backend/db/schema";
 import { and, desc, eq, sql } from "drizzle-orm";
@@ -409,7 +410,7 @@ export async function GET(req: Request) {
     if (isListingQueryError(e)) {
       return Response.json({ error: e.message, code: e.code }, { status: e.status, headers: NO_STORE });
     }
-    console.error(e);
+    logRouteError(req, e);
     return Response.json(
       { error: "Could not load campaigns", code: "load_failed" },
       { status: 500, headers: NO_STORE },
@@ -501,10 +502,10 @@ export async function POST(req: Request) {
     return Response.json({ campaign, idempotentReplay: true }, { headers: NO_STORE });
   } catch (e) {
     if (isSessionUnavailableError(e)) {
-      logSessionUnavailable(e);
+      logSessionUnavailable(e, "lookup", req);
       return sessionUnavailableResponse(NO_STORE);
     }
-    console.error(e);
+    logRouteError(req, e);
     return Response.json({ error: "Could not create campaign", code: "request_failed" }, { status: 500, headers: NO_STORE });
   }
 }
@@ -832,10 +833,10 @@ export async function PATCH(req: Request) {
 
   } catch (e) {
     if (isSessionUnavailableError(e)) {
-      logSessionUnavailable(e);
+      logSessionUnavailable(e, "lookup", req);
       return sessionUnavailableResponse(NO_STORE);
     }
-    console.error(e);
+    logRouteError(req, e);
     return Response.json({ error: "Could not update campaign", code: "request_failed" }, { status: 500, headers: NO_STORE });
   }
 }
@@ -879,10 +880,10 @@ export async function DELETE(req: Request) {
     return Response.json({ ok: true, deleted: true }, { headers: NO_STORE });
   } catch (e) {
     if (isSessionUnavailableError(e)) {
-      logSessionUnavailable(e);
+      logSessionUnavailable(e, "lookup", req);
       return sessionUnavailableResponse(NO_STORE);
     }
-    console.error(e);
+    logRouteError(req, e);
     return Response.json({ error: "Could not delete campaign", code: "request_failed" }, { status: 500, headers: NO_STORE });
   }
 }

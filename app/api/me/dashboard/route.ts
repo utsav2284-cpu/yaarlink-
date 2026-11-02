@@ -1,3 +1,4 @@
+import { logRouteError } from "@/backend/observability";
 import { applicationContactOptions, isCompletedCreatorProfile } from "@/backend/application-contact";
 import { db } from "@/backend/db";
 import { applications, brands, campaigns, creators, notifications, users } from "@/backend/db/schema";
@@ -1319,13 +1320,13 @@ export async function GET(req: Request) {
     return Response.json(response, { headers: NO_STORE });
   } catch (e) {
     if (isSessionUnavailableError(e)) {
-      logSessionUnavailable(e);
+      logSessionUnavailable(e, "lookup", req);
       return sessionUnavailableResponse(NO_STORE);
     }
     if (isListingQueryError(e)) {
       return Response.json({ error: e.message, code: e.code }, { status: e.status, headers: NO_STORE });
     }
-    console.error(e);
+    logRouteError(req, e);
     return Response.json({ error: "Could not load dashboard", code: "load_failed" }, { status: 500, headers: NO_STORE });
   }
 }

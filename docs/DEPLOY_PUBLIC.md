@@ -12,23 +12,26 @@ The canonical database is Supabase PostgreSQL, reached by the application only t
 
 ## 1. Database and verified TLS
 
-For initial provisioning, run the schema push once with the Supabase **Direct connection** string (or the **Session pooler** string from an IPv4-only network) before the first production deployment:
+For initial provisioning of a **new, empty database**, run the tracked Drizzle baseline once with the Supabase **Direct connection** string (or the **Session pooler** string from an IPv4-only network) before the first production deployment:
 
 ```bash
-npx drizzle-kit push --dialect=postgresql --schema=./backend/db/schema.ts --url="$PROVISIONING_DATABASE_URL"
+npm run db:check
+npm run db:bootstrap
 ```
 
-The URL used for that command must use `sslmode=verify-full` and an `sslrootcert` pointing at the root certificate downloaded from Supabase **Database settings → SSL Configuration**. Never commit a database URL.
+`PROVISIONING_DATABASE_URL` must be present only in the operator's shell/deployment secret store, use `sslmode=verify-full`, and include an `sslrootcert` pointing at the root certificate downloaded from Supabase **Database settings → SSL Configuration**. Never commit a database URL. Do not substitute `drizzle-kit push`: the bootstrap also applies/verifies the `yaarlink_app` role model, RLS enablement, policies, and least-privilege grants, and it refuses an existing unjournalled database.
+
+The bootstrap creates a new `yaarlink_app` as `NOLOGIN` without a source-controlled password. Set its unique password and `LOGIN` attribute through an administrator/provider workflow before configuring the application. Do not record that password in this repository, a pull request, an issue, or chat.
 
 For the deployed application:
 
-- Set `DATABASE_URL` to the Supabase **Transaction pooler** connection string with `sslmode=verify-full`.
+- Set `DATABASE_URL` to the Supabase **Transaction pooler** connection string for the **`yaarlink_app` role**, with `sslmode=verify-full`; do not run the application as the database owner/`postgres` role.
 - Set `DATABASE_CA_CERT` in Vercel to the complete downloaded Supabase root-certificate PEM, including the `BEGIN CERTIFICATE` and `END CERTIFICATE` lines.
 - Alternatively, for a runtime that provides the certificate as a file, append `&sslrootcert=/absolute/path/to/prod-ca-2021.crt` to `DATABASE_URL` and leave `DATABASE_CA_CERT` unset.
 
 Do not use `sslmode=no-verify`, `disable`, `prefer`, `require`, or `verify-ca` for a remote database. Without a configured CA, `backend/db/connection-config.ts` rejects those modes for remote hosts. When `DATABASE_CA_CERT` is set, the app strips the URL's SSL-mode parameters and passes that CA explicitly to node-postgres with `rejectUnauthorized: true`, so both the certificate chain and hostname are verified and a legacy weaker `sslmode` cannot downgrade the actual connection. New connection strings should still specify `verify-full` explicitly.
 
-For an existing production database, review schema changes and satisfy the verified-backup gate in [`BACKUP_AND_RECOVERY.md`](./BACKUP_AND_RECOVERY.md) before applying them; do not blindly repeat an initial-provisioning push or assume that a successful prior migration proves a backup exists. A database created before the data-model/reporting fields must instead run the reviewed transactional file `backend/db/migrations/20261102_data_model_reporting.sql` with the verified-TLS Direct/Session provisioning URL (for example, `psql "$PROVISIONING_DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/db/migrations/20261102_data_model_reporting.sql`) before the matching application deployment. It includes historical listed-date, contact-source, brand-link, campaign-expiry, settings, and audit-table backfills that a schema-only push cannot reproduce; verify the commented read-only checks and `/api/health` afterward.
+For an existing production database, review schema changes and satisfy the verified-backup gate in [`BACKUP_AND_RECOVERY.md`](./BACKUP_AND_RECOVERY.md) before applying them; do not blindly repeat the empty-database bootstrap or assume that a successful prior migration proves a backup exists. If it has application tables but no `drizzle.__drizzle_migrations` journal, the bootstrap will refuse to run; use a separately reviewed upgrade/history-reconciliation plan instead of deleting tables or fabricating journal rows. A database created before the data-model/reporting fields must instead run the reviewed transactional file `backend/db/migrations/20261102_data_model_reporting.sql` with the verified-TLS Direct/Session provisioning URL (for example, `psql "$PROVISIONING_DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/db/migrations/20261102_data_model_reporting.sql`) before the matching application deployment. It includes historical listed-date, contact-source, brand-link, campaign-expiry, settings, and audit-table backfills that a schema-only push cannot reproduce; verify the commented read-only checks and `/api/health` afterward.
 
 ## 2. Required production environment variables
 
@@ -63,6 +66,8 @@ Optional admin MFA: set `ADMIN_TOTP_SECRET` to a valid Base32 TOTP secret (at le
 Optional public-form challenge secret: generate `BOT_CHALLENGE_SECRET` separately and make it different from both session secrets. If unset, a validated `SESSION_SECRET` signs those short-lived, one-time challenges.
 
 Optional health-diagnostic credential: public `/api/health` responses contain only `ok`, `status`, and `checkedAt`. Detailed database/schema/pool diagnostics require either a valid admin session or `HEALTH_DIAGNOSTIC_TOKEN` sent as an HTTPS `Authorization: Bearer …` header. Generate that token separately with `openssl rand -hex 32`; weak or reused values fail startup. Never put it in a URL—the historical `?diag=…` value is only a cache-buster and does not authorize diagnostics.
+
+Optional slow-query threshold: leave `SLOW_QUERY_THRESHOLD_MS` unset for 1000 ms, or set it between 50 and 60000 ms. See [`OBSERVABILITY.md`](./OBSERVABILITY.md) for the JSON log schema, request correlation, privacy boundary, external log-drain setup, and health/uptime alerting. A drain or uptime monitor is not active merely because this code is deployed; the project owner must configure and verify it in the chosen external service.
 
 When a user creates or changes a password, the server checks it against known breached passwords through Have I Been Pwned's k-anonymity range API. Only the first five characters of the password's SHA-1 hash leave the server. If that check is unavailable, the password-setting request returns HTTP 503 instead of accepting an unchecked password. `PWNED_PASSWORDS_RANGE_URL` may point to a compatible HTTPS mirror; leave it unset for the public endpoint.
 
@@ -110,7 +115,7 @@ After deployment, check:
 1. Public `/api/health` returns HTTP 200 with only `{"ok":true,"status":"ok","checkedAt":"…"}`. HTTP 503/`"status":"degraded"` means the database connection or required schema check failed. Use an admin session or the optional bearer diagnostic token when detailed checks/pool counters are needed; an invalid Authorization header returns HTTP 401.
 2. A document response has `Content-Security-Policy` and `Reporting-Endpoints`, and does **not** rely on `Content-Security-Policy-Report-Only`.
 3. Pages hydrate and forms work with no CSP errors in the browser console.
-4. Vercel logs show no database TLS/configuration errors. Sanitized CSP violations, if any, appear with the `[csp-report]` prefix.
+4. Vercel logs show no database TLS/configuration errors. Operational records are JSON; sanitized CSP violations, if any, use `"event":"security.csp_report"`, and responses include the matching `x-request-id` header.
 
 Add `www.theyaar.com` and `theyaar.com` under Vercel **Settings → Domains**, publish the DNS records Vercel provides, and keep `www` as the canonical host.
 

@@ -1,3 +1,4 @@
+import { logRouteError } from "@/backend/observability";
 import { db } from "@/backend/db";
 import { applications, brands, campaigns, contacts, creators, reports, userSessions, users } from "@/backend/db/schema";
 import { adminSessionUnavailableResponse, isAdmin, isAdminSessionUnavailableError, logAdminSessionUnavailable } from "@/backend/admin";
@@ -719,10 +720,10 @@ export async function POST(req: Request) {
     return Response.json({ ok: true, report }, { headers: NO_STORE });
   } catch (e) {
     if (isAdminSessionUnavailableError(e)) {
-      logAdminSessionUnavailable(e);
+      logAdminSessionUnavailable(e, req);
       return adminSessionUnavailableResponse(NO_STORE);
     }
-    console.error(e);
+    logRouteError(req, e);
     return Response.json({ error: "Could not complete moderation action", code: "moderation_failed" }, { status: 500, headers: NO_STORE });
   }
 }

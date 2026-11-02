@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { REQUEST_ID_HEADER, requestIdFromHeaders } from "@/shared/observability";
 
 const CSP_REPORT_PATH = "/api/security/csp-report";
 const CSP_REPORT_GROUP = "csp-endpoint";
@@ -61,17 +62,33 @@ function buildContentSecurityPolicy(request: NextRequest, nonce: string): string
 }
 
 export function proxy(request: NextRequest) {
+  const requestId = requestIdFromHeaders(request.headers);
+  const requestHeaders = new Headers(request.headers);
+  if (requestId) requestHeaders.set(REQUEST_ID_HEADER, requestId);
+  requestHeaders.set("x-yaarlink-pathname", request.nextUrl.pathname);
+
+  // API responses keep their static deny-all CSP from next.config.ts. The
+  // proxy's only API job is to establish one correlation ID that route logs
+  // and the response share.
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    const response = NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    });
+    if (requestId) response.headers.set(REQUEST_ID_HEADER, requestId);
+    return response;
+  }
+
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const contentSecurityPolicy = buildContentSecurityPolicy(request, nonce);
   const reportEndpoint = reportEndpointUrl(request);
 
   // Next reads the request CSP, extracts this nonce, and stamps it onto the
   // framework bootstrap/RSC scripts it emits while rendering this request.
-  const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
   // The root layout uses this proxy-owned (not caller-controlled) pathname
   // to emit a localized route title in the first HTML response.
-  requestHeaders.set("x-yaarlink-pathname", request.nextUrl.pathname);
   requestHeaders.set("Content-Security-Policy", contentSecurityPolicy);
 
   const response = NextResponse.next({
@@ -80,6 +97,7 @@ export function proxy(request: NextRequest) {
     },
   });
 
+  if (requestId) response.headers.set(REQUEST_ID_HEADER, requestId);
   response.headers.set("Content-Security-Policy", contentSecurityPolicy);
   response.headers.set("Reporting-Endpoints", `${CSP_REPORT_GROUP}="${reportEndpoint}"`);
 
@@ -89,13 +107,18 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     {
-      // Documents need a fresh nonce. APIs get a separate static deny-all CSP
-      // from next.config.ts; static assets are governed by the document CSP.
+      // Documents need a fresh nonce. Static assets are governed by the
+      // document CSP and do not need proxy-generated request IDs.
       source: "/((?!api/|_next/static|_next/image|favicon.ico|icon.svg|robots.txt|sitemap.xml).*)",
       missing: [
         { type: "header", key: "next-router-prefetch" },
         { type: "header", key: "purpose", value: "prefetch" },
       ],
+    },
+    {
+      // API requests run the correlation-ID branch above; their CSP remains
+      // the separate deny-all header configured in next.config.ts.
+      source: "/api/(.*)",
     },
   ],
 };

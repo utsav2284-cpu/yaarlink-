@@ -10,6 +10,7 @@ import {
   getSigningSecret,
   SecretConfigurationError,
 } from "@/backend/secret-config";
+import { logEvent, requestLogContext, type RequestLogSource } from "@/backend/observability";
 
 export const ADMIN_COOKIE = "__Host-yl_admin";
 const ADMIN_DAYS = 1;
@@ -67,7 +68,11 @@ export function isAdminSessionUnavailableError(error: unknown): error is AdminSe
   return error instanceof AdminSessionUnavailableError;
 }
 
-export function logAdminSessionUnavailable(error: AdminSessionUnavailableError): void {
+export function logAdminSessionUnavailable(
+  error: AdminSessionUnavailableError,
+  source?: RequestLogSource,
+  explicitRoute?: string,
+): void {
   let current: unknown = error.cause ?? error;
   const seen = new Set<unknown>();
   while (current instanceof Error && !seen.has(current)) {
@@ -79,9 +84,13 @@ export function logAdminSessionUnavailable(error: AdminSessionUnavailableError):
 
   const root = current instanceof Error ? current : null;
   const code = (root as (Error & { code?: unknown }) | null)?.code;
-  console.error("[admin-session] lookup failed", {
-    name: root?.name || "UnknownError",
-    code: typeof code === "string" || typeof code === "number" ? String(code) : "unknown",
+  const context = requestLogContext(source, explicitRoute);
+  logEvent("error", "admin_session.lookup_failed", {
+    ...context,
+    component: "admin-session",
+    operation: "lookup",
+    errorName: root?.name || "UnknownError",
+    errorCode: typeof code === "string" || typeof code === "number" ? String(code) : "unknown",
   });
 }
 

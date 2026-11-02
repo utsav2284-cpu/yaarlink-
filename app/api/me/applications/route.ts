@@ -1,3 +1,4 @@
+import { logRouteError } from "@/backend/observability";
 import {
   getSessionUser,
   isSessionUnavailableError,
@@ -39,13 +40,13 @@ export async function GET(req: Request) {
     return Response.json(result, { headers: NO_STORE });
   } catch (e) {
     if (isSessionUnavailableError(e)) {
-      logSessionUnavailable(e);
+      logSessionUnavailable(e, "lookup", req);
       return sessionUnavailableResponse(NO_STORE);
     }
     if (isListingQueryError(e)) {
       return Response.json({ error: e.message, code: e.code }, { status: e.status, headers: NO_STORE });
     }
-    console.error(e);
+    logRouteError(req, e);
     return Response.json(
       { error: "Could not load your applications", code: "load_failed" },
       { status: 500, headers: NO_STORE },
