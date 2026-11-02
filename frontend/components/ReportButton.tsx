@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { useLang } from "@/frontend/i18n";
+import { useLang, type TranslationKey } from "@/frontend/i18n";
 import { solveBotChallenge } from "@/frontend/bot-challenge";
 import PrivacyNotice from "@/frontend/components/PrivacyNotice";
 import { REPORT_REASONS, type ReportReason, type ReportTargetType } from "@/shared/constants";
@@ -15,7 +15,7 @@ type Props = {
 };
 
 export default function ReportButton({ targetType, targetId, targetName, className = "", buttonClassName = "" }: Props) {
-  const { t, apiErrorKey } = useLang();
+  const { t, reportReason, apiErrorKey } = useLang();
   const uid = useId().replace(/:/g, "");
   const [open, setOpen] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -24,7 +24,7 @@ export default function ReportButton({ targetType, targetId, targetName, classNa
   const [contact, setContact] = useState("");
   const [websiteUrl, setWebsiteUrl] = useState("");
   const [busy, setBusy] = useState(false);
-  const [errorKey, setErrorKey] = useState("");
+  const [errorKey, setErrorKey] = useState<TranslationKey | "">("");
   const triggerRef = useRef<HTMLButtonElement>(null);
   const firstFieldRef = useRef<HTMLSelectElement>(null);
 
@@ -141,7 +141,7 @@ export default function ReportButton({ targetType, targetId, targetName, classNa
           >
             {REPORT_REASONS.map((value) => (
               <option key={value} value={value}>
-                {t(`report.${value}`)}
+                {reportReason(value)}
               </option>
             ))}
           </select>

@@ -1,12 +1,12 @@
 "use client";
 
-import { useLang } from "@/frontend/i18n";
+import { useLang, type TranslationKey } from "@/frontend/i18n";
 
 type ListingLoadingProps = {
   count?: number;
   className?: string;
   itemClassName?: string;
-  labelKey?: string;
+  labelKey?: TranslationKey;
 };
 
 export function ListingLoading({
@@ -27,7 +27,7 @@ export function ListingLoading({
 }
 
 type ListingErrorProps = {
-  errorKey: string;
+  errorKey: TranslationKey;
   onRetry: () => void;
   className?: string;
   buttonClassName?: string;

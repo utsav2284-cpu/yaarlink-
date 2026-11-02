@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { SITE, mailtoLink } from "@/config/site";
-import { useLang, type Lang } from "@/frontend/i18n";
+import { useLang, type Lang, type TranslationKey } from "@/frontend/i18n";
 
 export type LegalPageKind = "privacy" | "terms" | "refunds" | "data-rights" | "account-deletion";
 
@@ -99,7 +99,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
             "Profile and campaign information: business or creator names, contact details, social profile links, category, languages, location, audience or follower information, campaign descriptions, budget, verification codes, and moderation status.",
             "Application and communication information: the creator-profile name, the saved account/profile contact you select, the message you enter, application status and decision notes, notifications, contact-form messages, and listing reports.",
             "Technical and security information: session identifiers, browser/device user-agent information, sign-in and activity times, hashed rate-limit and failed-sign-in identifiers, brief browser security-check results on public forms, IP addresses in security or admin audit logs where the hosting platform provides a trusted address, and limited hosting or email-delivery logs.",
-            "Preferences: your selected site language is stored in your browser's local storage.",
+            "Preferences: your selected site language is stored in an essential first-party cookie and mirrored in your browser's local storage so the server can render pages in that language immediately.",
           ],
           paragraphs: [
             "YaarLink does not intentionally collect card, bank-login or UPI PIN details through this website. Do not put passwords, one-time codes or payment credentials in contact, campaign, profile or application fields.",
@@ -145,7 +145,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
           bullets: [
             "Essential, signed session cookies keep users and administrators signed in and help protect accounts. Disabling them can prevent login and account features from working.",
             "Server-side session records store limited browser/device information and activity times so you can review and revoke devices in Account & security.",
-            "Your language choice is saved in local storage. We do not use that preference to build an advertising profile.",
+            "Your language choice is saved for one year in an essential first-party cookie and mirrored in local storage so pages can load in that language without first flashing another language. We do not use that preference to build an advertising profile.",
             "Unfinished campaign, creator-profile, contact and campaign-application form drafts may be kept in this browser's local storage for up to 24 hours so you can sign in and return without retyping them. They are not sent to YaarLink until you submit the relevant form; successful submission, confirmed logout, expiry, or clearing site data can remove them.",
             "External services you open—such as WhatsApp, Instagram, YouTube or a brand/creator website—have their own privacy practices.",
           ],
@@ -468,7 +468,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
             "प्रोफाइल और कैंपेन जानकारी: बिज़नेस या क्रिएटर नाम, संपर्क विवरण, सोशल प्रोफाइल लिंक, कैटेगरी, भाषाएँ, स्थान, ऑडियंस या फॉलोअर जानकारी, कैंपेन विवरण, बजट, सत्यापन कोड और मॉडरेशन स्थिति।",
             "आवेदन और संचार जानकारी: क्रिएटर प्रोफ़ाइल का नाम, आपके द्वारा चुना गया सेव अकाउंट/प्रोफ़ाइल संपर्क, लिखा गया संदेश, आवेदन स्थिति और निर्णय नोट, सूचनाएँ, संपर्क-फॉर्म संदेश और लिस्टिंग रिपोर्ट।",
             "तकनीकी और सुरक्षा जानकारी: सेशन पहचान, ब्राउज़र/डिवाइस यूज़र-एजेंट, साइन-इन और गतिविधि समय, हैश किए रेट-लिमिट और असफल साइन-इन पहचानकर्ता, सार्वजनिक फ़ॉर्म पर संक्षिप्त ब्राउज़र सुरक्षा-जाँच परिणाम, जहाँ होस्टिंग प्लेटफ़ॉर्म विश्वसनीय पता देता है वहाँ सुरक्षा या एडमिन ऑडिट लॉग में IP पते तथा सीमित होस्टिंग या ईमेल-डिलीवरी लॉग।",
-            "पसंद: आपकी चुनी गई साइट भाषा ब्राउज़र के लोकल स्टोरेज में सेव होती है।",
+            "पसंद: आपकी चुनी गई साइट भाषा एक आवश्यक फ़र्स्ट-पार्टी कुकी में सेव होती है और ब्राउज़र के लोकल स्टोरेज में भी रखी जाती है, ताकि सर्वर पेज तुरंत उसी भाषा में दिखा सके।",
           ],
           paragraphs: [
             "YaarLink इस वेबसाइट के ज़रिए कार्ड, बैंक-लॉगिन या UPI PIN विवरण जानबूझकर इकट्ठा नहीं करता। संपर्क, कैंपेन, प्रोफाइल या आवेदन फ़ील्ड में पासवर्ड, एक-बार के कोड या पेमेंट रहस्य न लिखें।",
@@ -514,7 +514,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
           bullets: [
             "आवश्यक, हस्ताक्षरित सेशन कुकीज़ उपयोगकर्ताओं और एडमिन को साइन इन रखती हैं और अकाउंट सुरक्षा में मदद करती हैं। इन्हें बंद करने से लॉगिन और अकाउंट सुविधाएँ रुक सकती हैं।",
             "सर्वर-साइड सेशन रिकॉर्ड सीमित ब्राउज़र/डिवाइस जानकारी और गतिविधि समय रखते हैं ताकि आप खाता और सुरक्षा में डिवाइस देख और हट सकें।",
-            "आपकी भाषा पसंद लोकल स्टोरेज में सेव होती है। हम इसका उपयोग विज्ञापन प्रोफाइल बनाने के लिए नहीं करते।",
+            "आपकी भाषा पसंद एक वर्ष के लिए आवश्यक फ़र्स्ट-पार्टी कुकी में सेव होती है और लोकल स्टोरेज में भी रखी जाती है, ताकि पेज पहले दूसरी भाषा की झलक दिखाए बिना उसी भाषा में लोड हों। हम इसका उपयोग विज्ञापन प्रोफाइल बनाने के लिए नहीं करते।",
             "अधूरे कैंपेन, क्रिएटर-प्रोफाइल, संपर्क और कैंपेन-आवेदन फ़ॉर्म ड्राफ्ट इस ब्राउज़र के लोकल स्टोरेज में 24 घंटे तक रह सकते हैं ताकि आप साइन इन करके लौटें और फिर से टाइप न करना पड़े। वे संबंधित फ़ॉर्म सबमिट करने से पहले YaarLink को नहीं भेजे जाते; सफल सबमिशन, पुष्ट लॉगआउट, अवधि समाप्त होने या साइट डेटा साफ़ करने से वे हट सकते हैं।",
             "WhatsApp, Instagram, YouTube या किसी ब्रांड/क्रिएटर वेबसाइट जैसी बाहरी सेवाओं की अपनी प्राइवेसी प्रथाएँ होती हैं।",
           ],
@@ -837,7 +837,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
             "ਪ੍ਰੋਫਾਈਲ ਅਤੇ ਕੈਂਪੇਨ ਜਾਣਕਾਰੀ: ਕਾਰੋਬਾਰ ਜਾਂ ਕ੍ਰਿਏਟਰ ਨਾਮ, ਸੰਪਰਕ ਵੇਰਵੇ, ਸੋਸ਼ਲ ਪ੍ਰੋਫਾਈਲ ਲਿੰਕ, ਕੈਟੇਗਰੀ, ਭਾਸ਼ਾਵਾਂ, ਥਾਂ, ਆਡੀਅੰਸ ਜਾਂ ਫਾਲੋਅਰ ਜਾਣਕਾਰੀ, ਕੈਂਪੇਨ ਵੇਰਵੇ, ਬਜਟ, ਤਸਦੀਕ ਕੋਡ ਅਤੇ ਮਾਡਰੇਸ਼ਨ ਸਥਿਤੀ।",
             "ਅਰਜ਼ੀ ਅਤੇ ਸੰਚਾਰ ਜਾਣਕਾਰੀ: ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਦਾ ਨਾਮ, ਤੁਹਾਡਾ ਚੁਣਿਆ ਸੇਵ ਅਕਾਊਂਟ/ਪ੍ਰੋਫਾਈਲ ਸੰਪਰਕ, ਲਿਖਿਆ ਸੁਨੇਹਾ, ਅਰਜ਼ੀ ਸਥਿਤੀ ਅਤੇ ਫੈਸਲਾ ਨੋਟ, ਸੂਚਨਾਵਾਂ, ਸੰਪਰਕ-ਫਾਰਮ ਸੁਨੇਹੇ ਅਤੇ ਲਿਸਟਿੰਗ ਰਿਪੋਰਟਾਂ।",
             "ਤਕਨੀਕੀ ਅਤੇ ਸੁਰੱਖਿਆ ਜਾਣਕਾਰੀ: ਸੈਸ਼ਨ ਪਛਾਣ, ਬ੍ਰਾਊਜ਼ਰ/ਡਿਵਾਈਸ ਯੂਜ਼ਰ-ਏਜੰਟ, ਸਾਈਨ-ਇਨ ਅਤੇ ਗਤੀਵਿਧੀ ਸਮੇਂ, ਹੈਸ਼ ਕੀਤੇ ਰੇਟ-ਲਿਮਿਟ ਅਤੇ ਅਸਫਲ ਸਾਈਨ-ਇਨ ਪਛਾਣਕਰਤਾ, ਜਨਤਕ ਫਾਰਮਾਂ 'ਤੇ ਸੰਖੇਪ ਬ੍ਰਾਊਜ਼ਰ ਸੁਰੱਖਿਆ-ਜਾਂਚ ਨਤੀਜੇ, ਜਿੱਥੇ ਹੋਸਟਿੰਗ ਪਲੇਟਫਾਰਮ ਭਰੋਸੇਯੋਗ ਪਤਾ ਦਿੰਦਾ ਹੈ ਉੱਥੇ ਸੁਰੱਖਿਆ ਜਾਂ ਐਡਮਿਨ ਆਡਿਟ ਲੌਗ ਵਿੱਚ IP ਪਤੇ ਅਤੇ ਸੀਮਤ ਹੋਸਟਿੰਗ ਜਾਂ ਈਮੇਲ-ਡਿਲੀਵਰੀ ਲੌਗ।",
-            "ਪਸੰਦ: ਤੁਹਾਡੀ ਚੁਣੀ ਸਾਈਟ ਭਾਸ਼ਾ ਬ੍ਰਾਊਜ਼ਰ ਦੇ ਲੋਕਲ ਸਟੋਰੇਜ ਵਿੱਚ ਸੇਵ ਹੁੰਦੀ ਹੈ।",
+            "ਪਸੰਦ: ਤੁਹਾਡੀ ਚੁਣੀ ਸਾਈਟ ਭਾਸ਼ਾ ਇੱਕ ਜ਼ਰੂਰੀ ਫਸਟ-ਪਾਰਟੀ ਕੂਕੀ ਵਿੱਚ ਸੇਵ ਹੁੰਦੀ ਹੈ ਅਤੇ ਬ੍ਰਾਊਜ਼ਰ ਦੇ ਲੋਕਲ ਸਟੋਰੇਜ ਵਿੱਚ ਵੀ ਰੱਖੀ ਜਾਂਦੀ ਹੈ, ਤਾਂ ਜੋ ਸਰਵਰ ਪੇਜ ਤੁਰੰਤ ਉਸੇ ਭਾਸ਼ਾ ਵਿੱਚ ਦਿਖਾ ਸਕੇ।",
           ],
           paragraphs: [
             "YaarLink ਇਸ ਵੈੱਬਸਾਈਟ ਰਾਹੀਂ ਕਾਰਡ, ਬੈਂਕ-ਲਾਗਇਨ ਜਾਂ UPI PIN ਵੇਰਵੇ ਜਾਣ-ਬੁੱਝ ਕੇ ਇਕੱਠੇ ਨਹੀਂ ਕਰਦਾ। ਸੰਪਰਕ, ਕੈਂਪੇਨ, ਪ੍ਰੋਫਾਈਲ ਜਾਂ ਅਰਜ਼ੀ ਖੇਤਰਾਂ ਵਿੱਚ ਪਾਸਵਰਡ, ਇੱਕ-ਵਾਰੀ ਕੋਡ ਜਾਂ ਪੇਮੈਂਟ ਗੁਪਤ ਜਾਣਕਾਰੀ ਨਾ ਲਿਖੋ।",
@@ -883,7 +883,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
           bullets: [
             "ਜ਼ਰੂਰੀ, ਦਸਤਖਤ ਕੀਤੀਆਂ ਸੈਸ਼ਨ ਕੂਕੀਜ਼ ਉਪਭੋਗਤਾਵਾਂ ਅਤੇ ਐਡਮਿਨ ਨੂੰ ਸਾਈਨ ਇਨ ਰੱਖਦੀਆਂ ਹਨ ਅਤੇ ਅਕਾਊਂਟ ਸੁਰੱਖਿਆ ਵਿੱਚ ਮਦਦ ਕਰਦੀਆਂ ਹਨ। ਇਹਨਾਂ ਨੂੰ ਬੰਦ ਕਰਨ ਨਾਲ ਲਾਗਇਨ ਅਤੇ ਅਕਾਊਂਟ ਸੁਵਿਧਾਵਾਂ ਰੁਕ ਸਕਦੀਆਂ ਹਨ।",
             "ਸਰਵਰ-ਸਾਈਡ ਸੈਸ਼ਨ ਰਿਕਾਰਡ ਸੀਮਤ ਬ੍ਰਾਊਜ਼ਰ/ਡਿਵਾਈਸ ਜਾਣਕਾਰੀ ਅਤੇ ਗਤੀਵਿਧੀ ਸਮੇਂ ਰੱਖਦੇ ਹਨ ਤਾਂ ਜੋ ਤੁਸੀਂ ਖਾਤਾ ਅਤੇ ਸੁਰੱਖਿਆ ਵਿੱਚ ਡਿਵਾਈਸ ਵੇਖ ਅਤੇ ਹਟਾ ਸਕੋ।",
-            "ਤੁਹਾਡੀ ਭਾਸ਼ਾ ਪਸੰਦ ਲੋਕਲ ਸਟੋਰੇਜ ਵਿੱਚ ਸੇਵ ਹੁੰਦੀ ਹੈ। ਅਸੀਂ ਇਸ ਨੂੰ ਵਿਗਿਆਪਨ ਪ੍ਰੋਫਾਈਲ ਬਣਾਉਣ ਲਈ ਨਹੀਂ ਵਰਤਦੇ।",
+            "ਤੁਹਾਡੀ ਭਾਸ਼ਾ ਪਸੰਦ ਇੱਕ ਸਾਲ ਲਈ ਜ਼ਰੂਰੀ ਫਸਟ-ਪਾਰਟੀ ਕੂਕੀ ਵਿੱਚ ਸੇਵ ਹੁੰਦੀ ਹੈ ਅਤੇ ਲੋਕਲ ਸਟੋਰੇਜ ਵਿੱਚ ਵੀ ਰੱਖੀ ਜਾਂਦੀ ਹੈ, ਤਾਂ ਜੋ ਪੇਜ ਪਹਿਲਾਂ ਕਿਸੇ ਹੋਰ ਭਾਸ਼ਾ ਦੀ ਝਲਕ ਦਿਖਾਏ ਬਿਨਾਂ ਉਸੇ ਭਾਸ਼ਾ ਵਿੱਚ ਲੋਡ ਹੋਣ। ਅਸੀਂ ਇਸ ਨੂੰ ਵਿਗਿਆਪਨ ਪ੍ਰੋਫਾਈਲ ਬਣਾਉਣ ਲਈ ਨਹੀਂ ਵਰਤਦੇ।",
             "ਅਧੂਰੇ ਕੈਂਪੇਨ, ਕ੍ਰਿਏਟਰ-ਪ੍ਰੋਫਾਈਲ, ਸੰਪਰਕ ਅਤੇ ਕੈਂਪੇਨ-ਅਰਜ਼ੀ ਫਾਰਮ ਡਰਾਫਟ ਇਸ ਬ੍ਰਾਊਜ਼ਰ ਦੇ ਲੋਕਲ ਸਟੋਰੇਜ ਵਿੱਚ 24 ਘੰਟਿਆਂ ਤੱਕ ਰਹਿ ਸਕਦੇ ਹਨ ਤਾਂ ਜੋ ਤੁਸੀਂ ਸਾਈਨ ਇਨ ਕਰਕੇ ਵਾਪਸ ਆਓ ਅਤੇ ਦੁਬਾਰਾ ਨਾ ਲਿਖਣਾ ਪਵੇ। ਸੰਬੰਧਿਤ ਫਾਰਮ ਜਮ੍ਹਾਂ ਕਰਨ ਤੋਂ ਪਹਿਲਾਂ ਉਹ YaarLink ਨੂੰ ਨਹੀਂ ਭੇਜੇ ਜਾਂਦੇ; ਸਫਲ ਜਮ੍ਹਾਂ, ਪੁਸ਼ਟ ਲਾਗਆਊਟ, ਮਿਆਦ ਖਤਮ ਹੋਣ ਜਾਂ ਸਾਈਟ ਡੇਟਾ ਸਾਫ਼ ਕਰਨ ਨਾਲ ਉਹ ਹਟ ਸਕਦੇ ਹਨ।",
             "WhatsApp, Instagram, YouTube ਜਾਂ ਕਿਸੇ ਬ੍ਰਾਂਡ/ਕ੍ਰਿਏਟਰ ਵੈੱਬਸਾਈਟ ਵਰਗੀਆਂ ਬਾਹਰੀ ਸੇਵਾਵਾਂ ਦੀਆਂ ਆਪਣੀਆਂ ਪਰਾਈਵੇਸੀ ਪ੍ਰਥਾਵਾਂ ਹੁੰਦੀਆਂ ਹਨ।",
           ],
@@ -1183,7 +1183,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
   },
 };
 
-const NAV_ITEMS: Array<{ page: LegalPageKind; href: string; labelKey: string }> = [
+const NAV_ITEMS: Array<{ page: LegalPageKind; href: string; labelKey: TranslationKey }> = [
   { page: "privacy", href: "/privacy", labelKey: "legal.privacy" },
   { page: "terms", href: "/terms", labelKey: "legal.terms" },
   { page: "refunds", href: "/refund-policy", labelKey: "legal.refunds" },

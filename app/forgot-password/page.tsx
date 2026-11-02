@@ -74,7 +74,7 @@ function ForgotPasswordContent() {
               onClick={requestReset}
               className="mt-5 w-full rounded-2xl bg-[#c7431f] py-3.5 text-[15.5px] font-extrabold text-white hover:bg-[#a93618] disabled:opacity-60"
             >
-              {saving ? t("auth.creating") : resendSeconds > 0 ? `${t("auth.resendIn")} ${resendSeconds}s` : t("auth.sendAgain")}
+              {saving ? t("auth.creating") : resendSeconds > 0 ? t("auth.resendIn", { seconds: resendSeconds }) : t("auth.sendAgain")}
             </button>
           </div>
         ) : (

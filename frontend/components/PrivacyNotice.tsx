@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useLang } from "@/frontend/i18n";
+import { useLang, type TranslationKey } from "@/frontend/i18n";
 
 type PrivacyNoticeProps = {
-  textKey: string;
+  textKey: TranslationKey;
   className?: string;
   compact?: boolean;
 };

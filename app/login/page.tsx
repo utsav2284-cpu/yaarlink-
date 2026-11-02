@@ -3,10 +3,11 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useLang } from "@/frontend/i18n";
+import { useLang, type TranslationKey } from "@/frontend/i18n";
 import { fetchSessionUser } from "@/frontend/session";
 import { buildAuthPath, DEFAULT_RETURN_TO, safeReturnTo } from "@/shared/return-to";
 import { normalizeUserRole } from "@/shared/user-roles";
+import { PASSWORD_MAX_LENGTH } from "@/shared/password-policy";
 
 function LoginContent() {
   const router = useRouter();
@@ -15,7 +16,7 @@ function LoginContent() {
   const returnTo = safeReturnTo(searchParams.get("returnTo"));
   const requestedRole = normalizeUserRole(searchParams.get("role"));
   const [form, setForm] = useState({ email: "", password: "" });
-  const [errKey, setErrKey] = useState("");
+  const [errKey, setErrKey] = useState<TranslationKey | "">("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -66,7 +67,7 @@ function LoginContent() {
           <label htmlFor="login-email" className="sr-only">{t("auth.email")}</label>
           <input id="login-email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required type="email" placeholder={t("auth.email")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
           <label htmlFor="login-password" className="sr-only">{t("auth.password")}</label>
-          <input id="login-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required type="password" maxLength={256} autoComplete="current-password" placeholder={t("auth.password")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+          <input id="login-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required type="password" maxLength={PASSWORD_MAX_LENGTH} autoComplete="current-password" placeholder={t("auth.password")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
           {errKey && <p role="alert" className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-[13.5px] font-bold text-red-700">{t(errKey)}</p>}
           <button disabled={saving} className="rounded-2xl bg-[#1c1917] py-3.5 text-[16px] font-extrabold text-white hover:bg-black disabled:opacity-60">{saving ? t("auth.loggingIn") : t("auth.loginBtn")}</button>
           <Link href={buildAuthPath("/forgot-password", { returnTo })} className="text-center text-[14px] font-bold text-[#c7431f]">{t("auth.forgotPassword")}</Link>

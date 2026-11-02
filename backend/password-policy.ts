@@ -5,8 +5,9 @@
  * units so an emoji or other astral character counts as one character.
  */
 
-export const PASSWORD_MIN_LENGTH = 10;
-export const PASSWORD_MAX_LENGTH = 256;
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, passwordLength } from "@/shared/password-policy";
+
+export { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, passwordLength };
 
 const DEFAULT_PWNED_PASSWORDS_RANGE_URL = "https://api.pwnedpasswords.com/range";
 const PWNED_PASSWORDS_TIMEOUT_MS = 2_500;
@@ -28,15 +29,6 @@ export type PasswordPolicyContext = {
 
 export type PasswordPolicyProblem = "length" | "breached";
 export type PasswordValidationResult = { ok: true } | { ok: false; problem: PasswordPolicyProblem };
-
-export function passwordLength(password: string): number {
-  let length = 0;
-  for (const char of password) {
-    void char;
-    length++;
-  }
-  return length;
-}
 
 function compact(value: string): string {
   return value.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");

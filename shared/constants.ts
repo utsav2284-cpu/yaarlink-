@@ -270,7 +270,8 @@ export const MAX_CREATOR_CONTENT_TYPES = CONTENT_TYPES.length;
 export const MAX_CREATOR_LANGUAGES_JOINED_LENGTH = LANGUAGES.join(", ").length;
 export const MAX_CREATOR_CONTENT_TYPES_JOINED_LENGTH = CONTENT_TYPES.join(", ").length;
 
-export function formatINR(n: number, locale = "en-IN") {
+/** Format INR for an explicitly selected locale; UI code should pass useLang().locale. */
+export function formatINR(n: number, locale: string) {
   return new Intl.NumberFormat(locale, {
     style: "currency",
     currency: "INR",

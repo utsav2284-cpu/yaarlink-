@@ -69,6 +69,9 @@ export function proxy(request: NextRequest) {
   // framework bootstrap/RSC scripts it emits while rendering this request.
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
+  // The root layout uses this proxy-owned (not caller-controlled) pathname
+  // to emit a localized route title in the first HTML response.
+  requestHeaders.set("x-yaarlink-pathname", request.nextUrl.pathname);
   requestHeaders.set("Content-Security-Policy", contentSecurityPolicy);
 
   const response = NextResponse.next({
