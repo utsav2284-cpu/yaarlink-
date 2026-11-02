@@ -2,26 +2,48 @@
 
 import { useLang } from "@/frontend/i18n";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { fetchSessionUser } from "@/frontend/session";
+import { buildAuthPath, DEFAULT_RETURN_TO, safeReturnTo } from "@/shared/return-to";
+import { primaryUserRole, type UserRole } from "@/shared/user-roles";
 
 type SignupForm = {
   name: string;
   email: string;
   phone: string;
   password: string;
-  role: string;
+  role: UserRole;
 };
 
-export default function SignupPage() {
+function SignupContent() {
   const { t } = useLang();
-  const [form, setForm] = useState<SignupForm>({ name: "", email: "", phone: "", password: "", role: "brand" });
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnTo = safeReturnTo(searchParams.get("returnTo"));
+  const initialRole = primaryUserRole(searchParams.get("role"));
+  const [form, setForm] = useState<SignupForm>({ name: "", email: "", phone: "", password: "", role: initialRole });
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
   const [sent, setSent] = useState(false);
   const [submittedEmail, setSubmittedEmail] = useState("");
   const [resendSeconds, setResendSeconds] = useState(0);
   const [acceptedLegal, setAcceptedLegal] = useState(false);
-  const set = (k: keyof SignupForm, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const set = <K extends keyof SignupForm>(k: K, v: SignupForm[K]) => setForm((f) => ({ ...f, [k]: v }));
+
+  useEffect(() => {
+    let active = true;
+    fetchSessionUser()
+      .then((user) => {
+        if (active && user) router.replace(returnTo);
+      })
+      .catch(() => {
+        // Keep signup available if only the optional session probe fails.
+      });
+    return () => {
+      active = false;
+    };
+  }, [returnTo, router]);
 
   useEffect(() => {
     if (resendSeconds <= 0) return;
@@ -51,7 +73,7 @@ export default function SignupPage() {
       const res = await fetch("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, legalConsent: acceptedLegal }),
+        body: JSON.stringify({ ...form, legalConsent: acceptedLegal, returnTo }),
       });
       const data = (await res.json().catch(() => null)) as { status?: string; code?: string } | null;
       if (!res.ok || data?.status !== "verification_required") {
@@ -81,6 +103,11 @@ export default function SignupPage() {
       <div className="rounded-[28px] border border-[#e9ddc3] bg-white p-8 card-shadow">
         <h1 className="font-display text-[30px] font-black">{t("auth.signupTitle")}</h1>
         <p className="mt-1 text-[14.5px] text-[#6f6862]">{t("auth.signupSub")}</p>
+        {returnTo !== DEFAULT_RETURN_TO && (
+          <p role="status" className="mt-4 rounded-xl border border-[#bfe3c5] bg-[#f2fbf3] px-4 py-3 text-[13.5px] font-bold text-[#17452e]">
+            {t("authFlow.returnAfterLogin")}
+          </p>
+        )}
 
         {sent ? (
           <div className="mt-6">
@@ -137,6 +164,9 @@ export default function SignupPage() {
                 </button>
               ))}
             </div>
+            <p className="mt-3 rounded-xl bg-[#fff4de] px-4 py-3 text-[13px] font-semibold leading-relaxed text-[#6b4d12]">
+              {t("authFlow.accountBothHint")}
+            </p>
             <form onSubmit={submit} className="mt-5 grid gap-3">
               <label htmlFor="signup-name" className="sr-only">{form.role === "brand" ? t("auth.nameBrand") : t("auth.nameCreator")}</label>
               <input id="signup-name" value={form.name} onChange={(e) => set("name", e.target.value)} required autoComplete="name" placeholder={form.role === "brand" ? t("auth.nameBrand") : t("auth.nameCreator")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
@@ -173,8 +203,17 @@ export default function SignupPage() {
           </>
         )}
 
-        <p className="mt-4 text-center text-[14px] text-[#6f6862]">{t("auth.haveAccount")} <Link href="/login" className="font-bold text-[#c7431f]">{t("auth.login")}</Link></p>
+        <p className="mt-4 text-center text-[14px] text-[#6f6862]">{t("auth.haveAccount")} <Link href={buildAuthPath("/login", { returnTo, role: form.role })} className="font-bold text-[#c7431f]">{t("auth.login")}</Link></p>
       </div>
     </div>
+  );
+}
+
+export default function SignupPage() {
+  const { t } = useLang();
+  return (
+    <Suspense fallback={<div role="status" className="p-10 text-center">{t("common.loading")}</div>}>
+      <SignupContent />
+    </Suspense>
   );
 }

@@ -2,7 +2,7 @@ import { getSessionUser, isSessionUnavailableError, logSessionUnavailable, sessi
 import { applicationContactOptions, isCompletedCreatorProfile } from "@/backend/application-contact";
 import { db } from "@/backend/db";
 import { applications, campaigns, creators } from "@/backend/db/schema";
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   allConditions,
   cursorCondition,
@@ -60,9 +60,10 @@ function ownApplicationSortKeys(sort: string): Array<SortKey<OwnApplicationSortR
 }
 
 /**
- * Private, reload-safe application state for the signed-in creator. The
- * public campaigns page uses this to keep showing an existing application
- * instead of presenting every campaign as unapplied after a refresh.
+ * Private, reload-safe application state for the signed-in user. The public
+ * campaigns page uses this to keep showing an existing application instead of
+ * presenting every campaign as unapplied after a refresh, and to identify
+ * campaigns the same dual-purpose account owns before an application starts.
  */
 export async function GET(req: Request) {
   if (sessionSecretProblem()) {
@@ -88,21 +89,10 @@ export async function GET(req: Request) {
       allowedSorts: OWN_APPLICATION_SORTS,
     });
 
-    if (user.role !== "creator") {
-      return Response.json(
-        {
-          applications: [],
-          creatorProfile: null,
-          contactOptions: [],
-          pagination: { limit: listing.limit, total: 0, returned: 0, hasMore: false, nextCursor: null },
-        },
-        { headers: NO_STORE },
-      );
-    }
-
     const status = parseEnumParam(params, "status", APPLICATION_STATUSES);
     const campaignId = parseUuidParam(params, "campaignId");
     const campaignIds = parseUuidListParam(params, "campaignIds");
+    const requestedCampaignIds = campaignIds ?? (campaignId ? [campaignId] : []);
     const scope = scopeFrom({
       listing: "own-applications",
       userId: user.id,
@@ -174,6 +164,13 @@ export async function GET(req: Request) {
       keys,
     });
 
+    const ownCampaignRows = requestedCampaignIds.length
+      ? await db
+          .select({ id: campaigns.id })
+          .from(campaigns)
+          .where(and(eq(campaigns.ownerId, user.id), inArray(campaigns.id, requestedCampaignIds)))
+      : [];
+
     return Response.json(
       {
         applications: items.map((row) => ({
@@ -189,6 +186,7 @@ export async function GET(req: Request) {
             }
           : null,
         contactOptions: applicationContactOptions(user, creatorProfile).map((option) => option.value),
+        ownCampaignIds: ownCampaignRows.map((row) => row.id),
         pagination,
       },
       { headers: NO_STORE },

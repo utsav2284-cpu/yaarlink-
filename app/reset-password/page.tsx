@@ -3,17 +3,24 @@
 import Link from "next/link";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useLang } from "@/frontend/i18n";
+import { buildAuthPath, DEFAULT_RETURN_TO, safeReturnTo } from "@/shared/return-to";
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const subscribeNoop = () => () => {};
 
+function fragmentValue(name: string) {
+  if (typeof window === "undefined") return "";
+  return new URLSearchParams(window.location.hash.replace(/^#/, "")).get(name) || "";
+}
+
 export default function ResetPasswordPage() {
   const { t } = useLang();
   const mounted = useSyncExternalStore(subscribeNoop, () => true, () => false);
-  const [token, setToken] = useState(() => {
-    if (typeof window === "undefined") return "";
-    return new URLSearchParams(window.location.hash.replace(/^#/, "")).get("token") || "";
-  });
+  const [token, setToken] = useState(() => fragmentValue("token"));
+  const [fragmentReturnTo] = useState(() => safeReturnTo(fragmentValue("returnTo")));
+  // The fragment exists only in the browser. Render the server/default href
+  // for the hydration pass, then use the captured destination after mount.
+  const returnTo = mounted ? fragmentReturnTo : DEFAULT_RETURN_TO;
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [err, setErr] = useState("");
@@ -76,7 +83,7 @@ export default function ResetPasswordPage() {
               <h2 className="text-[19px] font-black text-[#17452e]">{t("auth.resetSuccessTitle")}</h2>
               <p className="mt-2 text-[14.5px] leading-relaxed text-[#57534e]">{t("auth.resetSuccessBody")}</p>
             </div>
-            <Link href="/login" className="mt-5 block rounded-2xl bg-[#1c1917] py-3.5 text-center text-[15.5px] font-extrabold text-white hover:bg-black">
+            <Link href={buildAuthPath("/login", { returnTo })} className="mt-5 block rounded-2xl bg-[#1c1917] py-3.5 text-center text-[15.5px] font-extrabold text-white hover:bg-black">
               {t("auth.login")}
             </Link>
           </div>
@@ -86,7 +93,7 @@ export default function ResetPasswordPage() {
               <h2 className="text-[18px] font-black text-red-800">{t("auth.linkInvalidTitle")}</h2>
               <p className="mt-2 text-[14px] leading-relaxed text-red-700">{t("auth.linkInvalidBody")}</p>
             </div>
-            <Link href="/forgot-password" className="mt-5 block rounded-2xl bg-[#c7431f] py-3.5 text-center text-[15.5px] font-extrabold text-white hover:bg-[#a93618]">
+            <Link href={buildAuthPath("/forgot-password", { returnTo })} className="mt-5 block rounded-2xl bg-[#c7431f] py-3.5 text-center text-[15.5px] font-extrabold text-white hover:bg-[#a93618]">
               {t("auth.requestNewLink")}
             </Link>
           </div>
@@ -109,7 +116,7 @@ export default function ResetPasswordPage() {
 
         {!success && (
           <p className="mt-5 text-center text-[14px]">
-            <Link href="/login" className="font-bold text-[#c7431f]">{t("auth.backToLogin")}</Link>
+            <Link href={buildAuthPath("/login", { returnTo })} className="font-bold text-[#c7431f]">{t("auth.backToLogin")}</Link>
           </p>
         )}
       </div>

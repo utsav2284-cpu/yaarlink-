@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useLang } from "@/frontend/i18n";
 import { ApiResponseError, fetchJsonObject } from "@/frontend/api-json";
+import { buildAuthPath } from "@/shared/return-to";
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const subscribeNoop = () => () => {};
@@ -113,7 +114,7 @@ export default function VerifyAccountEmailPage() {
               </div>
             ) : (
               <Link
-                href={!isChange && sessionState === "logged-in" ? "/dashboard" : "/login"}
+                href={!isChange && sessionState === "logged-in" ? "/dashboard" : buildAuthPath("/login", { returnTo: "/account" })}
                 className="mt-5 block rounded-2xl bg-[#1c1917] py-3.5 text-center text-[15.5px] font-extrabold text-white hover:bg-black"
               >
                 {!isChange && sessionState === "logged-in" ? t("auth.goDashboard") : t("auth.login")}
@@ -142,7 +143,7 @@ export default function VerifyAccountEmailPage() {
 
         {!success && (
           <p className="mt-5 text-center text-[14px]">
-            <Link href="/login" className="font-bold text-[#c7431f]">{t("auth.backToLogin")}</Link>
+            <Link href={buildAuthPath("/login", { returnTo: "/account" })} className="font-bold text-[#c7431f]">{t("auth.backToLogin")}</Link>
           </p>
         )}
       </div>

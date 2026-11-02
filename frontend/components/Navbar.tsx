@@ -4,7 +4,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { LANGS, useLang, type Lang } from "@/frontend/i18n";
-import { ApiResponseError, fetchJsonObject } from "@/frontend/api-json";
+import { fetchSessionUser, requestLogout, type SessionUserSummary } from "@/frontend/session";
+import { buildAuthPath, DEFAULT_RETURN_TO, safeReturnTo } from "@/shared/return-to";
 
 export function Logo({ dark = false }: { dark?: boolean }) {
   const { t } = useLang();
@@ -20,21 +21,42 @@ export function Logo({ dark = false }: { dark?: boolean }) {
   );
 }
 
-export default function Navbar() {
+type NavbarSessionUser = Pick<SessionUserSummary, "id">;
+
+export default function Navbar({
+  initialUser = null,
+  initialSessionStatus = "loading",
+}: {
+  initialUser?: NavbarSessionUser | null;
+  initialSessionStatus?: "loading" | "ready" | "error";
+} = {}) {
   const { t, lang, setLang } = useLang();
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
-  const [user, setUser] = useState<{ name: string; role: string } | null>(null);
-  const [sessionStatus, setSessionStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [user, setUser] = useState<SessionUserSummary | NavbarSessionUser | null>(initialUser);
+  const [sessionStatus, setSessionStatus] = useState<"loading" | "ready" | "error">(initialSessionStatus);
   const [sessionCheckId, setSessionCheckId] = useState(0);
-  const [completedSessionCheck, setCompletedSessionCheck] = useState("");
-  const [lastPathname, setLastPathname] = useState(pathname);
   const sessionCheckKey = `${pathname ?? ""}:${sessionCheckId}`;
+  const [completedSessionCheck, setCompletedSessionCheck] = useState(
+    initialSessionStatus === "loading" ? "" : sessionCheckKey,
+  );
+  const [lastPathname, setLastPathname] = useState(pathname);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutFailed, setLogoutFailed] = useState(false);
+  const initialUserKey = initialUser
+    ? initialUser.id
+    : initialSessionStatus === "error"
+      ? "error"
+      : "guest";
+  const [lastInitialUserKey, setLastInitialUserKey] = useState(initialUserKey);
   const sessionCheckComplete = completedSessionCheck === sessionCheckKey;
   const sessionChecking = !sessionCheckComplete || sessionStatus === "loading";
   const sessionFailed = sessionCheckComplete && sessionStatus === "error";
+  const authReturnTo = pathname && pathname !== "/" ? safeReturnTo(pathname, DEFAULT_RETURN_TO) : DEFAULT_RETURN_TO;
+  const loginHref = buildAuthPath("/login", { returnTo: authReturnTo });
+  const signupHref = buildAuthPath("/signup", { returnTo: authReturnTo });
 
   const retrySessionCheck = () => {
     setSessionStatus("loading");
@@ -71,6 +93,18 @@ export default function Navbar() {
     setLastPathname(pathname);
     setOpen(false);
     setLangOpen(false);
+    setLogoutFailed(false);
+  }
+
+  // A router.refresh() after login/logout re-renders the server layout with
+  // fresh session props. Adopt that authoritative result immediately rather
+  // than briefly retaining the previous client-side auth actions.
+  if (lastInitialUserKey !== initialUserKey) {
+    setLastInitialUserKey(initialUserKey);
+    setUser(initialUser);
+    setSessionStatus(initialSessionStatus);
+    setCompletedSessionCheck(initialSessionStatus === "loading" ? "" : sessionCheckKey);
+    setLogoutFailed(false);
   }
 
   useEffect(() => {
@@ -116,15 +150,10 @@ export default function Navbar() {
   useEffect(() => {
     let alive = true;
     const checkKey = sessionCheckKey;
-    fetchJsonObject("/api/auth/me", { cache: "no-store" })
-      .then((data) => {
+    fetchSessionUser()
+      .then((nextUser) => {
         if (!alive) return;
-        if (!("user" in data)) throw new ApiResponseError(502, "service_unavailable");
-        const nextUser = data.user;
-        if (nextUser !== null && (typeof nextUser !== "object" || Array.isArray(nextUser))) {
-          throw new ApiResponseError(502, "service_unavailable");
-        }
-        setUser(nextUser as { name: string; role: string } | null);
+        setUser(nextUser);
         setSessionStatus("ready");
         setCompletedSessionCheck(checkKey);
       })
@@ -150,9 +179,23 @@ export default function Navbar() {
   ];
 
   const logout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    if (loggingOut) return;
+    setLoggingOut(true);
+    setLogoutFailed(false);
+    const loggedOut = await requestLogout();
+    if (!loggedOut) {
+      // Do not present the account as logged out when this browser may still
+      // hold a valid session cookie. Keep the authenticated actions visible
+      // and offer the same button as an immediate retry path.
+      setLogoutFailed(true);
+      setLoggingOut(false);
+      return;
+    }
     setUser(null);
     setSessionStatus("ready");
+    setCompletedSessionCheck(sessionCheckKey);
+    setOpen(false);
+    setLoggingOut(false);
     router.push("/");
     router.refresh();
   };
@@ -166,6 +209,11 @@ export default function Navbar() {
         {t("a11y.skipToContent")}
       </a>
     <header className="sticky top-0 z-50 border-b border-[#e9ddc3] bg-[#fffbf1]/95 backdrop-blur">
+      {logoutFailed && user && (
+        <div role="alert" className="border-b border-red-200 bg-red-50 px-4 py-2 text-center text-[13px] font-semibold text-red-800">
+          {t("session.logoutFailed")}
+        </div>
+      )}
       <div className="mx-auto flex h-[68px] max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
         <Logo />
         <nav aria-label={t("nav.primary")} className="hidden items-center gap-1 lg:flex">
@@ -268,10 +316,14 @@ export default function Navbar() {
                   {t("nav.account")}
                 </Link>
                 <button
-                  onClick={logout}
-                  className="rounded-full border border-[#e9ddc3] bg-white px-3 py-2 text-[13px] font-bold text-[#6f6862]"
+                  type="button"
+                  onClick={() => void logout()}
+                  disabled={loggingOut}
+                  aria-busy={loggingOut}
+                  title={logoutFailed ? t("session.logoutFailed") : undefined}
+                  className="rounded-full border border-[#e9ddc3] bg-white px-3 py-2 text-[13px] font-bold text-[#6f6862] disabled:opacity-60"
                 >
-                  {t("nav.logout")}
+                  {loggingOut ? t("session.loggingOut") : t("nav.logout")}
                 </button>
               </>
             ) : sessionChecking ? (
@@ -295,11 +347,11 @@ export default function Navbar() {
               </>
             ) : (
               <>
-                <Link href="/login" className="rounded-full px-3 py-2 text-[14px] font-bold text-[#44403c] hover:text-black">
+                <Link href={loginHref} className="rounded-full px-3 py-2 text-[14px] font-bold text-[#44403c] hover:text-black">
                   {t("nav.login")}
                 </Link>
                 <Link
-                  href="/signup"
+                  href={signupHref}
                   className="rounded-full bg-[#c7431f] px-4 py-2.5 text-[14px] font-bold text-white hover:bg-[#a93618]"
                 >
                   {t("nav.signup")}
@@ -359,8 +411,8 @@ export default function Navbar() {
                   >
                     {t("nav.dashboard")}
                   </Link>
-                  <button onClick={() => { logout(); setOpen(false); }} className="rounded-xl border border-[#e9ddc3] bg-white px-4 py-3 text-[15px] font-bold">
-                    {t("nav.logout")}
+                  <button type="button" onClick={() => void logout()} disabled={loggingOut} aria-busy={loggingOut} className="rounded-xl border border-[#e9ddc3] bg-white px-4 py-3 text-[15px] font-bold disabled:opacity-60">
+                    {loggingOut ? t("session.loggingOut") : t("nav.logout")}
                   </button>
                   <Link
                     href="/account"
@@ -388,14 +440,14 @@ export default function Navbar() {
               ) : (
                 <>
                   <Link
-                    href="/login"
+                    href={loginHref}
                     onClick={() => setOpen(false)}
                     className="rounded-xl border border-[#e9ddc3] bg-white px-4 py-3 text-center text-[15px] font-bold"
                   >
                     {t("nav.login")}
                   </Link>
                   <Link
-                    href="/signup"
+                    href={signupHref}
                     onClick={() => setOpen(false)}
                     className="rounded-xl bg-[#c7431f] px-4 py-3 text-center text-[15px] font-bold text-white"
                   >

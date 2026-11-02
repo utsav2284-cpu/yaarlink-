@@ -1,7 +1,8 @@
 import { buildAccountActionUrl, claimPasswordResetByEmail, markAccountTokenEmailSent } from "@/backend/account-tokens";
 import { emailDeliveryProblem, sendPasswordResetEmail } from "@/backend/email";
 import { getClientKey, hashKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
-import { normalizeEmail, readJsonObject } from "@/backend/validation";
+import { hasField, normalizeEmail, readJsonObject } from "@/backend/validation";
+import { safeReturnTo } from "@/shared/return-to";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,7 @@ export async function POST(req: Request) {
     const parsedBody = await readJsonObject(req, { headers: NO_STORE });
     if (!parsedBody.ok) return parsedBody.response;
     const email = normalizeEmail(parsedBody.body.email) ?? "";
+    const returnTo = hasField(parsedBody.body, "returnTo") ? safeReturnTo(parsedBody.body.returnTo, "") : "";
     if (!email) {
       return Response.json(
         { error: "Please enter a valid email.", code: "invalid_email" },
@@ -44,7 +46,7 @@ export async function POST(req: Request) {
         await sendPasswordResetEmail({
           to: claim.recipientEmail,
           name: claim.user.name,
-          resetUrl: buildAccountActionUrl(req, "password_reset", claim.token),
+          resetUrl: buildAccountActionUrl(req, "password_reset", claim.token, { returnTo }),
         });
         await markAccountTokenEmailSent(claim.tokenId, claim.tokenHash);
       } catch {

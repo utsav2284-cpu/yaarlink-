@@ -5,6 +5,7 @@ import { db } from "@/backend/db";
 import { userSessions, users } from "@/backend/db/schema";
 import { PASSWORD_MAX_LENGTH, passwordLength } from "@/backend/password-policy";
 import { getSigningSecret, signingSecretProblemForName } from "@/backend/secret-config";
+import { availableUserRoles, primaryUserRole, type UserRole } from "@/shared/user-roles";
 
 /*
  * Auth helpers built on Web Crypto for the Node.js runtime.
@@ -327,7 +328,11 @@ export type SessionUser = {
   name: string;
   email: string;
   phone: string | null;
-  role: string;
+  /** Preferred starting workspace, retained for API compatibility. */
+  role: UserRole;
+  primaryRole: UserRole;
+  /** Both workspaces are available to every account. */
+  availableRoles: UserRole[];
   emailVerifiedAt: Date | null;
   createdAt: Date;
 };
@@ -413,13 +418,17 @@ export async function getSessionContext(): Promise<SessionContext | null> {
     if (!touched.length) return null;
   }
 
+  const primaryRole = primaryUserRole(row.role);
+
   return {
     user: {
       id: row.id,
       name: row.name,
       email: row.email,
       phone: row.phone,
-      role: row.role,
+      role: primaryRole,
+      primaryRole,
+      availableRoles: availableUserRoles(),
       emailVerifiedAt: row.emailVerifiedAt,
       createdAt: row.createdAt,
     },

@@ -36,6 +36,7 @@ import {
   type PaginationMeta,
   type SortKey,
 } from "@/backend/pagination";
+import { USER_ROLES, type UserRole } from "@/shared/user-roles";
 
 export const dynamic = "force-dynamic";
 
@@ -370,7 +371,7 @@ async function loadCreatorCounts(userId: string) {
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(campaigns)
-      .where(and(eq(campaigns.status, "open"), eq(campaigns.verificationStatus, "verified"))),
+      .where(and(eq(campaigns.status, "open"), eq(campaigns.verificationStatus, "verified"), ne(campaigns.ownerId, userId))),
   ]);
   return {
     profiles: Number(profileRow?.count ?? 0),
@@ -804,7 +805,7 @@ async function loadCreatorApplications(userId: string, params: URLSearchParams) 
   };
 }
 
-async function loadOpenCampaigns(params: URLSearchParams) {
+async function loadOpenCampaigns(userId: string, params: URLSearchParams) {
   const listing = parseListingParams(params, {
     prefix: "open",
     defaultLimit: 6,
@@ -815,7 +816,7 @@ async function loadOpenCampaigns(params: URLSearchParams) {
   const category = parseNormalizedParam(params, "category", normalizeCategory, { prefix: "open" });
   const promotionType = parseNormalizedParam(params, "promotionType", normalizePromotionType, { prefix: "open", aliases: ["type"] });
   const format = parseNormalizedParam(params, "format", normalizeContentType, { prefix: "open", aliases: ["contentType"] });
-  const scope = scopeFrom({ listing: "dashboard-open-campaigns", q: listing.q, language, category, promotionType, format });
+  const scope = scopeFrom({ listing: "dashboard-open-campaigns", userId, q: listing.q, language, category, promotionType, format });
   const keys = openCampaignSortKeys(listing.sort);
   const cursorValues = decodeCursor(listing.cursor, { sort: listing.sort, scope, keys });
   const search = searchCondition(
@@ -833,6 +834,9 @@ async function loadOpenCampaigns(params: URLSearchParams) {
   const baseWhere = allConditions([
     eq(campaigns.status, "open"),
     eq(campaigns.verificationStatus, "verified"),
+    // A dual-purpose account cannot apply to its own campaign, so do not
+    // present those campaigns as creator opportunities in this workspace.
+    ne(campaigns.ownerId, userId),
     language ? eq(campaigns.language, language) : undefined,
     category ? eq(campaigns.category, category) : undefined,
     promotionType ? eq(campaigns.promotionType, promotionType) : undefined,
@@ -900,10 +904,14 @@ export async function GET(req: Request) {
     if (!user) return Response.json({ error: "Please log in", code: "unauthorized" }, { status: 401, headers: NO_STORE });
     const params = new URL(req.url).searchParams;
     const section = parseEnumParam(params, "section", DASHBOARD_SECTIONS);
+    // The stored role selects the default workspace only. Either explicit
+    // view is available to the same account; section loaders stay scoped to
+    // resources this user owns or submitted.
+    const activeView = (parseEnumParam(params, "view", USER_ROLES) as UserRole | null) ?? user.primaryRole;
     const includeNotifications = !section || section === "notifications";
     const notificationData = await loadNotifications(user.id, params, includeNotifications);
 
-    if (user.role === "brand") {
+    if (activeView === "brand") {
       if (section === "profiles" || section === "openCampaigns") {
         throw new ListingQueryError("invalid_filter", "Please choose a valid filter.");
       }
@@ -916,6 +924,7 @@ export async function GET(req: Request) {
         return Response.json(
           {
             user,
+            activeView,
             counts,
             notifications: notificationData.notifications,
             unreadNotificationCount: notificationData.unreadNotificationCount,
@@ -932,6 +941,7 @@ export async function GET(req: Request) {
         return Response.json(
           {
             user,
+            activeView,
             counts,
             applications: applicationPage.applications,
             applicationCountsByCampaign: applicationPage.applicationCountsByCampaign,
@@ -952,6 +962,7 @@ export async function GET(req: Request) {
       return Response.json(
         {
           user,
+          activeView,
           counts,
           campaigns: campaignPage.campaigns,
           applications: groupedApplications.applications,
@@ -983,6 +994,7 @@ export async function GET(req: Request) {
       .limit(1);
     const response: Record<string, unknown> = {
       user,
+      activeView,
       counts,
       applicationContactOptions: applicationContactOptions(user, contactProfile).map((option) => option.value),
       unreadNotificationCount: notificationData.unreadNotificationCount,
@@ -1001,7 +1013,7 @@ export async function GET(req: Request) {
       pagination.applications = applicationPage.pagination;
     }
     if (!section || section === "openCampaigns") {
-      const openPage = await loadOpenCampaigns(params);
+      const openPage = await loadOpenCampaigns(user.id, params);
       response.openCampaigns = openPage.openCampaigns;
       pagination.openCampaigns = openPage.pagination;
     }

@@ -1,5 +1,5 @@
 import { db } from "@/backend/db";
-import { campaigns, type Campaign } from "@/backend/db/schema";
+import { brands, campaigns, type Campaign } from "@/backend/db/schema";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { getSessionUser, isSessionUnavailableError, logSessionUnavailable, sessionUnavailableResponse, type SessionUser } from "@/backend/auth";
 import { createVerificationCode } from "@/backend/moderation";
@@ -273,10 +273,11 @@ const returningCampaign = {
   updatedAt: campaigns.updatedAt,
 };
 
-async function requireBrand() {
+async function requireCampaignManager() {
   const user = await getSessionUser();
-  if (!user) return { error: Response.json({ error: "Please log in as a brand to manage campaigns.", code: "unauthorized" }, { status: 401, headers: NO_STORE }) };
-  if (user.role !== "brand") return { error: Response.json({ error: "Only brand accounts can manage campaigns.", code: "forbidden" }, { status: 403, headers: NO_STORE }) };
+  if (!user) return { error: Response.json({ error: "Please log in to manage campaigns.", code: "unauthorized" }, { status: 401, headers: NO_STORE }) };
+  // `users.role` is only the preferred starting workspace. Every account may
+  // manage its own campaigns; PATCH/DELETE remain scoped by campaign owner.
   return { user };
 }
 
@@ -442,7 +443,7 @@ export async function POST(req: Request) {
     if (!parsedBody.ok) return parsedBody.response;
     const body = parsedBody.body;
 
-    const auth = await requireBrand();
+    const auth = await requireCampaignManager();
     if (auth.error) return auth.error;
 
     const submission = parseSubmissionId(req, body);
@@ -450,6 +451,21 @@ export async function POST(req: Request) {
 
     const parsed = parseCampaign(body, auth.user);
     if (!parsed.ok) return validationErrorResponse(parsed);
+
+    // Accounts that started in the creator workspace may not have the legacy
+    // one-to-one brand profile row yet. Create it idempotently the first
+    // time they post a campaign so exports/account data can represent both
+    // sides of the same account.
+    await db
+      .insert(brands)
+      .values({
+        userId: auth.user.id,
+        name: parsed.values.businessName,
+        email: parsed.values.email ?? auth.user.email,
+        phone: parsed.values.phone ?? auth.user.phone,
+        status: "active",
+      })
+      .onConflictDoNothing({ target: brands.userId });
 
     const submissionId = submission.value;
     const fingerprint = submissionId ? await submissionFingerprint(parsed.values) : null;
@@ -515,7 +531,7 @@ export async function PATCH(req: Request) {
     const id = parseUuid(body.id);
     if (!id) return Response.json({ error: "Invalid campaign", code: "invalid_target" }, { status: 400, headers: NO_STORE });
 
-    const auth = await requireBrand();
+    const auth = await requireCampaignManager();
     if (auth.error) return auth.error;
 
     const [existing] = await db
@@ -702,7 +718,7 @@ export async function DELETE(req: Request) {
     const id = parseUuid(parsedBody.body.id ?? queryId);
     if (!id) return Response.json({ error: "Invalid campaign", code: "invalid_target" }, { status: 400, headers: NO_STORE });
 
-    const auth = await requireBrand();
+    const auth = await requireCampaignManager();
     if (auth.error) return auth.error;
 
     const [row] = await db

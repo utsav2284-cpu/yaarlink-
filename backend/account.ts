@@ -13,6 +13,7 @@ import {
   userSessions,
   users,
 } from "@/backend/db/schema";
+import { availableUserRoles, primaryUserRole, type UserRole } from "@/shared/user-roles";
 
 export function describeUserAgent(userAgent: string | null | undefined) {
   const ua = userAgent ?? "";
@@ -93,6 +94,42 @@ export async function getPendingEmailChange(userId: string) {
     )
     .limit(1);
   return row?.email ? { email: row.email, expiresAt: row.expiresAt } : null;
+}
+
+export type PrimaryRoleChangeResult =
+  | { kind: "changed"; user: { id: string; name: string; email: string; role: string } }
+  | { kind: "invalid_session" };
+
+/**
+ * Change only the preferred starting workspace. Both workspaces remain
+ * available either way. Mirror signup's starter-row behavior so the newly
+ * preferred side has its one-to-one profile record when one is expected.
+ */
+export async function changeUserPrimaryRole(userId: string, role: UserRole): Promise<PrimaryRoleChangeResult> {
+  return db.transaction(async (tx) => {
+    const [user] = await tx.select().from(users).where(eq(users.id, userId)).limit(1).for("update");
+    if (!user) return { kind: "invalid_session" } as const;
+
+    const [updated] = await tx
+      .update(users)
+      .set({ role })
+      .where(eq(users.id, user.id))
+      .returning({ id: users.id, name: users.name, email: users.email, role: users.role });
+
+    if (role === "brand") {
+      await tx
+        .insert(brands)
+        .values({ userId: user.id, name: user.name, email: user.email, phone: user.phone, status: "active" })
+        .onConflictDoNothing({ target: brands.userId });
+    } else {
+      await tx
+        .insert(creators)
+        .values({ userId: user.id, name: user.name, email: user.email, phone: user.phone, status: "incomplete" })
+        .onConflictDoNothing({ target: creators.userId });
+    }
+
+    return { kind: "changed", user: updated } as const;
+  });
 }
 
 export async function verifyUserPassword(userId: string, password: string) {
@@ -265,10 +302,12 @@ export async function buildAccountExport(userId: string) {
     ? await db.select().from(applications).where(inArray(applications.campaignId, campaignIds)).orderBy(desc(applications.createdAt))
     : [];
 
+  const primaryRole = primaryUserRole(user.role);
+
   return {
     exportVersion: 1,
     exportedAt: new Date().toISOString(),
-    account: user,
+    account: { ...user, role: primaryRole, primaryRole, availableRoles: availableUserRoles() },
     pendingEmailChange,
     brandProfile: brandRows[0] ?? null,
     creatorProfile: creatorRows[0] ? omitFields(creatorRows[0] as unknown as Record<string, unknown>, ["verificationCode"]) : null,

@@ -20,9 +20,30 @@ import ContactLink from "@/frontend/components/ContactLink";
 import PrivacyNotice from "@/frontend/components/PrivacyNotice";
 import ReportButton from "@/frontend/components/ReportButton";
 import { SITE, instagramDmLink, whatsappWithText } from "@/config/site";
+import AuthJourneyNotice from "@/frontend/components/AuthJourneyNotice";
+import { useSessionUser } from "@/frontend/session";
+import { readFormDraft, removeFormDraft, writeFormDraft } from "@/frontend/form-drafts";
+import { safeReturnTo } from "@/shared/return-to";
 
 
 const CREATOR_PAGE_SIZE = 8;
+const BRAND_DRAFT_KEY = "yaarlink:brand-campaign-draft:v1";
+
+type BrandCampaignForm = {
+  businessName: string;
+  contactName: string;
+  email: string;
+  phone: string;
+  title: string;
+  promotionType: string;
+  category: string;
+  website: string;
+  targetAudience: string;
+  location: string;
+  language: string;
+  format: string;
+  description: string;
+};
 
 function creatorListUrl({
   q,
@@ -48,6 +69,9 @@ function creatorListUrl({
 function BrandInner() {
   const params = useSearchParams();
   const { t, opt, promo, apiErrorKey, formatNumber, formatCurrency } = useLang();
+  const session = useSessionUser();
+  const query = params.toString();
+  const brandReturnTo = safeReturnTo(`/brands${query ? `?${query}` : ""}`, "/brands");
   const preset = normalizePromotionType(params.get("type")) ?? "";
   const [creators, setCreators] = useState<any[]>([]);
   const [creatorsStatus, setCreatorsStatus] = useState<"loading" | "success" | "error">("loading");
@@ -59,7 +83,8 @@ function BrandInner() {
   const [creatorPagination, setCreatorPagination] = useState<ListPagination | null>(null);
   const [loadingMoreCreators, setLoadingMoreCreators] = useState(false);
   const creatorRequestRef = useRef(0);
-  const [form, setForm] = useState({
+  const presetRef = useRef(preset);
+  const [form, setForm] = useState<BrandCampaignForm>({
     businessName: "",
     contactName: "",
     email: "",
@@ -78,6 +103,9 @@ function BrandInner() {
   const [verificationCode, setVerificationCode] = useState("");
   const [saving, setSaving] = useState(false);
   const [errKey, setErrKey] = useState("");
+  const [authRequired, setAuthRequired] = useState(false);
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
 
   useEffect(() => {
     if (preset) setForm((f) => ({ ...f, promotionType: preset }));
@@ -138,6 +166,65 @@ function BrandInner() {
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   const [budgetAmount, setBudgetAmount] = useState("8000");
+
+  useEffect(() => {
+    let active = true;
+    void Promise.resolve().then(() => {
+      if (!active) return;
+      try {
+        const draft = readFormDraft(BRAND_DRAFT_KEY) as { form?: unknown; budgetAmount?: unknown } | null;
+        if (!draft) return;
+      let restored = false;
+      if (draft.form && typeof draft.form === "object" && !Array.isArray(draft.form)) {
+        const draftForm = draft.form as Record<string, unknown>;
+        const meaningfulFields: Array<keyof BrandCampaignForm> = [
+          "businessName",
+          "contactName",
+          "email",
+          "phone",
+          "title",
+          "website",
+          "targetAudience",
+          "description",
+        ];
+        restored = meaningfulFields.some((field) => {
+          const value = draftForm[field];
+          return typeof value === "string" && value.trim() !== "" && value.length <= 5000;
+        });
+        setForm((current) => {
+          const next = { ...current };
+          for (const field of Object.keys(current) as Array<keyof typeof current>) {
+            const value = draftForm[field];
+            if (typeof value === "string" && value.length <= 5000) next[field] = value;
+          }
+          // An explicit ?type= preset is the newest user intent and should
+          // win over a promotion type captured in an earlier same-browser draft.
+          if (presetRef.current) next.promotionType = presetRef.current;
+          return next;
+        });
+      }
+      if (typeof draft.budgetAmount === "string" && draft.budgetAmount.length <= 32) {
+        setBudgetAmount(draft.budgetAmount);
+        if (draft.budgetAmount !== "8000") restored = true;
+      }
+      if (restored) setDraftRestored(true);
+      } catch {
+        // Draft storage is best-effort; private-mode/quota failures must not
+        // block the normal campaign form.
+      } finally {
+        if (active) setDraftReady(true);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!draftReady || done) return;
+    writeFormDraft(BRAND_DRAFT_KEY, { form, budgetAmount });
+  }, [budgetAmount, done, draftReady, form]);
+
   const budgetText = budgetAmount.trim();
   const budgetDigits = budgetText.replace(/,/g, "");
   const budgetNum =
@@ -156,6 +243,21 @@ function BrandInner() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrKey("");
+    if (session.status === "loading") {
+      setErrKey("session.checking");
+      return;
+    }
+    if (session.status === "error") {
+      setErrKey("session.unavailable");
+      return;
+    }
+    if (!session.user) {
+      setAuthRequired(true);
+      setErrKey("api.unauthorized");
+      document.getElementById("brand-auth-notice")?.scrollIntoView({ block: "center", behavior: "smooth" });
+      return;
+    }
+    setAuthRequired(false);
     if (!form.businessName.trim() || !form.title.trim()) {
       setErrKey("brand.errMissing");
       return;
@@ -179,10 +281,16 @@ function BrandInner() {
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) {
+        if (res.status === 401) {
+          session.markLoggedOut();
+          setAuthRequired(true);
+        }
         setErrKey(apiErrorKey(res.status, d?.code));
         return;
       }
+      removeFormDraft(BRAND_DRAFT_KEY);
       campaignSubmissionRef.current = null;
+      setDraftRestored(false);
       setVerificationCode(d.campaign?.verificationCode ?? "");
       setDone(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -213,7 +321,7 @@ function BrandInner() {
             </div>
           )}
           <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
-            <Link href="/dashboard" className="rounded-2xl bg-[#1c1917] px-6 py-3.5 text-[15px] font-bold text-white">{t("brand.dashboard")}</Link>
+            <Link href="/dashboard?view=brand" className="rounded-2xl bg-[#1c1917] px-6 py-3.5 text-[15px] font-bold text-white">{t("brand.dashboard")}</Link>
             <Link href="/campaigns" className="rounded-2xl border border-[#e9ddc3] bg-[#fffbf1] px-6 py-3.5 text-[15px] font-bold">{t("brand.viewAll")}</Link>
           </div>
           <button onClick={() => { setDone(false); setVerificationCode(""); setForm((f) => ({ ...f, title: "", description: "" })); }} className="mt-4 text-[13.5px] font-bold text-[#c7431f]">+ {t("brand.another")}</button>
@@ -247,6 +355,23 @@ function BrandInner() {
           <form onSubmit={submit} className="rounded-[24px] border border-[#e9ddc3] bg-white p-6 sm:p-8 card-shadow">
             <h2 className="font-display text-[24px] font-black">{t("brand.formTitle")}</h2>
             <p className="text-[14px] text-[#6f6862]">{t("brand.formSub")}</p>
+            <div className="mt-4">
+              <AuthJourneyNotice
+                id="brand-auth-notice"
+                status={session.status}
+                user={session.user}
+                messageKey="authFlow.brandLoginRequired"
+                returnTo={brandReturnTo}
+                role="brand"
+                onRetry={session.refresh}
+                forceGuest={authRequired}
+              />
+            </div>
+            {draftRestored && (
+              <p role="status" className="mt-3 rounded-xl border border-[#bfe3c5] bg-[#f2fbf3] px-4 py-3 text-[13px] font-bold text-[#17452e]">
+                {t("authFlow.draftRestored")}
+              </p>
+            )}
 
             <div className="mt-6 grid gap-4">
               <div className="grid gap-4 sm:grid-cols-2">

@@ -1,11 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { useLang } from "@/frontend/i18n";
+import { buildAuthPath, safeReturnTo } from "@/shared/return-to";
 
-export default function ForgotPasswordPage() {
+function ForgotPasswordContent() {
   const { t } = useLang();
+  const searchParams = useSearchParams();
+  const returnTo = safeReturnTo(searchParams.get("returnTo"));
   const [email, setEmail] = useState("");
   const [submittedEmail, setSubmittedEmail] = useState("");
   const [sent, setSent] = useState(false);
@@ -33,7 +37,7 @@ export default function ForgotPasswordPage() {
       const res = await fetch("/api/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, returnTo }),
       });
       const data = (await res.json().catch(() => null)) as { code?: string; status?: string } | null;
       if (!res.ok || data?.status !== "reset_email_requested") {
@@ -103,9 +107,18 @@ export default function ForgotPasswordPage() {
         )}
 
         <p className="mt-5 text-center text-[14px]">
-          <Link href="/login" className="font-bold text-[#c7431f]">{t("auth.backToLogin")}</Link>
+          <Link href={buildAuthPath("/login", { returnTo })} className="font-bold text-[#c7431f]">{t("auth.backToLogin")}</Link>
         </p>
       </div>
     </div>
+  );
+}
+
+export default function ForgotPasswordPage() {
+  const { t } = useLang();
+  return (
+    <Suspense fallback={<div role="status" className="p-10 text-center">{t("common.loading")}</div>}>
+      <ForgotPasswordContent />
+    </Suspense>
   );
 }

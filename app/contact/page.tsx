@@ -6,6 +6,7 @@ import Link from "next/link";
 import ContactLink from "@/frontend/components/ContactLink";
 import PrivacyNotice from "@/frontend/components/PrivacyNotice";
 import { useEffect, useState } from "react";
+import { readFormDraft, removeFormDraft, writeFormDraft } from "@/frontend/form-drafts";
 import {
   SITE,
   callLink,
@@ -18,6 +19,8 @@ import {
 } from "@/config/site";
 
 type Kind = "brand" | "creator" | "other";
+
+const CONTACT_DRAFT_KEY = "yaarlink:contact-draft:v1";
 
 const KIND_INFO: Record<Kind, { emoji: string }> = {
   brand: { emoji: "🏪" },
@@ -52,6 +55,8 @@ export default function ContactPage() {
   const [errKey, setErrKey] = useState("");
   const { t, apiErrorKey, formatNumber } = useLang();
   const [copied, setCopied] = useState<string | null>(null);
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
   const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const info = {
     wa: t(kind === "brand" ? "cont.brandWa" : kind === "creator" ? "cont.creatorWa" : "cont.otherWa"),
@@ -68,6 +73,53 @@ export default function ContactPage() {
       setInFrame(true);
     }
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    void Promise.resolve().then(() => {
+      if (!active) return;
+      try {
+        const draft = readFormDraft(CONTACT_DRAFT_KEY) as { kind?: unknown; form?: unknown } | null;
+        if (!draft) return;
+      let restored = false;
+      if (draft.kind === "brand" || draft.kind === "creator" || draft.kind === "other") {
+        setKind(draft.kind);
+        if (draft.kind !== "brand") restored = true;
+      }
+      if (draft.form && typeof draft.form === "object" && !Array.isArray(draft.form)) {
+        const draftForm = draft.form as Record<string, unknown>;
+        restored =
+          restored ||
+          (["name", "email", "phone", "message"] as const).some(
+            (field) => typeof draftForm[field] === "string" && draftForm[field].trim() !== "",
+          );
+        setForm((current) => {
+          const next = { ...current };
+          for (const field of Object.keys(current) as Array<keyof typeof current>) {
+            const value = draftForm[field];
+            if (typeof value === "string" && value.length <= 5000) {
+              next[field] = value;
+            }
+          }
+          return next;
+        });
+      }
+      if (restored) setDraftRestored(true);
+      } catch {
+        // Contact remains fully usable without draft storage.
+      } finally {
+        if (active) setDraftReady(true);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!draftReady || done) return;
+    writeFormDraft(CONTACT_DRAFT_KEY, { kind, form });
+  }, [done, draftReady, form, kind]);
 
   const copy = async (label: string, value: string) => {
     let ok = false;
@@ -121,6 +173,8 @@ export default function ContactPage() {
         setErrKey(apiErrorKey(res.status, data?.code, "cont.errSend"));
         return;
       }
+      removeFormDraft(CONTACT_DRAFT_KEY);
+      setDraftRestored(false);
       setDone(true);
     } catch {
       setErrKey("cont.errSend");
@@ -283,6 +337,11 @@ export default function ContactPage() {
             <form onSubmit={submit} className="rounded-[24px] border border-[#e9ddc3] bg-white p-6 sm:p-8 card-shadow">
               <h2 className="font-display text-[26px] font-black">{t("cont.formTitle")}</h2>
               <p className="text-[14px] text-[#6f6862]">{t("cont.formSub")}</p>
+              {draftRestored && (
+                <p role="status" className="mt-3 rounded-xl border border-[#bfe3c5] bg-[#f2fbf3] px-4 py-3 text-[13px] font-bold text-[#17452e]">
+                  {t("authFlow.draftRestored")}
+                </p>
+              )}
               <div className="mt-5 grid gap-3">
                 <div className="hidden" aria-hidden="true">
                   <input name="website_url" value={websiteUrl} onChange={(e) => setWebsiteUrl(e.target.value)} tabIndex={-1} autoComplete="off" />
