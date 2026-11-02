@@ -133,7 +133,10 @@ function parseCreatorProfile(body: Record<string, unknown>, user: SessionUser, c
 
   let platform: string;
   if (completedCurrent && !supplied("platform")) {
-    platform = completedCurrent.platform;
+    // A completed legacy row can still carry a display label/key such as
+    // `cr.both`. Heal known aliases on the next write instead of copying the
+    // raw stored value forward again.
+    platform = normalizePlatform(completedCurrent.platform) ?? completedCurrent.platform;
   } else {
     const normalized = normalizePlatform(body.platform);
     if (!normalized) return { ok: false, error: "Please choose a valid platform.", code: "invalid_platform", field: "platform" };
@@ -142,7 +145,9 @@ function parseCreatorProfile(body: Record<string, unknown>, user: SessionUser, c
 
   let category: string | null;
   if (completedCurrent && !supplied("category")) {
-    category = completedCurrent.category;
+    category = completedCurrent.category
+      ? normalizeCategory(completedCurrent.category) ?? completedCurrent.category
+      : null;
   } else {
     const normalized = normalizeCategory(body.category);
     if (!normalized) return { ok: false, error: "Please choose a valid category.", code: "invalid_category", field: "category" };
@@ -151,7 +156,8 @@ function parseCreatorProfile(body: Record<string, unknown>, user: SessionUser, c
 
   let languages: string;
   if (completedCurrent && !supplied("languages")) {
-    languages = completedCurrent.languages;
+    const normalizedLanguages = normalizeLanguageList(completedCurrent.languages, true);
+    languages = normalizedLanguages?.length ? normalizedLanguages.join(", ") : completedCurrent.languages;
   } else {
     const parsedLanguages = parseCanonicalList(body.languages, normalizeLanguage, {
       field: "languages",
@@ -166,7 +172,8 @@ function parseCreatorProfile(body: Record<string, unknown>, user: SessionUser, c
 
   let contentTypes: string;
   if (completedCurrent && !supplied("contentTypes")) {
-    contentTypes = completedCurrent.contentTypes;
+    const normalizedContentTypes = normalizeContentTypeList(completedCurrent.contentTypes, true);
+    contentTypes = normalizedContentTypes?.length ? normalizedContentTypes.join(", ") : completedCurrent.contentTypes;
   } else {
     const parsedContentTypes = parseCanonicalList(body.contentTypes, normalizeContentType, {
       field: "contentTypes",

@@ -1,5 +1,11 @@
 import { isCompletedCreatorProfile } from "@/backend/application-contact";
 import type { Creator } from "@/backend/db/schema";
+import {
+  normalizeCategory,
+  normalizeContentTypeList,
+  normalizeLanguageList,
+  normalizePlatform,
+} from "@/shared/constants";
 
 export type CreatorProfileSnapshot = {
   version: 1;
@@ -43,6 +49,22 @@ type SnapshotCreator = Pick<
   | "listedAt"
 >;
 
+function canonicalSnapshotPlatform(value: string): string {
+  return normalizePlatform(value) ?? value;
+}
+
+function canonicalSnapshotCategory(value: string | null): string | null {
+  return value ? normalizeCategory(value) ?? value : null;
+}
+
+function canonicalSnapshotList(
+  value: string,
+  normalizeList: (input: unknown, keepUnknown?: boolean) => string[] | null,
+): string {
+  const normalized = normalizeList(value, true);
+  return normalized?.length ? normalized.join(", ") : value;
+}
+
 /**
  * Capture only the profile facts a brand/admin needs to understand the
  * application as submitted. The live profile remains available through the
@@ -54,11 +76,13 @@ export function buildCreatorProfileSnapshot(profile: SnapshotCreator, capturedAt
     version: 1,
     creatorId: profile.id,
     name: profile.name,
-    platform: profile.platform,
-    category: profile.category,
-    languages: profile.languages,
+    // Snapshots are stored data too: repair known legacy display values
+    // (for example `cr.both`) instead of copying them into a new application.
+    platform: canonicalSnapshotPlatform(profile.platform),
+    category: canonicalSnapshotCategory(profile.category),
+    languages: canonicalSnapshotList(profile.languages, normalizeLanguageList),
     location: profile.location,
-    contentTypes: profile.contentTypes,
+    contentTypes: canonicalSnapshotList(profile.contentTypes, normalizeContentTypeList),
     bio: profile.bio,
     followers: profile.followers,
     verifiedFollowers: profile.verifiedFollowers,
@@ -115,11 +139,11 @@ export function parseCreatorProfileSnapshot(value: unknown): CreatorProfileSnaps
     version: 1,
     creatorId: row.creatorId.slice(0, 80),
     name,
-    platform,
-    category: optionalString(row.category, 80),
-    languages,
+    platform: canonicalSnapshotPlatform(platform),
+    category: canonicalSnapshotCategory(optionalString(row.category, 80)),
+    languages: canonicalSnapshotList(languages, normalizeLanguageList),
     location: optionalString(row.location, 160),
-    contentTypes,
+    contentTypes: canonicalSnapshotList(contentTypes, normalizeContentTypeList),
     bio: optionalString(row.bio, 5_000),
     followers,
     verifiedFollowers,
