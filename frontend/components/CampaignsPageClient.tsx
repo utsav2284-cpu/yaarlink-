@@ -10,6 +10,7 @@ import { LANGUAGES } from "@/shared/constants";
 import PrivacyNotice from "@/frontend/components/PrivacyNotice";
 import ReportButton from "@/frontend/components/ReportButton";
 import { buildAuthPath, buildPathWithReturnTo } from "@/shared/return-to";
+import { sanitizeAmountInput } from "@/shared/numeric-input";
 import { readFormDraft, removeFormDraft, writeFormDraft } from "@/frontend/form-drafts";
 import { useSession } from "@/frontend/session-context";
 
@@ -789,7 +790,7 @@ export default function CampaignsPageClient({ initialData }: { initialData: Camp
                       <div className="grid gap-2 sm:grid-cols-2">
                         <label className="grid gap-1" htmlFor={`application-quote-${c.id}`}>
                           <span className="text-[12.5px] font-bold text-[#57534e]">{t("camp.quote")}</span>
-                          <input id={`application-quote-${c.id}`} name="quoteAmount" autoComplete="off" inputMode="numeric" aria-describedby={`application-quote-help-${c.id}`} value={applyForm.quoteAmount} onChange={(e) => setApplyForm({ ...applyForm, quoteAmount: e.target.value })} maxLength={16} placeholder={t("camp.quotePlaceholder")} className="rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-2.5 text-[14px] outline-none" />
+                          <input id={`application-quote-${c.id}`} name="quoteAmount" autoComplete="off" inputMode="numeric" aria-describedby={`application-quote-help-${c.id}`} value={applyForm.quoteAmount} onChange={(e) => setApplyForm({ ...applyForm, quoteAmount: sanitizeAmountInput(e.target.value) })} maxLength={16} placeholder={t("camp.quotePlaceholder")} className="rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-2.5 text-[14px] outline-none" />
                         </label>
                         <label className="grid gap-1" htmlFor={`application-timeline-days-${c.id}`}>
                           <span className="text-[12.5px] font-bold text-[#57534e]">{t("camp.timelineDays")}</span>

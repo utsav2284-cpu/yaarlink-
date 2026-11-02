@@ -15,6 +15,7 @@ import { useSession } from "@/frontend/session-context";
 import { readFormDraft, removeFormDraft, writeFormDraft } from "@/frontend/form-drafts";
 import { buildPathWithReturnTo, safeReturnTo } from "@/shared/return-to";
 import { sanitizePhoneInput } from "@/shared/phone-input";
+import { sanitizeAmountInput } from "@/shared/numeric-input";
 
 // v2 ignores v1 drafts captured while platform/category were pre-selected.
 const CREATOR_DRAFT_KEY = "yaarlink:creator-profile-draft:v2";
@@ -433,7 +434,7 @@ export default function CreatorsPageClient({ initialCampaigns }: { initialCampai
                   <div>
                     <label className="grid gap-1.5" htmlFor="creator-followers">
                       <span className="text-[13.5px] font-bold">{t("cr.followers")}<RequiredMark /></span>
-                      <input id="creator-followers" name="followers" autoComplete="off" required aria-describedby="creator-followers-hint" value={form.followers} onChange={(e) => set("followers", e.target.value)} placeholder={t("cr.phFollowers")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                      <input id="creator-followers" name="followers" autoComplete="off" inputMode="numeric" required aria-describedby="creator-followers-hint" value={form.followers} onChange={(e) => set("followers", sanitizeAmountInput(e.target.value))} placeholder={t("cr.phFollowers")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
                     </label>
                     <p id="creator-followers-hint" className="mt-1.5 text-[12.5px] font-semibold text-[#6f6862]">{t("cr.followersHint")}</p>
                   </div>

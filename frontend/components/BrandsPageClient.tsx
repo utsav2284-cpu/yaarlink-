@@ -29,6 +29,7 @@ import { useSession } from "@/frontend/session-context";
 import { readFormDraft, removeFormDraft, writeFormDraft } from "@/frontend/form-drafts";
 import { safeReturnTo } from "@/shared/return-to";
 import { sanitizePhoneInput } from "@/shared/phone-input";
+import { sanitizeAmountInput } from "@/shared/numeric-input";
 
 
 const CREATOR_PAGE_SIZE = 8;
@@ -229,7 +230,7 @@ function BrandInner({ initialCreators }: { initialCreators: BrandsInitialCreator
         });
       }
       if (typeof draft.budgetAmount === "string" && draft.budgetAmount.length <= 32) {
-        setBudgetAmount(draft.budgetAmount);
+        setBudgetAmount(sanitizeAmountInput(draft.budgetAmount));
         if (draft.budgetAmount.trim() !== "") restored = true;
       }
       if (restored) setDraftRestored(true);
@@ -468,8 +469,13 @@ function BrandInner({ initialCreators }: { initialCreators: BrandsInitialCreator
                   <label htmlFor="budget" className="text-[13.5px] font-bold">{t("brand.budget")}<RequiredMark /></label>
                   <span id="brand-budget-private" className="text-[12px] font-semibold text-[#6f6862]">{t("brand.budgetPrivate")}</span>
                 </div>
-                <div className="mt-2 flex items-center rounded-xl border border-[#e9ddc3] bg-white focus-within:border-[#1c1917]">
-                  <span className="pl-4 text-[20px] font-extrabold text-[#6f6862]">₹</span>
+                {/* The input itself carries the border (like every other field)
+                    and the ₹ sits inside its left padding. A borderless input
+                    inside a bordered wrapper made the global :focus-visible
+                    ring draw around the inner input only, overlapping/clipping
+                    the ₹ and doubling the border. */}
+                <div className="relative mt-2">
+                  <span aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[20px] font-extrabold text-[#6f6862]">₹</span>
                   <input
                     id="budget"
                     name="budget"
@@ -479,9 +485,9 @@ function BrandInner({ initialCreators }: { initialCreators: BrandsInitialCreator
                     aria-invalid={budgetAmount.trim() ? !budgetInRange : undefined}
                     inputMode="numeric"
                     value={budgetAmount}
-                    onChange={(e) => setBudgetAmount(e.target.value)}
+                    onChange={(e) => setBudgetAmount(sanitizeAmountInput(e.target.value))}
                     placeholder={t("brand.budgetPlaceholder")}
-                    className="w-full rounded-xl bg-transparent px-2 py-3 text-[20px] font-extrabold outline-none"
+                    className="w-full rounded-xl border border-[#e9ddc3] bg-white py-3 pl-10 pr-3 text-[20px] font-extrabold outline-none focus:border-[#1c1917]"
                   />
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
