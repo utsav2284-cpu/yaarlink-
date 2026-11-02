@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { useLang } from "@/frontend/i18n";
+import { useLang, type TranslationKey } from "@/frontend/i18n";
 import { ApiResponseError, fetchJsonList } from "@/frontend/api-json";
 import { ListingError, ListingLoading } from "@/frontend/components/ListingState";
 import { PROMOTION_TYPES } from "@/shared/constants";
@@ -36,10 +36,10 @@ export default function HomePage() {
   const { t, opt, promo, promoDetail, apiErrorKey, formatNumber, formatCompactNumber } = useLang();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [campaignsStatus, setCampaignsStatus] = useState<"loading" | "success" | "error">("loading");
-  const [campaignsErrorKey, setCampaignsErrorKey] = useState("listing.loadFailed");
+  const [campaignsErrorKey, setCampaignsErrorKey] = useState<TranslationKey>("listing.loadFailed");
   const [creators, setCreators] = useState<Creator[]>([]);
   const [creatorsStatus, setCreatorsStatus] = useState<"loading" | "success" | "error">("loading");
-  const [creatorsErrorKey, setCreatorsErrorKey] = useState("listing.loadFailed");
+  const [creatorsErrorKey, setCreatorsErrorKey] = useState<TranslationKey>("listing.loadFailed");
 
   const requestCampaigns = useCallback(
     () => fetchJsonList<Campaign>("/api/campaigns?limit=3&sort=newest", "campaigns", { cache: "no-store" }),

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useLang } from "@/frontend/i18n";
+import { useLang, type TranslationKey } from "@/frontend/i18n";
 import { ListingPagination } from "@/frontend/components/ListingState";
 import { appendUniqueById, isListPagination, type ListPagination } from "@/frontend/api-json";
 import {
@@ -40,6 +40,42 @@ const DEFAULT_ADMIN_SORT: Record<Tab, string> = {
   contacts: "newest",
   audit: "newest",
 };
+const AUDIT_ACTION_KEYS: Readonly<Record<string, TranslationKey>> = {
+  approve: "admin.auditAction.approve",
+  review: "admin.auditAction.review",
+  reject: "admin.auditAction.reject",
+  suspend: "admin.auditAction.suspend",
+  close: "admin.auditAction.close",
+  delete: "admin.auditAction.delete",
+  resolve: "admin.auditAction.resolve",
+  dismiss: "admin.auditAction.dismiss",
+  reopen: "admin.auditAction.reopen",
+};
+
+const AUDIT_DETAIL_KEYS: Readonly<Record<string, TranslationKey>> = {
+  fromStatus: "admin.auditDetail.fromStatus",
+  toStatus: "admin.auditDetail.toStatus",
+  verifiedFollowers: "admin.auditDetail.verifiedFollowers",
+  notePresent: "admin.auditDetail.notePresent",
+  codeIssued: "admin.auditDetail.codeIssued",
+  campaignId: "admin.auditDetail.campaignId",
+  targetType: "admin.auditDetail.targetType",
+  targetId: "admin.auditDetail.targetId",
+  reason: "admin.auditDetail.reason",
+  mfaConfigured: "admin.auditDetail.mfaConfigured",
+  mfaUsed: "admin.auditDetail.mfaUsed",
+  priorFailures: "admin.auditDetail.priorFailures",
+  sessionVersion: "admin.auditDetail.sessionVersion",
+  revokedAllSessions: "admin.auditDetail.revokedAllSessions",
+};
+
+const AUDIT_REASON_KEYS: Readonly<Record<string, TranslationKey>> = {
+  missing_password: "admin.auditReason.missing_password",
+  wrong_password: "admin.auditReason.wrong_password",
+  invalid_totp: "admin.auditReason.invalid_totp",
+  server_error: "admin.auditReason.server_error",
+};
+
 const emptyAdminCounts = (): AdminCounts => ({
   campaigns: 0,
   creators: 0,
@@ -92,13 +128,11 @@ function statusClass(status?: string | null, isReport = false) {
 }
 
 function StatusPill({ status, isReport = false }: { status?: string | null; isReport?: boolean }) {
-  const { t } = useLang();
+  const { status: localizeStatus } = useLang();
   if (!status) return <span className="text-stone-600">—</span>;
-  const key = `status.${status}`;
-  const label = t(key);
   return (
     <span className={`inline-flex rounded-full px-2.5 py-1 text-[11.5px] font-bold ${statusClass(status, isReport)}`}>
-      {label === key ? status : label}
+      {localizeStatus(status)}
     </span>
   );
 }
@@ -173,7 +207,20 @@ function ProfileLinks({
 }
 
 export default function AdminPage() {
-  const { t, opt, promo, platform, apiErrorKey, formatNumber, formatCurrency, formatDateTime } = useLang();
+  const {
+    t,
+    opt,
+    promo,
+    platform,
+    status: localizeStatus,
+    reportReason: localizeReportReason,
+    entity: localizeEntity,
+    contactKind: localizeContactKind,
+    apiErrorKey,
+    formatNumber,
+    formatCurrency,
+    formatDateTime,
+  } = useLang();
   const [listState, setListState] = useState<Record<Tab, AdminListState>>(emptyAdminListState);
   const [counts, setCounts] = useState<AdminCounts>(emptyAdminCounts);
   const [tab, setTab] = useState<Tab>("campaigns");
@@ -182,8 +229,8 @@ export default function AdminPage() {
   const [key, setKey] = useState("");
   const [totp, setTotp] = useState("");
   const [authed, setAuthed] = useState(false);
-  const [errKey, setErrKey] = useState("");
-  const [noticeKey, setNoticeKey] = useState("");
+  const [errKey, setErrKey] = useState<TranslationKey | "">("");
+  const [noticeKey, setNoticeKey] = useState<TranslationKey | "">("");
   const [loading, setLoading] = useState(false);
   const [busyKey, setBusyKey] = useState("");
   const [verifiedFollowers, setVerifiedFollowers] = useState<Record<string, string>>({});
@@ -455,65 +502,31 @@ export default function AdminPage() {
   const activeHasFilters = Boolean(activeList.q || activeList.filter || activeList.verificationStatus || activeList.sort !== DEFAULT_ADMIN_SORT[tab]);
 
   const formatDate = formatDateTime;
-  const statusLabel = (status?: string | null) => {
-    if (!status) return "—";
-    const key = `status.${status}`;
-    const label = t(key);
-    return label === key ? status : label;
-  };
-  const entityLabel = (entity?: string | null) => {
-    switch (entity) {
-      case "campaign":
-        return t("admin.targetCampaign");
-      case "creator":
-        return t("admin.targetCreator");
-      case "report":
-        return t("admin.entityReport");
-      case "application":
-        return t("admin.entityApplication");
-      case "contact":
-        return t("admin.entityContact");
-      default:
-        return entity || t("admin.adminEntity");
-    }
-  };
-  const contactKindLabel = (kind?: string | null) => {
-    switch (kind) {
-      case "brand":
-        return t("cont.kindBrand");
-      case "creator":
-        return t("cont.kindCreator");
-      case "other":
-        return t("cont.kindOther");
-      default:
-        return kind || "—";
-    }
-  };
-  const reportReasonLabel = (reason?: string | null) => {
-    if (!reason) return "—";
-    const key = `report.${reason}`;
-    const label = t(key);
-    return label === key ? reason : label;
-  };
+  const statusLabel = (status?: string | null) => (status ? localizeStatus(status) : "—");
+  const entityLabel = (entity?: string | null) =>
+    entity ? localizeEntity(entity) : t("admin.adminEntity");
+  const contactKindLabel = (kind?: string | null) => (kind ? localizeContactKind(kind) : "—");
+  const reportReasonLabel = (reason?: string | null) =>
+    reason ? localizeReportReason(reason) : "—";
   const auditActionLabel = (action?: string | null) => {
     if (!action) return "—";
     if (action === "admin.login") return t("admin.auditLogin");
     if (action === "admin.logout") return t("admin.auditLogout");
     const match = /^moderation\.([^.]+)\.([^.]+)$/.exec(action);
-    if (!match) return action;
-    const actionKey = `admin.auditAction.${match[2]}`;
-    const actionLabel = t(actionKey);
-    return t("admin.auditModeration")
-      .replace("{action}", actionLabel === actionKey ? match[2] : actionLabel)
-      .replace("{entity}", entityLabel(match[1]));
+    if (!match) return t("admin.auditAction.unknown");
+    const actionKey = AUDIT_ACTION_KEYS[match[2]];
+    return t("admin.auditModeration", {
+      action: actionKey ? t(actionKey) : t("admin.auditAction.unknown"),
+      entity: entityLabel(match[1]),
+    });
   };
   const auditDetailEntries = (details?: string | null): Array<[string, string]> => {
     if (!details) return [];
     try {
       const parsed = JSON.parse(details) as Record<string, unknown>;
       return Object.entries(parsed).map(([detailKey, rawValue]) => {
-        const labelKey = `admin.auditDetail.${detailKey}`;
-        const label = t(labelKey);
+        const labelKey = AUDIT_DETAIL_KEYS[detailKey];
+        const label = labelKey ? t(labelKey) : t("admin.details");
         let value: string;
         if (rawValue === null || rawValue === undefined || rawValue === "") value = "—";
         else if (typeof rawValue === "boolean") value = rawValue ? t("admin.yes") : t("admin.no");
@@ -523,11 +536,10 @@ export default function AdminPage() {
           value = ["brand", "creator", "other"].includes(text) ? contactKindLabel(text) : statusLabel(text);
         } else if (detailKey === "targetType") value = entityLabel(String(rawValue));
         else if (detailKey === "reason") {
-          const reasonKey = `admin.auditReason.${String(rawValue)}`;
-          const reasonLabel = t(reasonKey);
-          value = reasonLabel === reasonKey ? String(rawValue) : reasonLabel;
+          const reasonKey = AUDIT_REASON_KEYS[String(rawValue)];
+          value = reasonKey ? t(reasonKey) : t("common.unknown");
         } else value = String(rawValue);
-        return [label === labelKey ? detailKey : label, value] as [string, string];
+        return [label, value] as [string, string];
       });
     } catch {
       return [[t("admin.details"), details]];

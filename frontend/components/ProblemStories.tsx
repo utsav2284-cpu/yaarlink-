@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useLang } from "@/frontend/i18n";
+import { useLang, type TranslationKey } from "@/frontend/i18n";
 import Reveal from "@/frontend/components/Reveal";
 
 /**
@@ -60,10 +60,10 @@ const BoardIcon = (
 
 type Story = {
   num: string;
-  cat: string;
-  title: string;
-  paras: string[];
-  take: string;
+  cat: TranslationKey;
+  title: TranslationKey;
+  paras: TranslationKey[];
+  take: TranslationKey;
   icon: ReactNode;
   numClass: string;
   chipClass: string;

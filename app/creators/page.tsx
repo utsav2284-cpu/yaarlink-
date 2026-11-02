@@ -1,6 +1,6 @@
 "use client";
 
-import { useLang } from "@/frontend/i18n";
+import { useLang, type TranslationKey } from "@/frontend/i18n";
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -31,7 +31,7 @@ export default function CreatorsPage() {
   const [step, setStep] = useState(1);
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [campaignsStatus, setCampaignsStatus] = useState<"loading" | "success" | "error">("loading");
-  const [campaignsErrorKey, setCampaignsErrorKey] = useState("listing.loadFailed");
+  const [campaignsErrorKey, setCampaignsErrorKey] = useState<TranslationKey>("listing.loadFailed");
   const [form, setForm] = useState({
     name: "",
     phone: "",
@@ -50,7 +50,7 @@ export default function CreatorsPage() {
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
-  const [errKey, setErrKey] = useState("");
+  const [errKey, setErrKey] = useState<TranslationKey | "">("");
   const [authRequired, setAuthRequired] = useState(false);
   const [draftReady, setDraftReady] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);

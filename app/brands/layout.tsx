@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { canonicalMetadata } from "@/config/metadata";
 
-export const metadata = canonicalMetadata("/brands");
+export async function generateMetadata(): Promise<Metadata> {
+  return canonicalMetadata("/brands");
+}
 
 export default function BrandsLayout({ children }: { children: ReactNode }) {
   return <>{children}</>;

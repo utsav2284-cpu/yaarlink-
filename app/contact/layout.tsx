@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { canonicalMetadata } from "@/config/metadata";
 
-export const metadata = canonicalMetadata("/contact");
+export async function generateMetadata(): Promise<Metadata> {
+  return canonicalMetadata("/contact");
+}
 
 export default function ContactLayout({ children }: { children: ReactNode }) {
   return <>{children}</>;

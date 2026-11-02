@@ -1,12 +1,25 @@
 import type { Metadata } from "next";
 import LegalPage from "@/frontend/components/LegalPage";
 import { canonicalMetadata } from "@/config/metadata";
+import { translateForRequest } from "@/frontend/i18n/server";
 
-export const metadata: Metadata = {
-  title: "Your Data Rights",
-  description: "How to access, download, correct, withdraw or delete personal information held by YaarLink.",
-  ...canonicalMetadata("/data-rights"),
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const [title, description, canonical] = await Promise.all([
+    translateForRequest("legal.dataRights"),
+    translateForRequest("meta.dataRightsDescription"),
+    canonicalMetadata("/data-rights"),
+  ]);
+  return {
+    title: { absolute: `${title} · YaarLink` },
+    description,
+    ...canonical,
+    openGraph: {
+      ...canonical.openGraph,
+      title: `${title} · YaarLink`,
+      description,
+    },
+  };
+}
 
 export default function DataRightsPage() {
   return <LegalPage page="data-rights" />;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useLang } from "@/frontend/i18n";
+import { useLang, type TranslationKey } from "@/frontend/i18n";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -168,7 +168,7 @@ const inputClass = "w-full rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 
 const labelClass = "grid gap-1.5 text-[13.5px] font-bold";
 
 class DisplayKeyError extends Error {
-  constructor(public key: string) {
+  constructor(public key: TranslationKey) {
     super(key);
   }
 }
@@ -254,13 +254,13 @@ export default function DashboardClient({
   initialSessionUnavailable?: boolean;
 } = {}) {
   const router = useRouter();
-  const { t, opt, promo, platform: platformLabel, apiErrorKey, formatNumber, formatCurrency, formatDate } = useLang();
+  const { t, opt, promo, platform: platformLabel, status: statusLabel, apiErrorKey, formatNumber, formatCurrency, formatDate } = useLang();
   const [data, setData] = useState<Data | null>(null);
   const [activeView, setActiveView] = useState<UserRole>(initialView);
   const activeViewRef = useRef<UserRole>(initialView);
-  const [errorKey, setErrorKey] = useState(initialSessionUnavailable ? "api.serviceUnavailable" : "");
-  const [noticeKey, setNoticeKey] = useState("");
-  const [actionErrorKey, setActionErrorKey] = useState("");
+  const [errorKey, setErrorKey] = useState<TranslationKey | "">(initialSessionUnavailable ? "api.serviceUnavailable" : "");
+  const [noticeKey, setNoticeKey] = useState<TranslationKey | "">("");
+  const [actionErrorKey, setActionErrorKey] = useState<TranslationKey | "">("");
   const [busyKey, setBusyKey] = useState("");
   const [currentHour, setCurrentHour] = useState(() => new Date().getHours());
   const [editingCampaignId, setEditingCampaignId] = useState("");
@@ -689,7 +689,6 @@ export default function DashboardClient({
     applicationQuery.q || applicationQuery.status || applicationQuery.sort !== "newest",
   );
   const creatorApplicationHasFilters = Boolean(applicationQuery.q || applicationQuery.status || applicationQuery.sort !== "newest");
-  const statusLabel = (status: string | null | undefined) => (status ? t(`status.${status}`) : "");
   const notificationText = (n: Notification) => {
     const template = t(
       n.kind === "application_received" ? "notify.received" : n.kind === "application_withdrawn" ? "notify.withdrawn" : "notify.status",

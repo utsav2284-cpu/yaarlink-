@@ -1,6 +1,6 @@
 "use client";
 
-import { useLang } from "@/frontend/i18n";
+import { useLang, type TranslationKey } from "@/frontend/i18n";
 
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
@@ -75,7 +75,7 @@ function BrandInner() {
   const preset = normalizePromotionType(params.get("type")) ?? "";
   const [creators, setCreators] = useState<any[]>([]);
   const [creatorsStatus, setCreatorsStatus] = useState<"loading" | "success" | "error">("loading");
-  const [creatorsErrorKey, setCreatorsErrorKey] = useState("listing.loadFailed");
+  const [creatorsErrorKey, setCreatorsErrorKey] = useState<TranslationKey>("listing.loadFailed");
   const [filter, setFilter] = useState({ lang: "", category: "" });
   const [creatorQ, setCreatorQ] = useState("");
   const [creatorSearchQ, setCreatorSearchQ] = useState("");
@@ -102,7 +102,7 @@ function BrandInner() {
   const [done, setDone] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
   const [saving, setSaving] = useState(false);
-  const [errKey, setErrKey] = useState("");
+  const [errKey, setErrKey] = useState<TranslationKey | "">("");
   const [authRequired, setAuthRequired] = useState(false);
   const [draftReady, setDraftReady] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);

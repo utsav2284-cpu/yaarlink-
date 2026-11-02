@@ -7,6 +7,7 @@ import { useLang } from "@/frontend/i18n";
 import { clearLocalFormDrafts } from "@/frontend/session";
 import { buildAuthPath } from "@/shared/return-to";
 import { primaryUserRole, USER_ROLES, type UserRole } from "@/shared/user-roles";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, isPasswordLengthValid } from "@/shared/password-policy";
 
 type AccountUser = {
   id: string;
@@ -246,7 +247,7 @@ export default function AccountPage() {
   const submitPassword = (e: React.FormEvent) => {
     e.preventDefault();
     run("change-password", async () => {
-      if (passwordForm.newPassword.length < 10 || passwordForm.newPassword.length > 256) {
+      if (!isPasswordLengthValid(passwordForm.newPassword)) {
         throw new ActionError(t("auth.passwordPolicy"));
       }
       if (passwordForm.newPassword !== passwordForm.confirmPassword) {
@@ -432,7 +433,7 @@ export default function AccountPage() {
             </label>
             <label className={labelClass} htmlFor="account-email-current-password">
               {t("account.currentPassword")}
-              <input id="account-email-current-password" value={emailForm.currentPassword} onChange={(e) => setEmailForm((f) => ({ ...f, currentPassword: e.target.value }))} required type="password" maxLength={256} autoComplete="current-password" className={inputClass} />
+              <input id="account-email-current-password" value={emailForm.currentPassword} onChange={(e) => setEmailForm((f) => ({ ...f, currentPassword: e.target.value }))} required type="password" maxLength={PASSWORD_MAX_LENGTH} autoComplete="current-password" className={inputClass} />
             </label>
             <button disabled={busyKey === "change-email"} className={primaryButtonClass}>{t("account.sendChangeLink")}</button>
           </form>
@@ -446,7 +447,7 @@ export default function AccountPage() {
             </label>
             <label className={labelClass} htmlFor="account-phone-current-password">
               {t("account.currentPassword")}
-              <input id="account-phone-current-password" value={phoneForm.currentPassword} onChange={(e) => setPhoneForm((f) => ({ ...f, currentPassword: e.target.value }))} required type="password" maxLength={256} autoComplete="current-password" className={inputClass} />
+              <input id="account-phone-current-password" value={phoneForm.currentPassword} onChange={(e) => setPhoneForm((f) => ({ ...f, currentPassword: e.target.value }))} required type="password" maxLength={PASSWORD_MAX_LENGTH} autoComplete="current-password" className={inputClass} />
             </label>
             <button disabled={busyKey === "change-phone"} className={primaryButtonClass}>{t("account.savePhone")}</button>
           </form>
@@ -456,15 +457,15 @@ export default function AccountPage() {
           <form onSubmit={submitPassword} className="grid gap-3">
             <label className={labelClass} htmlFor="account-current-password">
               {t("account.currentPassword")}
-              <input id="account-current-password" value={passwordForm.currentPassword} onChange={(e) => setPasswordForm((f) => ({ ...f, currentPassword: e.target.value }))} required type="password" maxLength={256} autoComplete="current-password" className={inputClass} />
+              <input id="account-current-password" value={passwordForm.currentPassword} onChange={(e) => setPasswordForm((f) => ({ ...f, currentPassword: e.target.value }))} required type="password" maxLength={PASSWORD_MAX_LENGTH} autoComplete="current-password" className={inputClass} />
             </label>
             <label className={labelClass} htmlFor="account-new-password">
               {t("auth.newPassword")}
-              <input id="account-new-password" aria-describedby="account-password-policy" value={passwordForm.newPassword} onChange={(e) => setPasswordForm((f) => ({ ...f, newPassword: e.target.value }))} required type="password" minLength={10} maxLength={256} autoComplete="new-password" className={inputClass} />
+              <input id="account-new-password" aria-describedby="account-password-policy" value={passwordForm.newPassword} onChange={(e) => setPasswordForm((f) => ({ ...f, newPassword: e.target.value }))} required type="password" minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} autoComplete="new-password" className={inputClass} />
             </label>
             <label className={labelClass} htmlFor="account-confirm-password">
               {t("auth.confirmPassword")}
-              <input id="account-confirm-password" aria-describedby="account-password-policy" value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm((f) => ({ ...f, confirmPassword: e.target.value }))} required type="password" minLength={10} maxLength={256} autoComplete="new-password" className={inputClass} />
+              <input id="account-confirm-password" aria-describedby="account-password-policy" value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm((f) => ({ ...f, confirmPassword: e.target.value }))} required type="password" minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} autoComplete="new-password" className={inputClass} />
             </label>
             <p id="account-password-policy" className="text-[13px] text-[#6f6862]">{t("auth.passwordPolicy")}</p>
             <button disabled={busyKey === "change-password"} className={primaryButtonClass}>{t("account.changePassword")}</button>
@@ -509,7 +510,7 @@ export default function AccountPage() {
           <form onSubmit={exportData} className="grid gap-3">
             <label className={labelClass} htmlFor="account-export-password">
               {t("account.currentPassword")}
-              <input id="account-export-password" value={exportPassword} onChange={(e) => setExportPassword(e.target.value)} required type="password" maxLength={256} autoComplete="current-password" className={inputClass} />
+              <input id="account-export-password" value={exportPassword} onChange={(e) => setExportPassword(e.target.value)} required type="password" maxLength={PASSWORD_MAX_LENGTH} autoComplete="current-password" className={inputClass} />
             </label>
             <button disabled={busyKey === "export"} className={primaryButtonClass}>
               {busyKey === "export" ? t("account.exporting") : t("account.exportBtn")}
@@ -524,7 +525,7 @@ export default function AccountPage() {
           <form onSubmit={deleteAccount} className="mt-4 grid gap-3">
             <label className={labelClass} htmlFor="account-delete-password">
               {t("account.currentPassword")}
-              <input id="account-delete-password" value={deleteForm.currentPassword} onChange={(e) => setDeleteForm((f) => ({ ...f, currentPassword: e.target.value }))} required type="password" maxLength={256} autoComplete="current-password" className={inputClass} />
+              <input id="account-delete-password" value={deleteForm.currentPassword} onChange={(e) => setDeleteForm((f) => ({ ...f, currentPassword: e.target.value }))} required type="password" maxLength={PASSWORD_MAX_LENGTH} autoComplete="current-password" className={inputClass} />
             </label>
             <label className={labelClass} htmlFor="account-delete-email">
               {t("account.confirmEmailLabel")}

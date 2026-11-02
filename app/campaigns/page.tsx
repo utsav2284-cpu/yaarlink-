@@ -1,6 +1,6 @@
 "use client";
 
-import { useLang } from "@/frontend/i18n";
+import { useLang, type TranslationKey } from "@/frontend/i18n";
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -54,10 +54,10 @@ function campaignListUrl({ q, lang, sort, cursor }: { q: string; lang: string; s
 }
 
 export default function CampaignsPage() {
-  const { t, opt, promo, apiErrorKey: getApiErrorKey } = useLang();
+  const { t, opt, promo, status: statusLabel, apiErrorKey: getApiErrorKey } = useLang();
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [campaignsStatus, setCampaignsStatus] = useState<"loading" | "success" | "error">("loading");
-  const [campaignsErrorKey, setCampaignsErrorKey] = useState("listing.loadFailed");
+  const [campaignsErrorKey, setCampaignsErrorKey] = useState<TranslationKey>("listing.loadFailed");
   const [q, setQ] = useState("");
   const [searchQ, setSearchQ] = useState("");
   const [lang, setLang] = useState("");
@@ -70,7 +70,7 @@ export default function CampaignsPage() {
   const [applyForm, setApplyForm] = useState({ contact: "", message: "" });
   const [applyConsent, setApplyConsent] = useState(false);
   const [applyError, setApplyError] = useState<"" | "contact" | "consent" | "login" | "creator" | "duplicate" | "closed" | "rate" | "generic" | "api">("");
-  const [applyApiErrorKey, setApplyApiErrorKey] = useState("camp.applyGenericErr");
+  const [applyApiErrorKey, setApplyApiErrorKey] = useState<TranslationKey>("camp.applyGenericErr");
   const [applyingId, setApplyingId] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [ownApplications, setOwnApplications] = useState<Record<string, any>>({});
@@ -389,7 +389,7 @@ export default function CampaignsPage() {
     }
   };
 
-  const applyErrorKey = applyError === "contact"
+  const applyErrorKey: TranslationKey = applyError === "contact"
       ? "camp.applyContactErr"
       : applyError === "consent"
         ? "camp.applyConsentErr"
@@ -498,7 +498,7 @@ export default function CampaignsPage() {
             <div key={c.id} id={`campaign-card-${c.id}`} className="lift flex flex-col rounded-3xl border border-[#e9ddc3] bg-white p-6 card-shadow">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full bg-[#fff4de] border border-[#e9ddc3] px-3 py-1 text-[12px] font-bold">{promo(c.promotionType)}</span>
-                <span className={`rounded-full border px-3 py-1 text-[12px] font-bold ${campaignIsOpen ? "bg-green-50 border-green-200 text-green-800" : "bg-stone-100 border-stone-200 text-stone-700"}`}>{campaignIsOpen ? t("camp.open") : t(`status.${c.status || "closed"}`)}</span>
+                <span className={`rounded-full border px-3 py-1 text-[12px] font-bold ${campaignIsOpen ? "bg-green-50 border-green-200 text-green-800" : "bg-stone-100 border-stone-200 text-stone-700"}`}>{campaignIsOpen ? t("camp.open") : statusLabel(c.status || "closed")}</span>
                 {c.verificationStatus === "verified" && <span className="rounded-full bg-green-50 border border-green-200 px-3 py-1 text-[12px] font-bold text-green-800">{t("listing.reviewed")}</span>}
               </div>
               <h3 className="mt-3 text-[18px] font-extrabold leading-snug">{c.title}</h3>
@@ -512,7 +512,7 @@ export default function CampaignsPage() {
               {hasActiveApplication ? (
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#f5edd8] pt-4">
                   <div>
-                    <p className="text-[13.5px] font-bold text-[#17452e]">{t("camp.yourApplication")}: {t(`status.${ownApplication.status || "applied"}`)}</p>
+                    <p className="text-[13.5px] font-bold text-[#17452e]">{t("camp.yourApplication")}: {statusLabel(ownApplication.status || "applied")}</p>
                     {ownApplication.creatorContact && <p className="mt-0.5 break-all text-[12.5px] font-semibold text-[#6f6862]">{ownApplication.creatorContact}</p>}
                   </div>
                   <Link href="/dashboard?view=creator" className="rounded-xl border border-[#1c1917] px-4 py-2.5 text-[13px] font-bold text-[#1c1917] hover:bg-stone-50">{t("camp.manageApplication")}</Link>

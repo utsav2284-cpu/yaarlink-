@@ -30,7 +30,7 @@ export default function Navbar({
   initialUser?: NavbarSessionUser | null;
   initialSessionStatus?: "loading" | "ready" | "error";
 } = {}) {
-  const { t, lang, setLang } = useLang();
+  const { t, lang, pendingLang, languagePending, setLang } = useLang();
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -67,7 +67,8 @@ export default function Navbar({
   const languageOptionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const mobileMenuButtonRef = useRef<HTMLButtonElement>(null);
   const [languageFocusIndex, setLanguageFocusIndex] = useState(0);
-  const currentLanguageIndex = Math.max(0, LANGS.findIndex((l) => l.code === lang));
+  const displayLang = pendingLang ?? lang;
+  const currentLanguageIndex = Math.max(0, LANGS.findIndex((l) => l.code === displayLang));
   const currentLanguageLabel = LANGS[currentLanguageIndex]?.label;
 
   const closeLanguageMenu = (returnFocus = false) => {
@@ -241,6 +242,7 @@ export default function Navbar({
               aria-expanded={langOpen}
               aria-haspopup="listbox"
               aria-controls="language-menu"
+              aria-busy={languagePending}
               className="flex items-center gap-1.5 rounded-full border border-[#e9ddc3] bg-white px-3 py-2 text-[13.5px] font-bold text-[#1c1917]"
             >
               <span aria-hidden="true">🌐</span>
@@ -265,19 +267,20 @@ export default function Navbar({
                       }}
                       type="button"
                       role="option"
-                      aria-selected={lang === l.code}
+                      aria-selected={displayLang === l.code}
+                      disabled={languagePending}
                       tabIndex={index === languageFocusIndex ? 0 : -1}
                       onMouseEnter={() => setLanguageFocusIndex(index)}
                       onClick={() => {
-                        setLang(l.code as Lang);
+                        void setLang(l.code as Lang);
                         closeLanguageMenu(true);
                       }}
-                      className={`flex w-full items-center justify-between px-4 py-3 text-left text-[14px] font-semibold hover:bg-[#fff4de] ${
-                        lang === l.code ? "bg-[#fff4de] text-[#c7431f]" : "text-[#1c1917]"
+                      className={`flex w-full items-center justify-between px-4 py-3 text-left text-[14px] font-semibold hover:bg-[#fff4de] disabled:cursor-wait disabled:opacity-60 ${
+                        displayLang === l.code ? "bg-[#fff4de] text-[#c7431f]" : "text-[#1c1917]"
                       }`}
                     >
                       <span>{l.code === "en" ? "🇬🇧 English" : l.code === "hi" ? "🇮🇳 हिन्दी" : "🟠 ਪੰਜਾਬੀ"}</span>
-                      {lang === l.code && <span aria-hidden="true">✓</span>}
+                      {displayLang === l.code && <span aria-hidden="true">✓</span>}
                     </button>
                   ))}
                   </div>

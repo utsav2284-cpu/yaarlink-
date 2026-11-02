@@ -1,6 +1,6 @@
 "use client";
 
-import { useLang } from "@/frontend/i18n";
+import { useLang, type TranslationKey } from "@/frontend/i18n";
 import { solveBotChallenge } from "@/frontend/bot-challenge";
 import Link from "next/link";
 import ContactLink from "@/frontend/components/ContactLink";
@@ -52,7 +52,7 @@ export default function ContactPage() {
   const [websiteUrl, setWebsiteUrl] = useState("");
   const [done, setDone] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [errKey, setErrKey] = useState("");
+  const [errKey, setErrKey] = useState<TranslationKey | "">("");
   const { t, apiErrorKey, formatNumber } = useLang();
   const [copied, setCopied] = useState<string | null>(null);
   const [draftReady, setDraftReady] = useState(false);

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useLang } from "@/frontend/i18n";
+import { useLang, type TranslationKey } from "@/frontend/i18n";
 import type { SessionLoadStatus, SessionUserSummary } from "@/frontend/session";
 import { buildAuthPath } from "@/shared/return-to";
 import type { UserRole } from "@/shared/user-roles";
@@ -18,7 +18,7 @@ export default function AuthJourneyNotice({
 }: {
   status: SessionLoadStatus;
   user: SessionUserSummary | null;
-  messageKey: string;
+  messageKey: TranslationKey;
   returnTo: string;
   role: UserRole;
   onRetry: () => void;

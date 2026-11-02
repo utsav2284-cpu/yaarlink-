@@ -7,6 +7,7 @@ import { Suspense, useEffect, useState } from "react";
 import { fetchSessionUser } from "@/frontend/session";
 import { buildAuthPath, DEFAULT_RETURN_TO, safeReturnTo } from "@/shared/return-to";
 import { primaryUserRole, type UserRole } from "@/shared/user-roles";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/shared/password-policy";
 
 type SignupForm = {
   name: string;
@@ -132,7 +133,7 @@ function SignupContent() {
                 {saving
                   ? t("auth.creating")
                   : resendSeconds > 0
-                    ? `${t("auth.resendIn")} ${resendSeconds}s`
+                    ? t("auth.resendIn", { seconds: resendSeconds })
                     : t("auth.resendVerification")}
               </button>
               <button
@@ -175,7 +176,7 @@ function SignupContent() {
               <label htmlFor="signup-phone" className="sr-only">{t("auth.phone")}</label>
               <input id="signup-phone" value={form.phone} onChange={(e) => set("phone", e.target.value)} autoComplete="tel" placeholder={t("auth.phone")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
               <label htmlFor="signup-password" className="sr-only">{t("auth.password")}</label>
-              <input id="signup-password" value={form.password} onChange={(e) => set("password", e.target.value)} required type="password" minLength={10} maxLength={256} autoComplete="new-password" placeholder={t("auth.pwHint")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+              <input id="signup-password" value={form.password} onChange={(e) => set("password", e.target.value)} required type="password" minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} autoComplete="new-password" placeholder={t("auth.pwHint")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
               <label htmlFor="signup-legal-consent" className="flex w-full min-w-0 cursor-pointer items-start gap-3 rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 text-[13.5px] font-semibold leading-relaxed text-[#57534e]">
                 <input
                   id="signup-legal-consent"

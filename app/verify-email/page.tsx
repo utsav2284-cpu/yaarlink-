@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { buildAuthPath, DEFAULT_RETURN_TO, safeReturnTo } from "@/shared/return-to";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/shared/password-policy";
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const subscribeNoop = () => () => {};
@@ -104,8 +105,8 @@ export default function VerifyEmailPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 type="password"
-                minLength={10}
-                maxLength={256}
+                minLength={PASSWORD_MIN_LENGTH}
+                maxLength={PASSWORD_MAX_LENGTH}
                 autoComplete="current-password"
                 placeholder={t("auth.password")}
                 className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]"
