@@ -10,7 +10,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:health": "node --experimental-strip-types --test tests/health-diagnostics.test.mjs"
   },
   "dependencies": {
     "bcryptjs": "3.0.3",

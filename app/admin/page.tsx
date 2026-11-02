@@ -500,6 +500,11 @@ export default function AdminPage() {
     }
   };
 
+  const loadRef = useRef(load);
+  useEffect(() => {
+    loadRef.current = load;
+  });
+
   const switchTab = (nextTab: Tab) => {
     setTab(nextTab);
     const nextQuery = listState[nextTab];
@@ -588,7 +593,7 @@ export default function AdminPage() {
     return () => window.clearInterval(interval);
   }, []);
 
-  useEffect(() => { void Promise.resolve().then(() => load("campaigns")); }, []);
+  useEffect(() => { void Promise.resolve().then(() => loadRef.current("campaigns")); }, []);
 
   const savePlatformSettings = async (event: React.FormEvent) => {
     event.preventDefault();

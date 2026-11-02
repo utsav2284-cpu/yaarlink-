@@ -122,9 +122,11 @@ function BrandInner({ initialCreators }: { initialCreators: BrandsInitialCreator
   const [draftReady, setDraftReady] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);
 
-  useEffect(() => {
+  const [appliedPreset, setAppliedPreset] = useState(preset);
+  if (preset !== appliedPreset) {
+    setAppliedPreset(preset);
     if (preset) setForm((f) => ({ ...f, promotionType: preset }));
-  }, [preset]);
+  }
 
   const handleCreatorsError = useCallback(
     (error: unknown) => {

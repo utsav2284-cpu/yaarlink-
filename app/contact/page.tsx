@@ -5,7 +5,7 @@ import { solveBotChallenge } from "@/frontend/bot-challenge";
 import Link from "next/link";
 import ContactLink from "@/frontend/components/ContactLink";
 import PrivacyNotice from "@/frontend/components/PrivacyNotice";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { readFormDraft, removeFormDraft, writeFormDraft } from "@/frontend/form-drafts";
 import {
   SITE,
@@ -27,6 +27,22 @@ const KIND_INFO: Record<Kind, { emoji: string }> = {
   creator: { emoji: "🎥" },
   other: { emoji: "💬" },
 };
+
+function subscribeToFrameState() {
+  return () => {};
+}
+
+function getInFrameSnapshot() {
+  try {
+    return window.self !== window.top;
+  } catch {
+    return true;
+  }
+}
+
+function getInFrameServerSnapshot() {
+  return false;
+}
 
 function IconWhatsApp({ className = "" }: { className?: string }) {
   return (
@@ -65,14 +81,7 @@ export default function ContactPage() {
   };
 
   // Inside a preview frame (e.g. arena.ai) browsers block outside links — show a hint.
-  const [inFrame, setInFrame] = useState(false);
-  useEffect(() => {
-    try {
-      setInFrame(window.self !== window.top);
-    } catch {
-      setInFrame(true);
-    }
-  }, []);
+  const inFrame = useSyncExternalStore(subscribeToFrameState, getInFrameSnapshot, getInFrameServerSnapshot);
 
   useEffect(() => {
     let active = true;
