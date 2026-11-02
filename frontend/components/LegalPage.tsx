@@ -40,7 +40,7 @@ type LegalCommon = {
 const COMMON: Record<Lang, LegalCommon> = {
   en: {
     eyebrow: "Legal & privacy",
-    updated: "Last updated: 1 November 2026",
+    updated: "Last updated: 2 November 2026",
     contents: "On this page",
     contactTitle: "Questions or a privacy request?",
     contactBody: "Contact YaarLink support. For an account request, use the email address on your account where possible so we can verify that the request is yours. Never send your password, a one-time link, or payment credentials.",
@@ -51,7 +51,7 @@ const COMMON: Record<Lang, LegalCommon> = {
   },
   hi: {
     eyebrow: "कानूनी और प्राइवेसी",
-    updated: "आख़िरी अपडेट: 1 नवंबर 2026",
+    updated: "आख़िरी अपडेट: 2 नवंबर 2026",
     contents: "इस पेज पर",
     contactTitle: "प्रश्न या प्राइवेसी अनुरोध?",
     contactBody: "YaarLink सपोर्ट से संपर्क करें। अकाउंट अनुरोध के लिए, जहाँ संभव हो अपने अकाउंट वाले ईमेल से लिखें ताकि हम सत्यापित कर सकें कि अनुरोध आपका है। अपना पासवर्ड, एक-बार का लिंक या पेमेंट जानकारी कभी न भेजें।",
@@ -62,7 +62,7 @@ const COMMON: Record<Lang, LegalCommon> = {
   },
   pa: {
     eyebrow: "ਕਾਨੂੰਨੀ ਅਤੇ ਪਰਾਈਵੇਸੀ",
-    updated: "ਆਖਰੀ ਅਪਡੇਟ: 1 ਨਵੰਬਰ 2026",
+    updated: "ਆਖਰੀ ਅਪਡੇਟ: 2 ਨਵੰਬਰ 2026",
     contents: "ਇਸ ਪੇਜ 'ਤੇ",
     contactTitle: "ਸਵਾਲ ਜਾਂ ਪਰਾਈਵੇਸੀ ਬੇਨਤੀ?",
     contactBody: "YaarLink ਸਪੋਰਟ ਨਾਲ ਸੰਪਰਕ ਕਰੋ। ਅਕਾਊਂਟ ਬੇਨਤੀ ਲਈ, ਜਿੱਥੇ ਸੰਭਵ ਹੋਵੇ ਆਪਣੇ ਅਕਾਊਂਟ ਵਾਲੀ ਈਮੇਲ ਤੋਂ ਲਿਖੋ ਤਾਂ ਜੋ ਅਸੀਂ ਪੁਸ਼ਟੀ ਕਰ ਸਕੀਏ ਕਿ ਬੇਨਤੀ ਤੁਹਾਡੀ ਹੈ। ਆਪਣਾ ਪਾਸਵਰਡ, ਇੱਕ-ਵਾਰੀ ਲਿੰਕ ਜਾਂ ਪੇਮੈਂਟ ਜਾਣਕਾਰੀ ਕਦੇ ਨਾ ਭੇਜੋ।",
@@ -94,7 +94,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
         {
           heading: "2. Information we collect",
           bullets: [
-            "Account information: your name, email address, optional phone number, account role (brand or creator), email-verification status, account dates, and a hashed password. We do not store your plain-text password.",
+            "Account information: your name, email address, optional phone number, preferred starting workspace (brand or creator), email-verification status, account dates, and a hashed password. We do not store your plain-text password.",
             "Pending-signup information: the details submitted before email verification and a hashed one-time verification token. A usable account is created only after verification.",
             "Profile and campaign information: business or creator names, contact details, social profile links, category, languages, location, audience or follower information, campaign descriptions, budget, verification codes, and moderation status.",
             "Application and communication information: the creator-profile name, the saved account/profile contact you select, the message you enter, application status and decision notes, notifications, contact-form messages, and listing reports.",
@@ -141,11 +141,12 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
           ],
         },
         {
-          heading: "6. Cookies and local storage",
+          heading: "6. Cookies and browser storage",
           bullets: [
             "Essential, signed session cookies keep users and administrators signed in and help protect accounts. Disabling them can prevent login and account features from working.",
             "Server-side session records store limited browser/device information and activity times so you can review and revoke devices in Account & security.",
             "Your language choice is saved in local storage. We do not use that preference to build an advertising profile.",
+            "Unfinished campaign, creator-profile, contact and campaign-application form drafts may be kept in this browser's local storage for up to 24 hours so you can sign in and return without retyping them. They are not sent to YaarLink until you submit the relevant form; successful submission, confirmed logout, expiry, or clearing site data can remove them.",
             "External services you open—such as WhatsApp, Instagram, YouTube or a brand/creator website—have their own privacy practices.",
           ],
         },
@@ -196,7 +197,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
           heading: "2. Eligibility and accounts",
           bullets: [
             "You must be legally able to enter this agreement, or have permission from a parent or guardian where required.",
-            "Use an email address you control, keep account information accurate, and create the correct brand or creator account for the features you use.",
+            "Use an email address you control and keep account information accurate. The same account may be used in both brand and creator workspaces; choosing a starting workspace does not create a separate account.",
             "Keep your password and verification links private. You are responsible for activity under your account unless you notify us promptly of unauthorised use.",
             "Do not create accounts to impersonate another person, business, creator or page, or to evade moderation or security controls.",
           ],
@@ -213,7 +214,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
         {
           heading: "4. Applications and contacts",
           bullets: [
-            "Only eligible creator accounts with a completed creator profile may apply to campaigns.",
+            "An account may apply only after completing its own creator profile, and may not apply to a campaign it owns.",
             "A creator chooses one phone, email or social contact saved on their account or completed creator profile. By confirming submission, the creator authorises YaarLink to show the creator-profile name, selected contact and message to that campaign's brand.",
             "A brand may use applicant information only to evaluate and manage that application or campaign and related agreed work. The brand must not sell, rent, publish, spam or use it for unrelated marketing.",
             "An application or status on YaarLink does not by itself create employment, agency, partnership or a payment guarantee. Brands and creators should confirm deliverables, usage rights, dates, price and payment method before work starts.",
@@ -462,7 +463,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
         {
           heading: "2. हम कौन-सी जानकारी इकट्ठा करते हैं",
           bullets: [
-            "अकाउंट जानकारी: नाम, ईमेल, वैकल्पिक फोन, अकाउंट भूमिका (ब्रांड या क्रिएटर), ईमेल-सत्यापन स्थिति, अकाउंट तिथियाँ और हैश किया गया पासवर्ड। हम आपका सादा पासवर्ड सेव नहीं करते।",
+            "अकाउंट जानकारी: नाम, ईमेल, वैकल्पिक फोन, पसंदीदा शुरुआती वर्कस्पेस (ब्रांड या क्रिएटर), ईमेल-सत्यापन स्थिति, अकाउंट तिथियाँ और हैश किया गया पासवर्ड। हम आपका सादा पासवर्ड सेव नहीं करते।",
             "लंबित साइन-अप जानकारी: ईमेल सत्यापन से पहले दी गई जानकारी और हैश किया गया एक-बार का सत्यापन टोकन। उपयोग योग्य अकाउंट सत्यापन के बाद ही बनता है।",
             "प्रोफाइल और कैंपेन जानकारी: बिज़नेस या क्रिएटर नाम, संपर्क विवरण, सोशल प्रोफाइल लिंक, कैटेगरी, भाषाएँ, स्थान, ऑडियंस या फॉलोअर जानकारी, कैंपेन विवरण, बजट, सत्यापन कोड और मॉडरेशन स्थिति।",
             "आवेदन और संचार जानकारी: क्रिएटर प्रोफ़ाइल का नाम, आपके द्वारा चुना गया सेव अकाउंट/प्रोफ़ाइल संपर्क, लिखा गया संदेश, आवेदन स्थिति और निर्णय नोट, सूचनाएँ, संपर्क-फॉर्म संदेश और लिस्टिंग रिपोर्ट।",
@@ -509,11 +510,12 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
           ],
         },
         {
-          heading: "6. कुकीज़ और लोकल स्टोरेज",
+          heading: "6. कुकीज़ और ब्राउज़र स्टोरेज",
           bullets: [
             "आवश्यक, हस्ताक्षरित सेशन कुकीज़ उपयोगकर्ताओं और एडमिन को साइन इन रखती हैं और अकाउंट सुरक्षा में मदद करती हैं। इन्हें बंद करने से लॉगिन और अकाउंट सुविधाएँ रुक सकती हैं।",
             "सर्वर-साइड सेशन रिकॉर्ड सीमित ब्राउज़र/डिवाइस जानकारी और गतिविधि समय रखते हैं ताकि आप खाता और सुरक्षा में डिवाइस देख और हट सकें।",
             "आपकी भाषा पसंद लोकल स्टोरेज में सेव होती है। हम इसका उपयोग विज्ञापन प्रोफाइल बनाने के लिए नहीं करते।",
+            "अधूरे कैंपेन, क्रिएटर-प्रोफाइल, संपर्क और कैंपेन-आवेदन फ़ॉर्म ड्राफ्ट इस ब्राउज़र के लोकल स्टोरेज में 24 घंटे तक रह सकते हैं ताकि आप साइन इन करके लौटें और फिर से टाइप न करना पड़े। वे संबंधित फ़ॉर्म सबमिट करने से पहले YaarLink को नहीं भेजे जाते; सफल सबमिशन, पुष्ट लॉगआउट, अवधि समाप्त होने या साइट डेटा साफ़ करने से वे हट सकते हैं।",
             "WhatsApp, Instagram, YouTube या किसी ब्रांड/क्रिएटर वेबसाइट जैसी बाहरी सेवाओं की अपनी प्राइवेसी प्रथाएँ होती हैं।",
           ],
         },
@@ -564,7 +566,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
           heading: "2. योग्यता और अकाउंट",
           bullets: [
             "आप कानूनी रूप से इस समझौते के योग्य होने चाहिए, या जहाँ ज़रूरी हो माता-पिता/अभिभावक अनुमति होनी चाहिए।",
-            "अपने नियंत्रण वाला ईमेल उपयोग करें, अकाउंट जानकारी सही रखें, और उपयोग की जाने वाली सुविधाओं के लिए सही ब्रांड या क्रिएटर अकाउंट बनाएँ।",
+            "अपने नियंत्रण वाला ईमेल उपयोग करें और अकाउंट जानकारी सही रखें। वही अकाउंट ब्रांड और क्रिएटर दोनों वर्कस्पेस में उपयोग हो सकता है; शुरुआती वर्कस्पेस चुनना अलग अकाउंट नहीं बनाता।",
             "पासवर्ड और सत्यापन लिंक निजी रखें। अनधिकृत उपयोग की तुरंत सूचना न देने पर आपके अकाउंट की गतिविधि आपकी जिम्मेदारी होगी।",
             "किसी अन्य व्यक्ति, बिज़नेस, क्रिएटर या पेज की नकली पहचान के लिए, या मॉडरेशन/सुरक्षा नियंत्रण से बचने के लिए अकाउंट न बनाएँ।",
           ],
@@ -581,7 +583,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
         {
           heading: "4. आवेदन और संपर्क",
           bullets: [
-            "सिर्फ़ पूरी क्रिएटर प्रोफाइल वाले योग्य क्रिएटर अकाउंट कैंपेन के लिए अप्लाई कर सकते हैं।",
+            "कोई अकाउंट अपनी क्रिएटर प्रोफ़ाइल पूरी करने के बाद ही आवेदन कर सकता है, और अपने ही कैंपेन के लिए आवेदन नहीं कर सकता।",
             "क्रिएटर अपने अकाउंट या पूरी क्रिएटर प्रोफाइल में सेव एक फोन, ईमेल या सोशल संपर्क चुनता है। भेजने की पुष्टि करके क्रिएटर YaarLink को क्रिएटर प्रोफाइल का नाम, चुना गया संपर्क और संदेश उस कैंपेन के ब्रांड को दिखाने की अनुमति देता है।",
             "ब्रांड आवेदक जानकारी सिर्फ़ उस आवेदन या कैंपेन तथा संबंधित सहमत काम का मूल्यांकन और संचालन करने के लिए उपयोग कर सकता है। वह उसे बेच, किराए पर दे, प्रकाशित, स्पैम या असंबंधित मार्केटिंग के लिए उपयोग नहीं कर सकता।",
             "YaarLink पर आवेदन या स्थिति अपने आप रोजगार, एजेंसी, साझेदारी या पेमेंट गारंटी नहीं बनाती। काम शुरू होने से पहले ब्रांड और क्रिएटर डिलीवरेबल, उपयोग अधिकार, तिथि, कीमत और पेमेंट तरीका पुष्ट करें।",
@@ -830,7 +832,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
         {
           heading: "2. ਅਸੀਂ ਕਿਹੜੀ ਜਾਣਕਾਰੀ ਇਕੱਠੀ ਕਰਦੇ ਹਾਂ",
           bullets: [
-            "ਅਕਾਊਂਟ ਜਾਣਕਾਰੀ: ਨਾਮ, ਈਮੇਲ, ਵਿਕਲਪਿਕ ਫੋਨ, ਅਕਾਊਂਟ ਭੂਮਿਕਾ (ਬ੍ਰਾਂਡ ਜਾਂ ਕ੍ਰਿਏਟਰ), ਈਮੇਲ-ਤਸਦੀਕ ਸਥਿਤੀ, ਅਕਾਊਂਟ ਤਾਰੀਖਾਂ ਅਤੇ ਹੈਸ਼ ਕੀਤਾ ਪਾਸਵਰਡ। ਅਸੀਂ ਤੁਹਾਡਾ ਸਾਦਾ ਪਾਸਵਰਡ ਸੇਵ ਨਹੀਂ ਕਰਦੇ।",
+            "ਅਕਾਊਂਟ ਜਾਣਕਾਰੀ: ਨਾਮ, ਈਮੇਲ, ਵਿਕਲਪਿਕ ਫੋਨ, ਪਸੰਦੀਦਾ ਸ਼ੁਰੂਆਤੀ ਵਰਕਸਪੇਸ (ਬ੍ਰਾਂਡ ਜਾਂ ਕ੍ਰਿਏਟਰ), ਈਮੇਲ-ਤਸਦੀਕ ਸਥਿਤੀ, ਅਕਾਊਂਟ ਤਾਰੀਖਾਂ ਅਤੇ ਹੈਸ਼ ਕੀਤਾ ਪਾਸਵਰਡ। ਅਸੀਂ ਤੁਹਾਡਾ ਸਾਦਾ ਪਾਸਵਰਡ ਸੇਵ ਨਹੀਂ ਕਰਦੇ।",
             "ਲੰਬਿਤ ਸਾਈਨ-ਅੱਪ ਜਾਣਕਾਰੀ: ਈਮੇਲ ਤਸਦੀਕ ਤੋਂ ਪਹਿਲਾਂ ਦਿੱਤੀ ਜਾਣਕਾਰੀ ਅਤੇ ਹੈਸ਼ ਕੀਤਾ ਇੱਕ-ਵਾਰੀ ਤਸਦੀਕ ਟੋਕਨ। ਵਰਤੋਂਯੋਗ ਅਕਾਊਂਟ ਤਸਦੀਕ ਤੋਂ ਬਾਅਦ ਹੀ ਬਣਦਾ ਹੈ।",
             "ਪ੍ਰੋਫਾਈਲ ਅਤੇ ਕੈਂਪੇਨ ਜਾਣਕਾਰੀ: ਕਾਰੋਬਾਰ ਜਾਂ ਕ੍ਰਿਏਟਰ ਨਾਮ, ਸੰਪਰਕ ਵੇਰਵੇ, ਸੋਸ਼ਲ ਪ੍ਰੋਫਾਈਲ ਲਿੰਕ, ਕੈਟੇਗਰੀ, ਭਾਸ਼ਾਵਾਂ, ਥਾਂ, ਆਡੀਅੰਸ ਜਾਂ ਫਾਲੋਅਰ ਜਾਣਕਾਰੀ, ਕੈਂਪੇਨ ਵੇਰਵੇ, ਬਜਟ, ਤਸਦੀਕ ਕੋਡ ਅਤੇ ਮਾਡਰੇਸ਼ਨ ਸਥਿਤੀ।",
             "ਅਰਜ਼ੀ ਅਤੇ ਸੰਚਾਰ ਜਾਣਕਾਰੀ: ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਦਾ ਨਾਮ, ਤੁਹਾਡਾ ਚੁਣਿਆ ਸੇਵ ਅਕਾਊਂਟ/ਪ੍ਰੋਫਾਈਲ ਸੰਪਰਕ, ਲਿਖਿਆ ਸੁਨੇਹਾ, ਅਰਜ਼ੀ ਸਥਿਤੀ ਅਤੇ ਫੈਸਲਾ ਨੋਟ, ਸੂਚਨਾਵਾਂ, ਸੰਪਰਕ-ਫਾਰਮ ਸੁਨੇਹੇ ਅਤੇ ਲਿਸਟਿੰਗ ਰਿਪੋਰਟਾਂ।",
@@ -877,11 +879,12 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
           ],
         },
         {
-          heading: "6. ਕੂਕੀਜ਼ ਅਤੇ ਲੋਕਲ ਸਟੋਰੇਜ",
+          heading: "6. ਕੂਕੀਜ਼ ਅਤੇ ਬ੍ਰਾਊਜ਼ਰ ਸਟੋਰੇਜ",
           bullets: [
             "ਜ਼ਰੂਰੀ, ਦਸਤਖਤ ਕੀਤੀਆਂ ਸੈਸ਼ਨ ਕੂਕੀਜ਼ ਉਪਭੋਗਤਾਵਾਂ ਅਤੇ ਐਡਮਿਨ ਨੂੰ ਸਾਈਨ ਇਨ ਰੱਖਦੀਆਂ ਹਨ ਅਤੇ ਅਕਾਊਂਟ ਸੁਰੱਖਿਆ ਵਿੱਚ ਮਦਦ ਕਰਦੀਆਂ ਹਨ। ਇਹਨਾਂ ਨੂੰ ਬੰਦ ਕਰਨ ਨਾਲ ਲਾਗਇਨ ਅਤੇ ਅਕਾਊਂਟ ਸੁਵਿਧਾਵਾਂ ਰੁਕ ਸਕਦੀਆਂ ਹਨ।",
             "ਸਰਵਰ-ਸਾਈਡ ਸੈਸ਼ਨ ਰਿਕਾਰਡ ਸੀਮਤ ਬ੍ਰਾਊਜ਼ਰ/ਡਿਵਾਈਸ ਜਾਣਕਾਰੀ ਅਤੇ ਗਤੀਵਿਧੀ ਸਮੇਂ ਰੱਖਦੇ ਹਨ ਤਾਂ ਜੋ ਤੁਸੀਂ ਖਾਤਾ ਅਤੇ ਸੁਰੱਖਿਆ ਵਿੱਚ ਡਿਵਾਈਸ ਵੇਖ ਅਤੇ ਹਟਾ ਸਕੋ।",
             "ਤੁਹਾਡੀ ਭਾਸ਼ਾ ਪਸੰਦ ਲੋਕਲ ਸਟੋਰੇਜ ਵਿੱਚ ਸੇਵ ਹੁੰਦੀ ਹੈ। ਅਸੀਂ ਇਸ ਨੂੰ ਵਿਗਿਆਪਨ ਪ੍ਰੋਫਾਈਲ ਬਣਾਉਣ ਲਈ ਨਹੀਂ ਵਰਤਦੇ।",
+            "ਅਧੂਰੇ ਕੈਂਪੇਨ, ਕ੍ਰਿਏਟਰ-ਪ੍ਰੋਫਾਈਲ, ਸੰਪਰਕ ਅਤੇ ਕੈਂਪੇਨ-ਅਰਜ਼ੀ ਫਾਰਮ ਡਰਾਫਟ ਇਸ ਬ੍ਰਾਊਜ਼ਰ ਦੇ ਲੋਕਲ ਸਟੋਰੇਜ ਵਿੱਚ 24 ਘੰਟਿਆਂ ਤੱਕ ਰਹਿ ਸਕਦੇ ਹਨ ਤਾਂ ਜੋ ਤੁਸੀਂ ਸਾਈਨ ਇਨ ਕਰਕੇ ਵਾਪਸ ਆਓ ਅਤੇ ਦੁਬਾਰਾ ਨਾ ਲਿਖਣਾ ਪਵੇ। ਸੰਬੰਧਿਤ ਫਾਰਮ ਜਮ੍ਹਾਂ ਕਰਨ ਤੋਂ ਪਹਿਲਾਂ ਉਹ YaarLink ਨੂੰ ਨਹੀਂ ਭੇਜੇ ਜਾਂਦੇ; ਸਫਲ ਜਮ੍ਹਾਂ, ਪੁਸ਼ਟ ਲਾਗਆਊਟ, ਮਿਆਦ ਖਤਮ ਹੋਣ ਜਾਂ ਸਾਈਟ ਡੇਟਾ ਸਾਫ਼ ਕਰਨ ਨਾਲ ਉਹ ਹਟ ਸਕਦੇ ਹਨ।",
             "WhatsApp, Instagram, YouTube ਜਾਂ ਕਿਸੇ ਬ੍ਰਾਂਡ/ਕ੍ਰਿਏਟਰ ਵੈੱਬਸਾਈਟ ਵਰਗੀਆਂ ਬਾਹਰੀ ਸੇਵਾਵਾਂ ਦੀਆਂ ਆਪਣੀਆਂ ਪਰਾਈਵੇਸੀ ਪ੍ਰਥਾਵਾਂ ਹੁੰਦੀਆਂ ਹਨ।",
           ],
         },
@@ -932,7 +935,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
           heading: "2. ਯੋਗਤਾ ਅਤੇ ਅਕਾਊਂਟ",
           bullets: [
             "ਤੁਸੀਂ ਕਾਨੂੰਨੀ ਤੌਰ 'ਤੇ ਇਸ ਸਮਝੌਤੇ ਦੇ ਯੋਗ ਹੋਣੇ ਚਾਹੀਦੇ ਹੋ, ਜਾਂ ਜਿੱਥੇ ਜ਼ਰੂਰੀ ਹੋਵੇ ਮਾਤਾ-ਪਿਤਾ/ਸਰਪ੍ਰਸਤ ਇਜਾਜ਼ਤ ਹੋਣੀ ਚਾਹੀਦੀ ਹੈ।",
-            "ਆਪਣੇ ਨਿਯੰਤਰਣ ਵਾਲੀ ਈਮੇਲ ਵਰਤੋ, ਅਕਾਊਂਟ ਜਾਣਕਾਰੀ ਸਹੀ ਰੱਖੋ, ਅਤੇ ਵਰਤੀਆਂ ਜਾਣ ਵਾਲੀਆਂ ਸੁਵਿਧਾਵਾਂ ਲਈ ਸਹੀ ਬ੍ਰਾਂਡ ਜਾਂ ਕ੍ਰਿਏਟਰ ਅਕਾਊਂਟ ਬਣਾਓ।",
+            "ਆਪਣੇ ਨਿਯੰਤਰਣ ਵਾਲੀ ਈਮੇਲ ਵਰਤੋ ਅਤੇ ਅਕਾਊਂਟ ਜਾਣਕਾਰੀ ਸਹੀ ਰੱਖੋ। ਉਹੀ ਅਕਾਊਂਟ ਬ੍ਰਾਂਡ ਅਤੇ ਕ੍ਰਿਏਟਰ ਦੋਵੇਂ ਵਰਕਸਪੇਸਾਂ ਵਿੱਚ ਵਰਤਿਆ ਜਾ ਸਕਦਾ ਹੈ; ਸ਼ੁਰੂਆਤੀ ਵਰਕਸਪੇਸ ਚੁਣਣ ਨਾਲ ਵੱਖਰਾ ਅਕਾਊਂਟ ਨਹੀਂ ਬਣਦਾ।",
             "ਪਾਸਵਰਡ ਅਤੇ ਤਸਦੀਕ ਲਿੰਕ ਨਿੱਜੀ ਰੱਖੋ। ਅਣਅਧਿਕਾਰਤ ਵਰਤੋਂ ਦੀ ਤੁਰੰਤ ਸੂਚਨਾ ਨਾ ਦੇਣ 'ਤੇ ਤੁਹਾਡੇ ਅਕਾਊਂਟ ਦੀ ਗਤੀਵਿਧੀ ਤੁਹਾਡੀ ਜ਼ਿੰਮੇਵਾਰੀ ਹੋਵੇਗੀ।",
             "ਕਿਸੇ ਹੋਰ ਵਿਅਕਤੀ, ਕਾਰੋਬਾਰ, ਕ੍ਰਿਏਟਰ ਜਾਂ ਪੇਜ ਦੀ ਨਕਲੀ ਪਛਾਣ ਲਈ, ਜਾਂ ਮਾਡਰੇਸ਼ਨ/ਸੁਰੱਖਿਆ ਨਿਯੰਤਰਣ ਤੋਂ ਬਚਣ ਲਈ ਅਕਾਊਂਟ ਨਾ ਬਣਾਓ।",
           ],
@@ -949,7 +952,7 @@ const DOCS: Record<Lang, Record<LegalPageKind, LegalDoc>> = {
         {
           heading: "4. ਅਰਜ਼ੀਆਂ ਅਤੇ ਸੰਪਰਕ",
           bullets: [
-            "ਸਿਰਫ਼ ਪੂਰੀ ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਵਾਲੇ ਯੋਗ ਕ੍ਰਿਏਟਰ ਅਕਾਊਂਟ ਕੈਂਪੇਨ ਲਈ ਅਪਲਾਈ ਕਰ ਸਕਦੇ ਹਨ।",
+            "ਕੋਈ ਅਕਾਊਂਟ ਆਪਣੀ ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਪੂਰੀ ਕਰਨ ਤੋਂ ਬਾਅਦ ਹੀ ਅਰਜ਼ੀ ਦੇ ਸਕਦਾ ਹੈ, ਅਤੇ ਆਪਣੇ ਹੀ ਕੈਂਪੇਨ ਲਈ ਅਰਜ਼ੀ ਨਹੀਂ ਦੇ ਸਕਦਾ।",
             "ਕ੍ਰਿਏਟਰ ਆਪਣੇ ਅਕਾਊਂਟ ਜਾਂ ਪੂਰੀ ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਵਿੱਚ ਸੇਵ ਇੱਕ ਫੋਨ, ਈਮੇਲ ਜਾਂ ਸੋਸ਼ਲ ਸੰਪਰਕ ਚੁਣਦਾ ਹੈ। ਭੇਜਣ ਦੀ ਪੁਸ਼ਟੀ ਕਰਕੇ ਕ੍ਰਿਏਟਰ YaarLink ਨੂੰ ਕ੍ਰਿਏਟਰ ਪ੍ਰੋਫਾਈਲ ਦਾ ਨਾਮ, ਚੁਣਿਆ ਸੰਪਰਕ ਅਤੇ ਸੁਨੇਹਾ ਉਸ ਕੈਂਪੇਨ ਦੇ ਬ੍ਰਾਂਡ ਨੂੰ ਦਿਖਾਉਣ ਦੀ ਇਜਾਜ਼ਤ ਦਿੰਦਾ ਹੈ।",
             "ਬ੍ਰਾਂਡ ਬਿਨੈਕਾਰ ਜਾਣਕਾਰੀ ਸਿਰਫ਼ ਉਸ ਅਰਜ਼ੀ ਜਾਂ ਕੈਂਪੇਨ ਅਤੇ ਸੰਬੰਧਿਤ ਸਹਿਮਤ ਕੰਮ ਦਾ ਮੁਲਾਂਕਣ ਤੇ ਸੰਚਾਲਨ ਕਰਨ ਲਈ ਵਰਤ ਸਕਦਾ ਹੈ। ਉਹ ਉਸ ਨੂੰ ਵੇਚ, ਕਿਰਾਏ 'ਤੇ, ਪ੍ਰਕਾਸ਼ਿਤ, ਸਪੈਮ ਜਾਂ ਅਸੰਬੰਧਿਤ ਮਾਰਕੀਟਿੰਗ ਲਈ ਨਹੀਂ ਵਰਤ ਸਕਦਾ।",
             "YaarLink 'ਤੇ ਅਰਜ਼ੀ ਜਾਂ ਸਥਿਤੀ ਆਪਣੇ ਆਪ ਰੁਜ਼ਗਾਰ, ਏਜੰਸੀ, ਭਾਈਵਾਲੀ ਜਾਂ ਪੇਮੈਂਟ ਗਾਰੰਟੀ ਨਹੀਂ ਬਣਾਉਂਦੀ। ਕੰਮ ਸ਼ੁਰੂ ਹੋਣ ਤੋਂ ਪਹਿਲਾਂ ਬ੍ਰਾਂਡ ਅਤੇ ਕ੍ਰਿਏਟਰ ਡਿਲੀਵਰੇਬਲ, ਵਰਤੋਂ ਹੱਕ, ਤਾਰੀਖਾਂ, ਕੀਮਤ ਅਤੇ ਪੇਮੈਂਟ ਤਰੀਕਾ ਪੁਸ਼ਟ ਕਰਨ।",

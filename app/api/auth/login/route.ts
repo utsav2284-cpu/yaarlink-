@@ -12,6 +12,7 @@ import {
   rateLimit,
   registerAuthFailure,
 } from "@/backend/rate-limit";
+import { availableUserRoles, primaryUserRole } from "@/shared/user-roles";
 
 export const dynamic = "force-dynamic";
 
@@ -83,8 +84,18 @@ export async function POST(req: Request) {
     }
 
     await setSessionCookie(user.id, user.tokenVersion, req);
+    const primaryRole = primaryUserRole(user.role);
     return Response.json(
-      { user: { id: user.id, name: user.name, email: user.email, role: user.role } },
+      {
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: primaryRole,
+          primaryRole,
+          availableRoles: availableUserRoles(),
+        },
+      },
       { headers: NO_STORE },
     );
   } catch (error) {

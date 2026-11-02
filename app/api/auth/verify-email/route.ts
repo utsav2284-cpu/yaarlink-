@@ -24,6 +24,7 @@ import {
 } from "@/backend/password-policy";
 import { getClientKey, hashKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
 import { readJsonObject } from "@/backend/validation";
+import { availableUserRoles, primaryUserRole } from "@/shared/user-roles";
 
 export const dynamic = "force-dynamic";
 
@@ -118,8 +119,18 @@ export async function POST(req: Request) {
     const verifiedAt = new Date();
     const session = createUserSessionRecord(req);
     const sessionToken = await createSessionToken(userId, 0, session.id, session.createdAt.getTime());
+    const primaryRole = primaryUserRole(pending.role);
     const response = NextResponse.json(
-      { user: { id: userId, name: pending.name, email: pending.email, role: pending.role } },
+      {
+        user: {
+          id: userId,
+          name: pending.name,
+          email: pending.email,
+          role: primaryRole,
+          primaryRole,
+          availableRoles: availableUserRoles(),
+        },
+      },
       { status: 201, headers: NO_STORE },
     );
     response.cookies.set(SESSION_COOKIE, sessionToken, SESSION_COOKIE_OPTIONS);

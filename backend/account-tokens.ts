@@ -9,6 +9,7 @@ import {
   userSessions,
   users,
 } from "@/backend/db/schema";
+import { DEFAULT_RETURN_TO, safeReturnTo } from "@/shared/return-to";
 
 export type AccountTokenPurpose = "password_reset" | "email_verification" | "email_change";
 
@@ -69,11 +70,20 @@ function appBase(req: Request) {
   }
 }
 
-export function buildAccountActionUrl(req: Request, purpose: AccountTokenPurpose, token: string) {
+export function buildAccountActionUrl(
+  req: Request,
+  purpose: AccountTokenPurpose,
+  token: string,
+  options: { returnTo?: unknown } = {},
+) {
   const path = purpose === "password_reset" ? "/reset-password" : "/verify-account-email";
   const url = new URL(path, appBase(req));
   const params = new URLSearchParams({ token });
   if (purpose !== "password_reset") params.set("kind", purpose === "email_change" ? "change" : "verify");
+  if (purpose === "password_reset") {
+    const destination = safeReturnTo(options.returnTo, "");
+    if (destination && destination !== DEFAULT_RETURN_TO) params.set("returnTo", destination);
+  }
   // A fragment is not sent to the web server, keeping the one-time token out
   // of ordinary request logs. The page reads it and clears the address bar.
   url.hash = params.toString();

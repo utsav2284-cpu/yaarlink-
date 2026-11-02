@@ -427,7 +427,7 @@ export default function HomePage() {
                       </div>
                     )}
                     {campaigns.map((c) => (
-                  <Link key={c.id} href="/campaigns" className="flex items-center justify-between gap-3 rounded-2xl border border-[#e9ddc3] bg-white p-4 hover:border-[#1c1917]">
+                  <Link key={c.id} href={`/campaigns?apply=${encodeURIComponent(c.id)}`} className="flex items-center justify-between gap-3 rounded-2xl border border-[#e9ddc3] bg-white p-4 hover:border-[#1c1917]">
                     <div>
                       <p className="text-[15px] font-extrabold">{c.title}</p>
                       <p className="text-[13px] text-[#6f6862]">{c.businessName} • {c.location} • {opt(c.language)} • {opt(c.format)} • {t("listing.reviewed")}</p>

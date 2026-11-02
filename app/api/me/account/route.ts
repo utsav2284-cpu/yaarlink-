@@ -1,6 +1,7 @@
 import {
   changeUserPasswordKeepingSession,
   changeUserPhone,
+  changeUserPrimaryRole,
   deleteUserAccount,
   getPendingEmailChange,
   listActiveUserSessions,
@@ -40,6 +41,7 @@ import {
 } from "@/backend/password-policy";
 import { getClientKey, hashKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
 import { normalizeEmail, normalizePhoneNumber, readJsonObject } from "@/backend/validation";
+import { availableUserRoles, normalizeUserRole, primaryUserRole } from "@/shared/user-roles";
 
 export const dynamic = "force-dynamic";
 
@@ -178,6 +180,23 @@ export async function PATCH(req: Request) {
       return Response.json(
         { ok: true, status: "email_change_sent", pendingEmailChange: { email: newEmail, expiresAt: claim.expiresAt } },
         { status: 202, headers: NO_STORE },
+      );
+    }
+
+    if (action === "change_primary_role") {
+      const requestedRole = typeof body.role === "string" ? body.role.trim().toLowerCase() : body.role;
+      const role = normalizeUserRole(requestedRole);
+      if (!role) return jsonError(400, "Please choose a valid default workspace.", "invalid_request");
+      const result = await changeUserPrimaryRole(context.user.id, role);
+      if (result.kind !== "changed") return jsonError(401, "Please log in again", "unauthorized");
+      const primaryRole = primaryUserRole(result.user.role, role);
+      return Response.json(
+        {
+          ok: true,
+          status: "primary_role_changed",
+          user: { ...result.user, role: primaryRole, primaryRole, availableRoles: availableUserRoles() },
+        },
+        { headers: NO_STORE },
       );
     }
 

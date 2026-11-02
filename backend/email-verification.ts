@@ -2,6 +2,7 @@ import { and, eq, lt, sql } from "drizzle-orm";
 import type { UserSessionRecord } from "@/backend/auth";
 import { db } from "@/backend/db";
 import { brands, creators, pendingSignups, userSessions, users } from "@/backend/db/schema";
+import { DEFAULT_RETURN_TO, safeReturnTo } from "@/shared/return-to";
 
 export const PENDING_SIGNUP_TTL_MS = 30 * 60_000;
 export const PENDING_SIGNUP_RESEND_COOLDOWN_MS = 60_000;
@@ -48,7 +49,7 @@ export async function hashSignupVerificationToken(token: string) {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-export function buildSignupVerificationUrl(req: Request, token: string) {
+export function buildSignupVerificationUrl(req: Request, token: string, returnTo?: unknown) {
   const requestOrigin = new URL(req.url).origin;
   let base = requestOrigin;
   const configured = process.env.APP_URL?.trim();
@@ -62,8 +63,13 @@ export function buildSignupVerificationUrl(req: Request, token: string) {
 
   const url = new URL("/verify-email", base);
   // The fragment is not sent to the web server, keeping the one-time token
-  // out of ordinary request logs. The client page reads and clears it.
-  url.hash = new URLSearchParams({ token }).toString();
+  // out of ordinary request logs. The client page reads and clears it. A
+  // separately validated same-site return path can travel beside the token
+  // so completing signup resumes the journey that required an account.
+  const fragment = new URLSearchParams({ token });
+  const destination = safeReturnTo(returnTo, "");
+  if (destination && destination !== DEFAULT_RETURN_TO) fragment.set("returnTo", destination);
+  url.hash = fragment.toString();
   return url.toString();
 }
 

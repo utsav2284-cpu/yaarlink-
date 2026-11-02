@@ -4,18 +4,25 @@ import { useLang } from "@/frontend/i18n";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore } from "react";
+import { buildAuthPath, DEFAULT_RETURN_TO, safeReturnTo } from "@/shared/return-to";
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const subscribeNoop = () => () => {};
+
+function fragmentValue(name: string) {
+  if (typeof window === "undefined") return "";
+  return new URLSearchParams(window.location.hash.replace(/^#/, "")).get(name) || "";
+}
 
 export default function VerifyEmailPage() {
   const router = useRouter();
   const { t } = useLang();
   const mounted = useSyncExternalStore(subscribeNoop, () => true, () => false);
-  const [token, setToken] = useState(() => {
-    if (typeof window === "undefined") return "";
-    return new URLSearchParams(window.location.hash.replace(/^#/, "")).get("token") || "";
-  });
+  const [token, setToken] = useState(() => fragmentValue("token"));
+  const [fragmentReturnTo] = useState(() => safeReturnTo(fragmentValue("returnTo")));
+  // The fragment exists only in the browser. Render the server/default href
+  // for the hydration pass, then use the captured destination after mount.
+  const returnTo = mounted ? fragmentReturnTo : DEFAULT_RETURN_TO;
   const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
@@ -56,7 +63,7 @@ export default function VerifyEmailPage() {
       setSuccess(true);
       setPassword("");
       setToken("");
-      router.push("/dashboard");
+      router.replace(returnTo);
       router.refresh();
     } catch {
       setErr(t("auth.signupFailed"));
@@ -74,7 +81,7 @@ export default function VerifyEmailPage() {
 
         {success ? (
           <p className="mt-5 rounded-2xl border border-[#bfe3c5] bg-[#f2fbf3] px-5 py-4 text-[15px] font-bold text-[#17452e]">
-            {t("auth.verifySuccess")}
+            {t(returnTo === DEFAULT_RETURN_TO ? "auth.verifySuccess" : "auth.verifySuccessReturn")}
           </p>
         ) : invalidToken ? (
           <div className="mt-5">
@@ -82,7 +89,7 @@ export default function VerifyEmailPage() {
               <h2 className="text-[18px] font-black text-red-800">{t("auth.verifyInvalidTitle")}</h2>
               <p className="mt-2 text-[14px] leading-relaxed text-red-700">{t("auth.verifyInvalidBody")}</p>
             </div>
-            <Link href="/signup" className="mt-5 block rounded-2xl bg-[#c7431f] py-3.5 text-center text-[15.5px] font-extrabold text-white hover:bg-[#a93618]">
+            <Link href={buildAuthPath("/signup", { returnTo })} className="mt-5 block rounded-2xl bg-[#c7431f] py-3.5 text-center text-[15.5px] font-extrabold text-white hover:bg-[#a93618]">
               {t("auth.signupAgain")}
             </Link>
           </div>
@@ -112,11 +119,11 @@ export default function VerifyEmailPage() {
         )}
 
         <p className="mt-5 text-center text-[14px] text-[#6f6862]">
-          {t("auth.alreadyFinished")} <Link href="/login" className="font-bold text-[#c7431f]">{t("auth.login")}</Link>
+          {t("auth.alreadyFinished")} <Link href={buildAuthPath("/login", { returnTo })} className="font-bold text-[#c7431f]">{t("auth.login")}</Link>
         </p>
         {!invalidToken && !success && (
           <p className="mt-2 text-center text-[14px] text-[#6f6862]">
-            <Link href="/signup" className="font-bold text-[#c7431f]">{t("auth.signupAgain")}</Link>
+            <Link href={buildAuthPath("/signup", { returnTo })} className="font-bold text-[#c7431f]">{t("auth.signupAgain")}</Link>
           </p>
         )}
       </div>

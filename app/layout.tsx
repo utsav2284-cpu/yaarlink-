@@ -6,6 +6,7 @@ import Navbar from "@/frontend/components/Navbar";
 import Footer from "@/frontend/components/Footer";
 import { LanguageProvider } from "@/frontend/i18n";
 import { SITE } from "@/config/site";
+import { getSessionUser, isSessionUnavailableError, logSessionUnavailable } from "@/backend/auth";
 
 const description =
   "Connect brands, local businesses, creators, meme pages and communities. Simple marketing in English, Hindi & Punjabi.";
@@ -34,6 +35,21 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   // that nonce to its inline bootstrap/RSC scripts.
   await connection();
 
+  let initialUser: { id: string } | null = null;
+  let initialSessionStatus: "ready" | "error" = "ready";
+  try {
+    const sessionUser = await getSessionUser();
+    // The navbar only needs existence/identity to choose the correct actions;
+    // do not embed the user's name or email in every document response.
+    initialUser = sessionUser ? { id: sessionUser.id } : null;
+  } catch (error) {
+    // Session-store/configuration failure is unknown state, never proof the
+    // visitor is logged out. The navbar keeps its retry state in that case.
+    initialSessionStatus = "error";
+    if (isSessionUnavailableError(error)) logSessionUnavailable(error);
+    else console.error(error);
+  }
+
   return (
     <html lang="en">
       <head>
@@ -46,7 +62,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       </head>
       <body className="bg-[#fffbf1] text-[#1c1917] antialiased">
         <LanguageProvider>
-          <Navbar />
+          <Navbar initialUser={initialUser} initialSessionStatus={initialSessionStatus} />
           <main id="main-content" tabIndex={-1} className="min-h-[70vh]">{children}</main>
           <Footer />
         </LanguageProvider>

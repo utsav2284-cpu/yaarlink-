@@ -15,6 +15,7 @@ import {
   parseRequiredText,
   readJsonObject,
 } from "@/backend/validation";
+import { safeReturnTo } from "@/shared/return-to";
 
 export const dynamic = "force-dynamic";
 
@@ -82,6 +83,7 @@ export async function POST(req: Request) {
     const name = parsedName.value;
     const email = parsedEmail.value;
     const cleanPhone = parsedPhone.value;
+    const returnTo = hasField(body, "returnTo") ? safeReturnTo(body.returnTo, "") : "";
 
     if (body.legalConsent !== true) {
       return Response.json(
@@ -148,7 +150,7 @@ export async function POST(req: Request) {
         await sendSignupVerificationEmail({
           to: email,
           name: cleanName,
-          verificationUrl: buildSignupVerificationUrl(req, claim.token),
+          verificationUrl: buildSignupVerificationUrl(req, claim.token, returnTo),
         });
         await markPendingSignupEmailSent(claim.pendingId, claim.tokenHash);
       } catch {

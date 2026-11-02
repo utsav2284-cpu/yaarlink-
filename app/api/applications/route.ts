@@ -263,7 +263,7 @@ export async function POST(req: Request) {
     const message = parsedMessage.value;
 
     const camp = await db
-      .select({ id: campaigns.id, status: campaigns.status, verificationStatus: campaigns.verificationStatus })
+      .select({ id: campaigns.id, ownerId: campaigns.ownerId, status: campaigns.status, verificationStatus: campaigns.verificationStatus })
       .from(campaigns)
       .where(eq(campaigns.id, campaignId))
       .limit(1);
@@ -273,8 +273,12 @@ export async function POST(req: Request) {
     }
 
     const user = await getSessionUser();
-    if (!user) return Response.json({ error: "Please log in as a creator before applying.", code: "unauthorized" }, { status: 401, headers: NO_STORE });
-    if (user.role !== "creator") return Response.json({ error: "Only creator accounts can apply to campaigns.", code: "forbidden" }, { status: 403, headers: NO_STORE });
+    if (!user) return Response.json({ error: "Please log in before applying.", code: "unauthorized" }, { status: 401, headers: NO_STORE });
+    if (camp[0].ownerId === user.id) {
+      return Response.json({ error: "You cannot apply to your own campaign.", code: "own_campaign" }, { status: 403, headers: NO_STORE });
+    }
+    // Any account may apply once it has its own completed creator profile;
+    // the profile/consent checks below remain the creator-side requirements.
 
     const [initialCreatorProfile] = await db
       .select()
@@ -331,7 +335,7 @@ export async function POST(req: Request) {
     type PostOutcome =
       | { kind: "created" | "reactivated"; application: typeof applications.$inferSelect; email: EmailNotice }
       | { kind: "replay"; application: typeof applications.$inferSelect }
-      | { kind: "duplicate" | "closed" | "profile_incomplete" | "contact_not_owned" | "campaign_missing" | "content_not_allowed" };
+      | { kind: "duplicate" | "closed" | "profile_incomplete" | "contact_not_owned" | "campaign_missing" | "content_not_allowed" | "own_campaign" };
 
     const outcome: PostOutcome = await db.transaction(async (tx) => {
       // Locking the campaign makes pause/close and apply/reactivate decisions
@@ -339,6 +343,7 @@ export async function POST(req: Request) {
       const [campaign] = await tx.select().from(campaigns).where(eq(campaigns.id, campaignId)).limit(1).for("update");
       if (!campaign) return { kind: "campaign_missing" } as const;
       if (!isOpenCampaign(campaign)) return { kind: "closed" } as const;
+      if (campaign.ownerId === user.id) return { kind: "own_campaign" } as const;
 
       const [creatorProfile] = await tx
         .select()
@@ -475,6 +480,7 @@ export async function POST(req: Request) {
     if (outcome.kind === "replay") {
       return Response.json({ application: outcome.application, reactivated: false, idempotentReplay: true }, { headers: NO_STORE });
     }
+    if (outcome.kind === "own_campaign") return Response.json({ error: "You cannot apply to your own campaign.", code: "own_campaign" }, { status: 403, headers: NO_STORE });
     if (outcome.kind === "content_not_allowed") return contentNotAllowedResponse("creatorContact");
     if (outcome.kind === "duplicate") return Response.json({ error: "You have already applied to this campaign.", code: "already_applied" }, { status: 409, headers: NO_STORE });
     if (outcome.kind === "closed") return Response.json({ error: "This campaign is no longer accepting applications.", code: "campaign_closed" }, { status: 409, headers: NO_STORE });
@@ -599,8 +605,10 @@ export async function PATCH(req: Request) {
         .for("update");
       if (!application) return { kind: "not_found" } as const;
 
-      const isApplicant = user.role === "creator" && application.userId === user.id;
-      const isCampaignOwner = user.role === "brand" && campaign.ownerId === user.id;
+      const isApplicant = application.userId === user.id;
+      // A self-application should not exist, but even for legacy data the
+      // campaign owner must not use brand actions on their own application.
+      const isCampaignOwner = campaign.ownerId === user.id && application.userId !== user.id;
       if (CREATOR_ACTIONS.has(action) && !isApplicant) return { kind: "forbidden" } as const;
       if (action in BRAND_ACTIONS && !isCampaignOwner) return { kind: "forbidden" } as const;
 

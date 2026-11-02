@@ -9,9 +9,25 @@ import { ListingError, ListingLoading } from "@/frontend/components/ListingState
 import { CATEGORIES, LANGUAGES, CONTENT_TYPES, PLATFORMS } from "@/shared/constants";
 import PrivacyNotice from "@/frontend/components/PrivacyNotice";
 import ReportButton from "@/frontend/components/ReportButton";
+import AuthJourneyNotice from "@/frontend/components/AuthJourneyNotice";
+import { useSessionUser } from "@/frontend/session";
+import { readFormDraft, removeFormDraft, writeFormDraft } from "@/frontend/form-drafts";
+import { buildPathWithReturnTo, safeReturnTo } from "@/shared/return-to";
+
+const CREATOR_DRAFT_KEY = "yaarlink:creator-profile-draft:v1";
+
+function initialAfterProfileReturnTo() {
+  if (typeof window === "undefined") return "";
+  return safeReturnTo(new URLSearchParams(window.location.search).get("returnTo"), "");
+}
 
 export default function CreatorsPage() {
   const { t, opt, platform: platformLabel, apiErrorKey, formatNumber } = useLang();
+  const session = useSessionUser();
+  const [afterProfileReturnTo] = useState(initialAfterProfileReturnTo);
+  const creatorReturnTo = afterProfileReturnTo
+    ? buildPathWithReturnTo("/creators", afterProfileReturnTo, "/creators")
+    : "/creators";
   const [step, setStep] = useState(1);
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [campaignsStatus, setCampaignsStatus] = useState<"loading" | "success" | "error">("loading");
@@ -35,6 +51,9 @@ export default function CreatorsPage() {
   const [done, setDone] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
   const [errKey, setErrKey] = useState("");
+  const [authRequired, setAuthRequired] = useState(false);
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
 
   const requestCampaigns = useCallback(
     () => fetchJsonList<any>("/api/campaigns?limit=6&sort=newest", "campaigns", { cache: "no-store" }),
@@ -78,6 +97,61 @@ export default function CreatorsPage() {
     };
   }, [handleCampaignsError, handleCampaignsSuccess, requestCampaigns]);
 
+  useEffect(() => {
+    let active = true;
+    void Promise.resolve().then(() => {
+      if (!active) return;
+      try {
+        const draft = readFormDraft(CREATOR_DRAFT_KEY) as { form?: unknown; step?: unknown } | null;
+        if (!draft) return;
+      let restored = false;
+      if (draft.form && typeof draft.form === "object" && !Array.isArray(draft.form)) {
+        const draftForm = draft.form as Record<string, unknown>;
+        const meaningfulTextFields = ["name", "phone", "email", "instagram", "youtube", "profileUrl", "followers", "location", "bio"] as const;
+        restored =
+          meaningfulTextFields.some((field) => typeof draftForm[field] === "string" && draftForm[field].trim() !== "") ||
+          (Array.isArray(draftForm.languages) && draftForm.languages.some((item) => typeof item === "string" && LANGUAGES.includes(item as never))) ||
+          (Array.isArray(draftForm.contentTypes) && draftForm.contentTypes.some((item) => typeof item === "string" && CONTENT_TYPES.includes(item as never)));
+        setForm((current) => {
+          const next = { ...current };
+          for (const field of Object.keys(current) as Array<keyof typeof current>) {
+            const value = draftForm[field];
+            if (field === "languages") {
+              if (Array.isArray(value)) {
+                next.languages = value.filter((item): item is string => typeof item === "string" && LANGUAGES.includes(item as never));
+              }
+            } else if (field === "contentTypes") {
+              if (Array.isArray(value)) {
+                next.contentTypes = value.filter((item): item is string => typeof item === "string" && CONTENT_TYPES.includes(item as never));
+              }
+            } else if (typeof value === "string" && value.length <= 5000) {
+              next[field] = value as never;
+            }
+          }
+          return next;
+        });
+      }
+      if (typeof draft.step === "number" && Number.isInteger(draft.step) && draft.step >= 1 && draft.step <= 3) {
+        setStep(draft.step);
+        if (draft.step > 1) restored = true;
+      }
+      if (restored) setDraftRestored(true);
+      } catch {
+        // Draft storage is a best-effort convenience only.
+      } finally {
+        if (active) setDraftReady(true);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!draftReady || done) return;
+    writeFormDraft(CREATOR_DRAFT_KEY, { form, step });
+  }, [done, draftReady, form, step]);
+
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
   const toggle = (k: "languages" | "contentTypes", v: string) => {
     setForm((f) => {
@@ -91,6 +165,21 @@ export default function CreatorsPage() {
 
   const submit = async () => {
     setErrKey("");
+    if (session.status === "loading") {
+      setErrKey("session.checking");
+      return;
+    }
+    if (session.status === "error") {
+      setErrKey("session.unavailable");
+      return;
+    }
+    if (!session.user) {
+      setAuthRequired(true);
+      setErrKey("api.unauthorized");
+      document.getElementById("creator-auth-notice")?.scrollIntoView({ block: "center", behavior: "smooth" });
+      return;
+    }
+    setAuthRequired(false);
     if (!form.category || form.languages.length === 0) {
       setErrKey("cr.err");
       return;
@@ -104,9 +193,15 @@ export default function CreatorsPage() {
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) {
+        if (res.status === 401) {
+          session.markLoggedOut();
+          setAuthRequired(true);
+        }
         setErrKey(apiErrorKey(res.status, d?.code));
         return;
       }
+      removeFormDraft(CREATOR_DRAFT_KEY);
+      setDraftRestored(false);
       setVerificationCode(d.creator?.verificationCode ?? "");
       setDone(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -135,7 +230,10 @@ export default function CreatorsPage() {
             </div>
           )}
           <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
-            <Link href="/dashboard" className="rounded-2xl bg-[#1c1917] px-6 py-3.5 text-[15px] font-bold text-white">{t("cr.dashboard")}</Link>
+            {afterProfileReturnTo && (
+              <Link href={afterProfileReturnTo} className="rounded-2xl bg-[#c7431f] px-6 py-3.5 text-[15px] font-bold text-white hover:bg-[#a93618]">{t("authFlow.continueWhereLeft")}</Link>
+            )}
+            <Link href="/dashboard?view=creator" className="rounded-2xl bg-[#1c1917] px-6 py-3.5 text-[15px] font-bold text-white">{t("cr.dashboard")}</Link>
             <Link href="/campaigns" className="rounded-2xl border border-[#e9ddc3] bg-[#fffbf1] px-6 py-3.5 text-[15px] font-bold">{t("cr.browse")}</Link>
           </div>
         </div>
@@ -171,6 +269,23 @@ export default function CreatorsPage() {
                 <div key={s} className={`h-2 flex-1 rounded-full ${s <= step ? "bg-[#c7431f]" : "bg-[#f0e6cc]"}`} />
               ))}
             </div>
+            <div className="mt-4">
+              <AuthJourneyNotice
+                id="creator-auth-notice"
+                status={session.status}
+                user={session.user}
+                messageKey="authFlow.creatorLoginRequired"
+                returnTo={creatorReturnTo}
+                role="creator"
+                onRetry={session.refresh}
+                forceGuest={authRequired}
+              />
+            </div>
+            {draftRestored && (
+              <p role="status" className="mt-3 rounded-xl border border-[#bfe3c5] bg-[#f2fbf3] px-4 py-3 text-[13px] font-bold text-[#17452e]">
+                {t("authFlow.draftRestored")}
+              </p>
+            )}
 
             {step === 1 && (
               <div className="mt-6 grid gap-4">
@@ -309,7 +424,7 @@ export default function CreatorsPage() {
                     <p className="mt-1 text-[13px] text-[#6f6862]">{c.businessName} • {c.location} • {opt(c.language)}</p>
                     <div className="mt-2 flex items-center justify-between">
                       <span className="rounded-full bg-[#17452e] px-3 py-1 text-[12.5px] font-bold text-white">{t("cr.paid")} • {opt(c.format)}</span>
-                      <Link href="/campaigns" className="text-[13.5px] font-bold text-[#c7431f]">{t("cr.view")}</Link>
+                      <Link href={`/campaigns?apply=${encodeURIComponent(c.id)}`} className="text-[13.5px] font-bold text-[#c7431f]">{t("cr.view")}</Link>
                     </div>
                     <div className="mt-2">
                       <span className="text-[11.5px] font-bold text-green-800">{t("listing.reviewed")}</span>

@@ -4,13 +4,18 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useLang } from "@/frontend/i18n";
+import { clearLocalFormDrafts } from "@/frontend/session";
+import { buildAuthPath } from "@/shared/return-to";
+import { primaryUserRole, USER_ROLES, type UserRole } from "@/shared/user-roles";
 
 type AccountUser = {
   id: string;
   name: string;
   email: string;
   phone: string | null;
-  role: string;
+  role: UserRole;
+  primaryRole?: UserRole;
+  availableRoles?: UserRole[];
   emailVerifiedAt: string | null;
   createdAt: string;
 };
@@ -38,6 +43,7 @@ type ApiData = {
   code?: string;
   status?: string;
   revokedCount?: number;
+  user?: Partial<AccountUser>;
 };
 
 const inputClass = "w-full rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 text-[14px] outline-none focus:border-[#1c1917]";
@@ -81,7 +87,7 @@ export default function AccountPage() {
   const fetchAccount = useCallback(async (): Promise<AccountData | null> => {
     const res = await fetch("/api/me/account", { cache: "no-store" });
     if (res.status === 401) {
-      router.replace("/login");
+      router.replace(buildAuthPath("/login", { returnTo: "/account" }));
       return null;
     }
     const d = (await res.json().catch(() => null)) as AccountData | null;
@@ -191,7 +197,17 @@ export default function AccountPage() {
 
   const { user, sessions, pendingEmailChange } = data;
   const otherSessions = sessions.filter((session) => !session.current);
-  const roleLabel = user.role === "creator" ? t("dash.creatorAccount") : t("dash.brandAccount");
+  const roleLabel = t("dash.bothAccount");
+  const primaryRole = primaryUserRole(user.primaryRole ?? user.role);
+
+  const savePrimaryRole = (role: UserRole) => {
+    if (role === primaryRole) return;
+    run("change-primary-role", async () => {
+      await patchAccount({ action: "change_primary_role", role });
+      setNotice(t("authFlow.primaryWorkspaceSaved"));
+      await refresh();
+    });
+  };
 
   const sendVerification = () =>
     run("verify-email", async () => {
@@ -307,6 +323,7 @@ export default function AccountPage() {
       });
       const d = (await res.json().catch(() => null)) as ApiData | null;
       if (!res.ok) throw new ActionError(errorMessage(res.status, d?.code));
+      clearLocalFormDrafts();
       router.push("/");
       router.refresh();
     });
@@ -345,6 +362,26 @@ export default function AccountPage() {
             <div className="flex justify-between gap-4 border-b border-[#f0e6cc] pb-3">
               <dt className="font-bold text-[#6f6862]">{t("account.role")}</dt>
               <dd className="text-right font-extrabold">{roleLabel}</dd>
+            </div>
+            <div className="border-b border-[#f0e6cc] pb-3">
+              <dt className="font-bold text-[#6f6862]">{t("authFlow.primaryWorkspace")}</dt>
+              <dd className="mt-2">
+                <div role="group" aria-label={t("authFlow.primaryWorkspace")} className="grid grid-cols-2 gap-1 rounded-2xl bg-[#fff4de] p-1">
+                  {USER_ROLES.map((role) => (
+                    <button
+                      key={role}
+                      type="button"
+                      aria-pressed={primaryRole === role}
+                      disabled={busyKey === "change-primary-role"}
+                      onClick={() => savePrimaryRole(role)}
+                      className={`rounded-xl px-3 py-2.5 text-[13px] font-extrabold disabled:opacity-60 ${primaryRole === role ? "bg-[#1c1917] text-white" : "text-[#57534e] hover:bg-white"}`}
+                    >
+                      {t(role === "brand" ? "dash.brandWorkspace" : "dash.creatorWorkspace")}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-[13px] leading-relaxed text-[#6f6862]">{t("authFlow.primaryWorkspaceHelp")}</p>
+              </dd>
             </div>
             <div className="flex justify-between gap-4 border-b border-[#f0e6cc] pb-3">
               <dt className="font-bold text-[#6f6862]">{t("brand.email")}</dt>

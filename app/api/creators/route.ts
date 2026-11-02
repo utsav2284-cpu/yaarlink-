@@ -508,8 +508,9 @@ export async function POST(req: Request) {
     const body = parsedBody.body;
 
     const user = await getSessionUser();
-    if (!user) return Response.json({ error: "Please log in as a creator before creating your profile.", code: "unauthorized" }, { status: 401, headers: NO_STORE });
-    if (user.role !== "creator") return Response.json({ error: "Only creator accounts can create creator profiles.", code: "forbidden" }, { status: 403, headers: NO_STORE });
+    if (!user) return Response.json({ error: "Please log in before creating your creator profile.", code: "unauthorized" }, { status: 401, headers: NO_STORE });
+    // The profile is keyed to this user. Their preferred starting workspace
+    // does not restrict whether the same account can also be a creator.
 
     const parsed = parseCreatorProfile(body, user);
     if (!parsed.ok) return validationErrorResponse(parsed);
@@ -607,8 +608,7 @@ export async function PATCH(req: Request) {
     }
 
     const user = await getSessionUser();
-    if (!user) return Response.json({ error: "Please log in as a creator to edit your profile.", code: "unauthorized" }, { status: 401, headers: NO_STORE });
-    if (user.role !== "creator") return Response.json({ error: "Only creator accounts can edit creator profiles.", code: "forbidden" }, { status: 403, headers: NO_STORE });
+    if (!user) return Response.json({ error: "Please log in to edit your creator profile.", code: "unauthorized" }, { status: 401, headers: NO_STORE });
 
     const expectedUpdatedAt = parseExpectedUpdatedAt(body);
     if (!expectedUpdatedAt.ok) return validationErrorResponse(expectedUpdatedAt);
@@ -710,8 +710,7 @@ export async function DELETE(req: Request) {
   if (!rl.ok) return limitedResponse(rl.retryAfter);
   try {
     const user = await getSessionUser();
-    if (!user) return Response.json({ error: "Please log in as a creator to delete your profile.", code: "unauthorized" }, { status: 401, headers: NO_STORE });
-    if (user.role !== "creator") return Response.json({ error: "Only creator accounts can delete creator profiles.", code: "forbidden" }, { status: 403, headers: NO_STORE });
+    if (!user) return Response.json({ error: "Please log in to delete your creator profile.", code: "unauthorized" }, { status: 401, headers: NO_STORE });
 
     const [row] = await db.delete(creators).where(eq(creators.userId, user.id)).returning({ id: creators.id });
     if (!row) return Response.json({ error: "Creator profile not found.", code: "creator_profile_not_found" }, { status: 404, headers: NO_STORE });
