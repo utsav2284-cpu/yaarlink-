@@ -31,19 +31,62 @@ function applicationDraftKey(campaignId: string) {
   return `${APPLICATION_DRAFT_PREFIX}${campaignId}`;
 }
 
-function readApplicationDraft(campaignId: string): { contact: string; message: string } | null {
-  const draft = readFormDraft(applicationDraftKey(campaignId)) as { contact?: unknown; message?: unknown } | null;
+type ApplicationDraft = {
+  contact: string;
+  message: string;
+  quoteAmount: string;
+  proposedTimelineDays: string;
+  proposedTimeline: string;
+};
+
+const EMPTY_APPLICATION_DRAFT: ApplicationDraft = {
+  contact: "",
+  message: "",
+  quoteAmount: "",
+  proposedTimelineDays: "",
+  proposedTimeline: "",
+};
+
+function readApplicationDraft(campaignId: string): ApplicationDraft | null {
+  const draft = readFormDraft(applicationDraftKey(campaignId)) as {
+    contact?: unknown;
+    message?: unknown;
+    quoteAmount?: unknown;
+    proposedTimelineDays?: unknown;
+    proposedTimeline?: unknown;
+  } | null;
   if (!draft || typeof draft.contact !== "string" || typeof draft.message !== "string") return null;
   if (draft.contact.length > 500 || draft.message.length > 5000) return null;
-  return { contact: draft.contact, message: draft.message };
+  return {
+    contact: draft.contact,
+    message: draft.message,
+    quoteAmount: typeof draft.quoteAmount === "string" && draft.quoteAmount.length <= 16 ? draft.quoteAmount : "",
+    proposedTimelineDays:
+      typeof draft.proposedTimelineDays === "string" && draft.proposedTimelineDays.length <= 4 ? draft.proposedTimelineDays : "",
+    proposedTimeline:
+      typeof draft.proposedTimeline === "string" && draft.proposedTimeline.length <= 300 ? draft.proposedTimeline : "",
+  };
 }
 
-function saveApplicationDraft(campaignId: string, draft: { contact: string; message: string }) {
+function saveApplicationDraft(campaignId: string, draft: ApplicationDraft) {
   writeFormDraft(applicationDraftKey(campaignId), { ...draft });
 }
 
 function clearApplicationDraft(campaignId: string) {
   removeFormDraft(applicationDraftKey(campaignId));
+}
+
+const EXPIRABLE_CAMPAIGN_STATUSES = new Set(["pending", "open", "paused"]);
+
+function campaignHasExpired(campaign: any, now = Date.now()): boolean {
+  if (campaign?.status === "expired") return true;
+  if (!EXPIRABLE_CAMPAIGN_STATUSES.has(campaign?.status)) return false;
+  const expiresAt = campaign?.expiresAt ? new Date(campaign.expiresAt).getTime() : Number.NaN;
+  return Number.isFinite(expiresAt) && expiresAt <= now;
+}
+
+function campaignAcceptsApplications(campaign: any, now = Date.now()): boolean {
+  return campaign?.status === "open" && campaign?.verificationStatus === "verified" && !campaignHasExpired(campaign, now);
 }
 
 function campaignListUrl({ q, lang, sort, cursor }: { q: string; lang: string; sort: string; cursor?: string | null }) {
@@ -70,7 +113,7 @@ export type CampaignsInitialData = {
 
 export default function CampaignsPageClient({ initialData }: { initialData: CampaignsInitialData }) {
   const { markLoggedOut } = useSession();
-  const { t, opt, promo, status: statusLabel, apiErrorKey: getApiErrorKey, formatDateTime, formatRelativeTime } = useLang();
+  const { t, opt, promo, status: statusLabel, apiErrorKey: getApiErrorKey, formatCurrency, formatDate, formatDateTime, formatRelativeTime } = useLang();
   const [campaigns, setCampaigns] = useState<any[]>(initialData.campaigns);
   const [campaignsStatus, setCampaignsStatus] = useState<"loading" | "success" | "error">(initialData.campaignsStatus);
   const [campaignsErrorKey, setCampaignsErrorKey] = useState<TranslationKey>("listing.loadFailed");
@@ -85,7 +128,7 @@ export default function CampaignsPageClient({ initialData }: { initialData: Camp
   const skippedInitialCampaignFetchRef = useRef(false);
   const skippedInitialOwnApplicationsFetchRef = useRef(false);
   const [applyId, setApplyId] = useState<string | null>(null);
-  const [applyForm, setApplyForm] = useState({ contact: "", message: "" });
+  const [applyForm, setApplyForm] = useState<ApplicationDraft>(EMPTY_APPLICATION_DRAFT);
   const [applyConsent, setApplyConsent] = useState(false);
   const [applyError, setApplyError] = useState<"" | "contact" | "consent" | "login" | "creator" | "duplicate" | "closed" | "rate" | "generic" | "api">("");
   const [applyApiErrorKey, setApplyApiErrorKey] = useState<TranslationKey>("camp.applyGenericErr");
@@ -106,9 +149,10 @@ export default function CampaignsPageClient({ initialData }: { initialData: Camp
   );
   const [creatorProfile, setCreatorProfile] = useState<any | null>(initialData.ownApplications?.creatorProfile ?? null);
   const [contactOptions, setContactOptions] = useState<string[]>(initialData.ownApplications?.contactOptions ?? []);
-  const [pageNotice, setPageNotice] = useState<"" | "duplicate" | "closed" | "own">("");
+  const [pageNotice, setPageNotice] = useState<"" | "duplicate" | "closed" | "expired" | "own">("");
   const [requestedApplyId] = useState(initialRequestedApplyId);
   const handledRequestedApplyRef = useRef("");
+  const [clientNow, setClientNow] = useState<number | null>(null);
 
   const requestOwnApplications = useCallback((campaignIds?: string[]) => {
     const ids = campaignIds ? [...new Set(campaignIds.filter(Boolean))] : undefined;
@@ -242,6 +286,16 @@ export default function CampaignsPageClient({ initialData }: { initialData: Camp
   }, [loadCampaigns]);
 
   useEffect(() => {
+    // Keep the first client render identical to the server render, then use
+    // a mounted clock so a card that reaches its deadline while this page is
+    // open stops presenting an application form.
+    const updateNow = () => setClientNow(Date.now());
+    updateNow();
+    const interval = window.setInterval(updateNow, 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
     const timeout = window.setTimeout(() => setSearchQ(q.trim()), 350);
     return () => window.clearTimeout(timeout);
   }, [q]);
@@ -285,11 +339,13 @@ export default function CampaignsPageClient({ initialData }: { initialData: Camp
     handledRequestedApplyRef.current = requestedApplyId;
     const ownApplication = ownApplications[requestedApplyId];
     const hasActiveApplication = Boolean(ownApplication && ownApplication.status !== "withdrawn");
-    const campaignIsOpen = campaign.status === "open" && campaign.verificationStatus === "verified";
+    const campaignIsOpen = campaignAcceptsApplications(campaign);
     const isOwnCampaign = ownCampaignIds.has(requestedApplyId);
 
     if (isOwnCampaign) {
       void Promise.resolve().then(() => setPageNotice("own"));
+    } else if (campaignHasExpired(campaign)) {
+      void Promise.resolve().then(() => setPageNotice("expired"));
     }
 
     if (
@@ -301,7 +357,14 @@ export default function CampaignsPageClient({ initialData }: { initialData: Camp
     ) {
       const draft =
         ownApplication?.status === "withdrawn"
-          ? { contact: ownApplication.creatorContact ?? "", message: ownApplication.message ?? "" }
+          ? {
+              contact: ownApplication.creatorContact ?? "",
+              message: ownApplication.message ?? "",
+              quoteAmount: ownApplication.quoteAmount == null ? "" : String(ownApplication.quoteAmount),
+              proposedTimelineDays:
+                ownApplication.proposedTimelineDays == null ? "" : String(ownApplication.proposedTimelineDays),
+              proposedTimeline: ownApplication.proposedTimeline ?? "",
+            }
           : readApplicationDraft(requestedApplyId);
       void Promise.resolve().then(() => {
         if (draft) setApplyForm(draft);
@@ -368,6 +431,9 @@ export default function CampaignsPageClient({ initialData }: { initialData: Camp
           campaignId,
           creatorContact,
           message: applyForm.message.trim(),
+          quoteAmount: applyForm.quoteAmount.trim() || null,
+          proposedTimelineDays: applyForm.proposedTimelineDays.trim() || null,
+          proposedTimeline: applyForm.proposedTimeline.trim() || null,
           contactSharingConsent: true,
         }),
       });
@@ -382,6 +448,10 @@ export default function CampaignsPageClient({ initialData }: { initialData: Camp
           } else {
             setApplyError("duplicate");
           }
+        } else if (code === "campaign_expired") {
+          setCampaigns((current) => current.map((campaign) => campaign.id === campaignId ? { ...campaign, status: "expired" } : campaign));
+          setApplyId(null);
+          setPageNotice("expired");
         } else if (code === "campaign_closed") {
           setCampaigns((current) => current.map((campaign) => campaign.id === campaignId ? { ...campaign, status: "closed" } : campaign));
           setApplyId(null);
@@ -419,7 +489,7 @@ export default function CampaignsPageClient({ initialData }: { initialData: Camp
       }
       setDone(true);
       setApplyId(null);
-      setApplyForm({ contact: "", message: "" });
+      setApplyForm(EMPTY_APPLICATION_DRAFT);
       setApplyConsent(false);
       setTimeout(() => setDone(false), 4000);
     } catch {
@@ -487,7 +557,7 @@ export default function CampaignsPageClient({ initialData }: { initialData: Camp
       </div>
 
       {done && <p className="mt-4 rounded-2xl bg-green-50 border border-green-200 px-5 py-3.5 text-[14.5px] font-bold text-green-800">{t("camp.applied")}</p>}
-      {pageNotice && <p role="status" className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3.5 text-[14.5px] font-bold text-amber-900">{t(pageNotice === "duplicate" ? "camp.applyDupErr" : pageNotice === "own" ? "api.ownCampaign" : "camp.applyClosedErr")}</p>}
+      {pageNotice && <p role="status" className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3.5 text-[14.5px] font-bold text-amber-900">{t(pageNotice === "duplicate" ? "camp.applyDupErr" : pageNotice === "own" ? "api.ownCampaign" : pageNotice === "expired" ? "api.campaignExpired" : "camp.applyClosedErr")}</p>}
 
       {campaignsStatus === "error" && campaigns.length > 0 && (
         <div className="mt-4">
@@ -536,13 +606,15 @@ export default function CampaignsPageClient({ initialData }: { initialData: Camp
           {campaigns.map((c) => {
             const ownApplication = ownApplications[c.id];
             const hasActiveApplication = Boolean(ownApplication && ownApplication.status !== "withdrawn");
-            const campaignIsOpen = c.status === "open" && c.verificationStatus === "verified";
+            const expired = campaignHasExpired(c, clientNow ?? 0);
+            const campaignIsOpen = campaignAcceptsApplications(c, clientNow ?? 0);
+            const effectiveDeadline = c.deadlineAt ?? c.expiresAt;
             const campaignReturnTo = applicationReturnTo(c.id);
             return (
             <div key={c.id} id={`campaign-card-${c.id}`} className="lift flex flex-col rounded-3xl border border-[#e9ddc3] bg-white p-6 card-shadow">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full bg-[#fff4de] border border-[#e9ddc3] px-3 py-1 text-[12px] font-bold">{promo(c.promotionType)}</span>
-                <span className={`rounded-full border px-3 py-1 text-[12px] font-bold ${campaignIsOpen ? "bg-green-50 border-green-200 text-green-800" : "bg-stone-100 border-stone-200 text-stone-700"}`}>{campaignIsOpen ? t("camp.open") : statusLabel(c.status || "closed")}</span>
+                <span className={`rounded-full border px-3 py-1 text-[12px] font-bold ${campaignIsOpen ? "bg-green-50 border-green-200 text-green-800" : "bg-stone-100 border-stone-200 text-stone-700"}`}>{campaignIsOpen ? t("camp.open") : statusLabel(expired ? "expired" : c.status || "closed")}</span>
                 {c.verificationStatus === "verified" && <span className="rounded-full bg-green-50 border border-green-200 px-3 py-1 text-[12px] font-bold text-green-800">{t("listing.reviewed")}</span>}
               </div>
               <h3 className="mt-3 text-[18px] font-extrabold leading-snug">
@@ -557,6 +629,16 @@ export default function CampaignsPageClient({ initialData }: { initialData: Camp
                 <time dateTime={c.createdAt} title={formatDateTime(c.createdAt)}>
                   {t("listing.posted", { age: formatRelativeTime(c.createdAt) })}
                 </time>
+                {effectiveDeadline && (
+                  <>
+                    {" • "}
+                    <time dateTime={effectiveDeadline} title={formatDateTime(effectiveDeadline)}>
+                      {expired
+                        ? t("camp.deadlinePassed", { date: formatDate(effectiveDeadline) })
+                        : t("camp.applyBy", { date: formatDate(effectiveDeadline) })}
+                    </time>
+                  </>
+                )}
               </p>
               <p className="mt-3 line-clamp-3 text-[14px] leading-relaxed text-[#57534e]">{c.description || t("camp.noDesc")}</p>
               <div className="mt-3 flex flex-wrap gap-1.5 text-[12px] font-bold">
@@ -574,11 +656,26 @@ export default function CampaignsPageClient({ initialData }: { initialData: Camp
                   <div>
                     <p className="text-[13.5px] font-bold text-[#17452e]">{t("camp.yourApplication")}: {statusLabel(ownApplication.status || "applied")}</p>
                     {ownApplication.creatorContact && <p className="mt-0.5 break-all text-[12.5px] font-semibold text-[#6f6862]">{ownApplication.creatorContact}</p>}
+                    {ownApplication.quoteAmount != null && (
+                      <p className="mt-0.5 text-[12.5px] font-semibold text-[#6f6862]">{t("dash.quote")}: {formatCurrency(ownApplication.quoteAmount)}</p>
+                    )}
+                    {(ownApplication.proposedTimelineDays != null || ownApplication.proposedTimeline) && (
+                      <p className="mt-0.5 text-[12.5px] font-semibold leading-relaxed text-[#6f6862]">
+                        {t("dash.proposedTimeline")}: {[
+                          ownApplication.proposedTimelineDays == null
+                            ? null
+                            : ownApplication.proposedTimelineDays === 1
+                              ? t("dash.oneDay")
+                              : t("dash.daysCount", { days: ownApplication.proposedTimelineDays }),
+                          ownApplication.proposedTimeline,
+                        ].filter(Boolean).join(" • ")}
+                      </p>
+                    )}
                   </div>
                   <Link href="/dashboard?view=creator" className="rounded-xl border border-[#1c1917] px-4 py-2.5 text-[13px] font-bold text-[#1c1917] hover:bg-stone-50">{t("camp.manageApplication")}</Link>
                 </div>
               ) : !campaignIsOpen ? (
-                <p className="mt-4 border-t border-[#f5edd8] pt-4 text-[13.5px] font-bold text-stone-700">{t("camp.applyClosedErr")}</p>
+                <p className="mt-4 border-t border-[#f5edd8] pt-4 text-[13.5px] font-bold text-stone-700">{expired ? t("api.campaignExpired") : t("camp.applyClosedErr")}</p>
               ) : ownApplicationsStatus === "ready" && ownCampaignIds.has(c.id) ? (
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#f5edd8] pt-4">
                   <p className="max-w-[220px] text-[13.5px] font-bold leading-relaxed text-[#7c2d12]">{t("api.ownCampaign")}</p>
@@ -619,9 +716,16 @@ export default function CampaignsPageClient({ initialData }: { initialData: Camp
                         setPageNotice("");
                         if (applyId !== c.id) {
                           if (ownApplication?.status === "withdrawn") {
-                            setApplyForm({ contact: ownApplication.creatorContact ?? "", message: ownApplication.message ?? "" });
+                            setApplyForm({
+                              contact: ownApplication.creatorContact ?? "",
+                              message: ownApplication.message ?? "",
+                              quoteAmount: ownApplication.quoteAmount == null ? "" : String(ownApplication.quoteAmount),
+                              proposedTimelineDays:
+                                ownApplication.proposedTimelineDays == null ? "" : String(ownApplication.proposedTimelineDays),
+                              proposedTimeline: ownApplication.proposedTimeline ?? "",
+                            });
                           } else {
-                            setApplyForm(readApplicationDraft(c.id) ?? { contact: "", message: "" });
+                            setApplyForm(readApplicationDraft(c.id) ?? EMPTY_APPLICATION_DRAFT);
                           }
                         }
                         setApplyId(applyId === c.id ? null : c.id);
@@ -682,6 +786,21 @@ export default function CampaignsPageClient({ initialData }: { initialData: Camp
                       <p id={`application-contact-note-${c.id}`} className="text-[12.5px] font-semibold leading-relaxed text-[#6f6862]">{t("camp.contactMustBeYours")}</p>
                       <label htmlFor={`application-message-${c.id}`} className="sr-only">{t("camp.applyPhMsg")}</label>
                       <textarea id={`application-message-${c.id}`} name="message" autoComplete="off" value={applyForm.message} onChange={(e) => setApplyForm({ ...applyForm, message: e.target.value })} rows={2} placeholder={t("camp.applyPhMsg")} className="rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-2.5 text-[14px] outline-none" />
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <label className="grid gap-1" htmlFor={`application-quote-${c.id}`}>
+                          <span className="text-[12.5px] font-bold text-[#57534e]">{t("camp.quote")}</span>
+                          <input id={`application-quote-${c.id}`} name="quoteAmount" autoComplete="off" inputMode="numeric" aria-describedby={`application-quote-help-${c.id}`} value={applyForm.quoteAmount} onChange={(e) => setApplyForm({ ...applyForm, quoteAmount: e.target.value })} maxLength={16} placeholder={t("camp.quotePlaceholder")} className="rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-2.5 text-[14px] outline-none" />
+                        </label>
+                        <label className="grid gap-1" htmlFor={`application-timeline-days-${c.id}`}>
+                          <span className="text-[12.5px] font-bold text-[#57534e]">{t("camp.timelineDays")}</span>
+                          <input id={`application-timeline-days-${c.id}`} name="proposedTimelineDays" type="number" autoComplete="off" inputMode="numeric" min={1} max={365} step={1} value={applyForm.proposedTimelineDays} onChange={(e) => setApplyForm({ ...applyForm, proposedTimelineDays: e.target.value })} placeholder={t("camp.timelineDaysPlaceholder")} className="rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-2.5 text-[14px] outline-none" />
+                        </label>
+                      </div>
+                      <p id={`application-quote-help-${c.id}`} className="text-[12.5px] font-semibold leading-relaxed text-[#6f6862]">{t("camp.quoteHelp")}</p>
+                      <label className="grid gap-1" htmlFor={`application-timeline-${c.id}`}>
+                        <span className="text-[12.5px] font-bold text-[#57534e]">{t("camp.timelineNotes")}</span>
+                        <textarea id={`application-timeline-${c.id}`} name="proposedTimeline" autoComplete="off" value={applyForm.proposedTimeline} onChange={(e) => setApplyForm({ ...applyForm, proposedTimeline: e.target.value })} rows={2} maxLength={300} placeholder={t("camp.timelineNotesPlaceholder")} className="rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-2.5 text-[14px] outline-none" />
+                      </label>
                       <label htmlFor={`application-consent-${c.id}`} className="flex w-full min-w-0 cursor-pointer items-start gap-3 rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-3 text-[13px] font-semibold leading-relaxed text-[#57534e]">
                         <input
                           id={`application-consent-${c.id}`}

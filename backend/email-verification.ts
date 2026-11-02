@@ -3,6 +3,7 @@ import type { UserSessionRecord } from "@/backend/auth";
 import { db } from "@/backend/db";
 import { brands, creators, pendingSignups, userSessions, users } from "@/backend/db/schema";
 import { DEFAULT_RETURN_TO, safeReturnTo } from "@/shared/return-to";
+import { recordAuditEvent } from "@/backend/audit-events";
 
 export const PENDING_SIGNUP_TTL_MS = 30 * 60_000;
 export const PENDING_SIGNUP_RESEND_COOLDOWN_MS = 60_000;
@@ -268,25 +269,66 @@ export async function completePendingSignup({
         passwordHash: pending.passwordHash,
         emailVerifiedAt: verifiedAt,
         tokenVersion: 0,
+        createdAt: now,
+        updatedAt: now,
       })
       .returning({ id: users.id, name: users.name, email: users.email, role: users.role });
 
     if (pending.role === "brand") {
-      await tx.insert(brands).values({
-        userId: user.id,
-        name: pending.name,
-        email: pending.email,
-        phone: pending.phone,
-        status: "active",
-      });
+      const [brand] = await tx
+        .insert(brands)
+        .values({
+          userId: user.id,
+          name: pending.name,
+          email: pending.email,
+          phone: pending.phone,
+          status: "active",
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning({ id: brands.id });
+      if (brand) {
+        await recordAuditEvent(tx, {
+          actorType: "user",
+          actorUserId: user.id,
+          ownerUserId: user.id,
+          entityType: "brand",
+          entityId: brand.id,
+          action: "brand.created",
+          toStatus: "active",
+          changedFields: ["email", "name", "phone", "status"],
+          createdAt: now,
+        });
+      }
     } else {
-      await tx.insert(creators).values({
-        userId: user.id,
-        name: pending.name,
-        email: pending.email,
-        phone: pending.phone,
-        status: "incomplete",
-      });
+      const [creator] = await tx
+        .insert(creators)
+        .values({
+          userId: user.id,
+          name: pending.name,
+          email: pending.email,
+          emailSource: "account",
+          phone: pending.phone,
+          phoneSource: pending.phone ? "account" : "profile",
+          status: "incomplete",
+          listedAt: null,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning({ id: creators.id });
+      if (creator) {
+        await recordAuditEvent(tx, {
+          actorType: "user",
+          actorUserId: user.id,
+          ownerUserId: user.id,
+          entityType: "creator_profile",
+          entityId: creator.id,
+          action: "creator_profile.created",
+          toStatus: "incomplete",
+          changedFields: ["email", "emailSource", "name", "phone", "phoneSource", "status"],
+          createdAt: now,
+        });
+      }
     }
 
     await tx.insert(userSessions).values({ ...session, userId: user.id, tokenVersion: 0 });

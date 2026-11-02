@@ -1,6 +1,6 @@
-import { asc, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
 import { db } from "@/backend/db";
-import { notifications } from "@/backend/db/schema";
+import { auditEvents, notifications } from "@/backend/db/schema";
 
 export type ApplicationStatusHistoryEvent = {
   status: string;
@@ -38,8 +38,15 @@ function buildHistory(
     const previous = history[history.length - 1];
     // The application row itself supplies the initial "applied" event and the
     // brand also received an application_received notification at the same
-    // moment. Consecutive duplicates are one transition, not two.
-    if (previous?.status === event.status) continue;
+    // moment. Consecutive duplicates are one transition, not two. A
+    // notification duplicate may still supply the display actor (the
+    // submitted creator name or campaign business name) for a persisted
+    // audit event, whose actor is intentionally not copied into history as
+    // the underlying account holder's personal name.
+    if (previous?.status === event.status) {
+      if (!previous.actorName && event.actorName) previous.actorName = event.actorName;
+      continue;
+    }
     history.push(event);
   }
 
@@ -57,13 +64,12 @@ function buildHistory(
  * Attach a chronological status timeline to already-authorized application
  * rows.
  *
- * Notifications are the existing append-only record of marketplace status
- * transitions: submission/reactivation and withdrawal notify the brand, while
- * every brand decision notifies the creator. Reading both recipients' rows for
- * an application reconstructs the transition sequence without inventing dates
- * for intermediate states. The application row supplies the initial applied
- * event and a current-status fallback for any legacy row whose notification is
- * unavailable.
+ * New transitions are first-class rows in `audit_events`, written in the
+ * same transaction as the application update. Notification rows are still
+ * merged as a legacy fallback for applications created before that table
+ * existed; consecutive duplicates collapse into one transition. The
+ * application row supplies the initial applied event and a current-status
+ * fallback if neither history source is available.
  */
 export async function attachApplicationStatusHistory<T extends ApplicationHistorySource>(
   rows: T[],
@@ -71,6 +77,23 @@ export async function attachApplicationStatusHistory<T extends ApplicationHistor
   if (rows.length === 0) return [];
 
   const ids = [...new Set(rows.map((row) => row.id))];
+  const persistedRows = await db
+    .select({
+      applicationId: auditEvents.entityId,
+      status: auditEvents.toStatus,
+      createdAt: auditEvents.createdAt,
+    })
+    .from(auditEvents)
+    .where(
+      and(
+        eq(auditEvents.entityType, "application"),
+        inArray(auditEvents.entityId, ids),
+        inArray(auditEvents.action, ["application.created", "application.status_changed"]),
+        isNotNull(auditEvents.toStatus),
+      ),
+    )
+    .orderBy(asc(auditEvents.createdAt), asc(auditEvents.id));
+
   const notificationRows = await db
     .select({
       applicationId: notifications.applicationId,
@@ -84,6 +107,12 @@ export async function attachApplicationStatusHistory<T extends ApplicationHistor
     .orderBy(asc(notifications.createdAt), asc(notifications.id));
 
   const eventsByApplication = new Map<string, ApplicationStatusHistoryEvent[]>();
+  for (const row of persistedRows) {
+    if (!row.status) continue;
+    const events = eventsByApplication.get(row.applicationId) ?? [];
+    events.push({ status: row.status, at: row.createdAt, actorName: null });
+    eventsByApplication.set(row.applicationId, events);
+  }
   for (const row of notificationRows) {
     if (!row.applicationId) continue;
     const status =

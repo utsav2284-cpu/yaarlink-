@@ -10,6 +10,7 @@ import { getSessionUser, isSessionUnavailableError, logSessionUnavailable, sessi
 import { findDisallowedContent, hasSuspiciousUrl } from "@/backend/content-moderation";
 import {
   hasField,
+  parseIntegerField,
   parseOptionalText,
   parseUuid,
   readJsonObject,
@@ -19,7 +20,17 @@ import { createApplicationNotification, sendApplicationNotificationEmailBestEffo
 import { attachApplicationStatusHistory } from "@/backend/application-history";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { getClientKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
-import { APPLICATION_STATUSES, type ApplicationStatus, type NotificationKind } from "@/shared/constants";
+import {
+  APPLICATION_QUOTE_MAX,
+  APPLICATION_STATUSES,
+  APPLICATION_TIMELINE_DAYS_MAX,
+  APPLICATION_TIMELINE_MAX_LENGTH,
+  type ApplicationStatus,
+  type NotificationKind,
+} from "@/shared/constants";
+import { changedFieldNames, recordAuditEvent } from "@/backend/audit-events";
+import { buildCreatorProfileSnapshot } from "@/backend/application-snapshot";
+import { isCampaignPastExpiry, markCampaignExpired } from "@/backend/campaign-lifecycle";
 import {
   allConditions,
   cursorCondition,
@@ -82,6 +93,86 @@ function parseApplicationText(
   return parsed;
 }
 
+type ApplicationProposal = {
+  quoteAmount: number | null;
+  proposedTimelineDays: number | null;
+  proposedTimeline: string | null;
+};
+
+function firstSuppliedField(body: Record<string, unknown>, fields: readonly string[]): string | null {
+  return fields.find((field) => hasField(body, field)) ?? null;
+}
+
+/**
+ * Parse the creator's optional commercial proposal. In a partial PATCH,
+ * an absent field is returned as `undefined` so it is retained; an explicit
+ * blank/null clears it.
+ */
+function parseApplicationProposal(
+  body: Record<string, unknown>,
+  { partial }: { partial: boolean },
+): ValidationResult<Partial<ApplicationProposal>> {
+  const result: Partial<ApplicationProposal> = {};
+
+  const quoteField = firstSuppliedField(body, ["quoteAmount", "quote", "proposedFee"]);
+  if (quoteField) {
+    const raw = body[quoteField];
+    if (raw == null || (typeof raw === "string" && !raw.trim())) {
+      result.quoteAmount = null;
+    } else {
+      const parsed = parseIntegerField(raw, {
+        field: "quoteAmount",
+        min: 1,
+        max: APPLICATION_QUOTE_MAX,
+        code: "invalid_application_quote",
+        error: "Please enter a whole-rupee quote up to ₹1,00,00,000, or leave it blank.",
+      });
+      if (!parsed.ok) return parsed;
+      result.quoteAmount = parsed.value;
+    }
+  } else if (!partial) result.quoteAmount = null;
+
+  const daysField = firstSuppliedField(body, ["proposedTimelineDays", "timelineDays"]);
+  if (daysField) {
+    const raw = body[daysField];
+    if (raw == null || (typeof raw === "string" && !raw.trim())) {
+      result.proposedTimelineDays = null;
+    } else {
+      const parsed = parseIntegerField(raw, {
+        field: "proposedTimelineDays",
+        min: 1,
+        max: APPLICATION_TIMELINE_DAYS_MAX,
+        code: "invalid_application_timeline",
+        error: "Please enter a proposed timeline between 1 and 365 days, or leave it blank.",
+      });
+      if (!parsed.ok) return parsed;
+      result.proposedTimelineDays = parsed.value;
+    }
+  } else if (!partial) result.proposedTimelineDays = null;
+
+  const timelineField = firstSuppliedField(body, ["proposedTimeline", "timeline"]);
+  if (timelineField) {
+    const parsed = parseOptionalText(body[timelineField], {
+      field: "proposedTimeline",
+      maxLength: APPLICATION_TIMELINE_MAX_LENGTH,
+      invalidCode: "invalid_application_timeline",
+      invalidMessage: "Please enter a valid proposed timeline.",
+    });
+    if (!parsed.ok) return parsed;
+    if (parsed.value && findDisallowedContent(parsed.value, { allowUrls: false, allowContactDetails: false })) {
+      return {
+        ok: false,
+        error: "Please remove links, contact details, or prohibited content and try again.",
+        code: "content_not_allowed",
+        field: "proposedTimeline",
+      };
+    }
+    result.proposedTimeline = parsed.value;
+  } else if (!partial) result.proposedTimeline = null;
+
+  return { ok: true, value: result };
+}
+
 function cleanCreatorName(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }
@@ -94,8 +185,24 @@ function contentNotAllowedResponse(field: string) {
   });
 }
 
-function isOpenCampaign(campaign: { status: string; verificationStatus: string }) {
-  return campaign.status === "open" && campaign.verificationStatus === "verified";
+function isOpenCampaign(
+  campaign: { status: string; verificationStatus: string; expiresAt: Date | string },
+  now = new Date(),
+) {
+  const expiresAt = campaign.expiresAt instanceof Date ? campaign.expiresAt : new Date(campaign.expiresAt);
+  return (
+    campaign.status === "open" &&
+    campaign.verificationStatus === "verified" &&
+    !Number.isNaN(expiresAt.getTime()) &&
+    expiresAt.getTime() > now.getTime()
+  );
+}
+
+function isExpiredCampaign(
+  campaign: { status: string; expiresAt: Date | string },
+  now = new Date(),
+) {
+  return campaign.status === "expired" || isCampaignPastExpiry(campaign, now);
 }
 
 type EmailNotice = {
@@ -265,14 +372,30 @@ export async function POST(req: Request) {
     if (!parsedMessage.ok) return validationErrorResponse(parsedMessage);
     const message = parsedMessage.value;
 
+    const parsedProposal = parseApplicationProposal(body, { partial: false });
+    if (!parsedProposal.ok) return validationErrorResponse(parsedProposal);
+    const proposal: ApplicationProposal = {
+      quoteAmount: parsedProposal.value.quoteAmount ?? null,
+      proposedTimelineDays: parsedProposal.value.proposedTimelineDays ?? null,
+      proposedTimeline: parsedProposal.value.proposedTimeline ?? null,
+    };
+
     const camp = await db
-      .select({ id: campaigns.id, ownerId: campaigns.ownerId, status: campaigns.status, verificationStatus: campaigns.verificationStatus })
+      .select({
+        id: campaigns.id,
+        ownerId: campaigns.ownerId,
+        status: campaigns.status,
+        verificationStatus: campaigns.verificationStatus,
+        expiresAt: campaigns.expiresAt,
+      })
       .from(campaigns)
       .where(eq(campaigns.id, campaignId))
       .limit(1);
     if (!camp.length) return Response.json({ error: "Campaign not found", code: "campaign_not_found" }, { status: 404, headers: NO_STORE });
     if (!isOpenCampaign(camp[0])) {
-      return Response.json({ error: "This campaign is no longer accepting applications.", code: "campaign_closed" }, { status: 409, headers: NO_STORE });
+      return isExpiredCampaign(camp[0])
+        ? Response.json({ error: "This campaign has expired and is no longer accepting applications.", code: "campaign_expired" }, { status: 409, headers: NO_STORE })
+        : Response.json({ error: "This campaign is no longer accepting applications.", code: "campaign_closed" }, { status: 409, headers: NO_STORE });
     }
 
     const user = await getSessionUser();
@@ -338,14 +461,18 @@ export async function POST(req: Request) {
     type PostOutcome =
       | { kind: "created" | "reactivated"; application: typeof applications.$inferSelect; email: EmailNotice }
       | { kind: "replay"; application: typeof applications.$inferSelect }
-      | { kind: "duplicate" | "closed" | "profile_incomplete" | "contact_not_owned" | "campaign_missing" | "content_not_allowed" | "own_campaign" };
+      | { kind: "duplicate" | "closed" | "expired" | "profile_incomplete" | "contact_not_owned" | "campaign_missing" | "content_not_allowed" | "own_campaign" };
 
     const outcome: PostOutcome = await db.transaction(async (tx) => {
+      const now = new Date();
       // Locking the campaign makes pause/close and apply/reactivate decisions
       // serialize instead of racing based on the preliminary check above.
       const [campaign] = await tx.select().from(campaigns).where(eq(campaigns.id, campaignId)).limit(1).for("update");
       if (!campaign) return { kind: "campaign_missing" } as const;
-      if (!isOpenCampaign(campaign)) return { kind: "closed" } as const;
+      const expiredCampaign = isExpiredCampaign(campaign, now);
+      if (expiredCampaign) await markCampaignExpired(tx, campaign, now);
+      if (expiredCampaign) return { kind: "expired" } as const;
+      if (!isOpenCampaign(campaign, now)) return { kind: "closed" } as const;
       if (campaign.ownerId === user.id) return { kind: "own_campaign" } as const;
 
       const [creatorProfile] = await tx
@@ -363,6 +490,7 @@ export async function POST(req: Request) {
         return { kind: "content_not_allowed" } as const;
       }
       contact = lockedContact.value;
+      const creatorProfileSnapshot = buildCreatorProfileSnapshot(creatorProfile, now);
 
       const [brandUser] = await tx
         .select({ id: users.id, name: users.name, email: users.email })
@@ -386,11 +514,13 @@ export async function POST(req: Request) {
           existing.creatorId === creatorProfile.id &&
           existing.creatorName === creatorName &&
           existing.creatorContact === contact &&
-          existing.message === message;
+          existing.message === message &&
+          existing.quoteAmount === proposal.quoteAmount &&
+          existing.proposedTimelineDays === proposal.proposedTimelineDays &&
+          existing.proposedTimeline === proposal.proposedTimeline;
         return isExactReplay ? { kind: "replay", application: existing } as const : { kind: "duplicate" } as const;
       }
 
-      const now = new Date();
       if (existing) {
         const [application] = await tx
           .update(applications)
@@ -399,6 +529,9 @@ export async function POST(req: Request) {
             creatorName,
             creatorContact: contact || null,
             message,
+            ...proposal,
+            creatorProfileSnapshot,
+            snapshotCapturedAt: now,
             status: "applied",
             decisionNote: null,
             decisionAt: null,
@@ -407,6 +540,19 @@ export async function POST(req: Request) {
           .where(and(eq(applications.id, existing.id), eq(applications.status, "withdrawn")))
           .returning();
         if (!application) return { kind: "duplicate" } as const;
+        await recordAuditEvent(tx, {
+          actorType: "user",
+          actorUserId: user.id,
+          ownerUserId: user.id,
+          entityType: "application",
+          entityId: application.id,
+          action: "application.status_changed",
+          fromStatus: existing.status,
+          toStatus: application.status,
+          changedFields: changedFieldNames(existing, application),
+          metadata: { campaignId, creatorId: creatorProfile.id, reactivated: true },
+          createdAt: now,
+        });
         await createApplicationNotification(tx, {
           recipientUserId: brandUser.id,
           kind: "application_received",
@@ -441,15 +587,41 @@ export async function POST(req: Request) {
           creatorName,
           creatorContact: contact || null,
           message,
+          ...proposal,
+          creatorProfileSnapshot,
+          snapshotCapturedAt: now,
           status: "applied",
           decisionNote: null,
           decisionAt: null,
+          createdAt: now,
           updatedAt: now,
         })
         .onConflictDoNothing({ target: [applications.campaignId, applications.userId] })
         .returning();
       if (!application) return { kind: "duplicate" } as const;
 
+      await recordAuditEvent(tx, {
+        actorType: "user",
+        actorUserId: user.id,
+        ownerUserId: user.id,
+        entityType: "application",
+        entityId: application.id,
+        action: "application.created",
+        toStatus: application.status,
+        changedFields: [
+          "creatorContact",
+          "creatorId",
+          "creatorName",
+          "creatorProfileSnapshot",
+          "message",
+          "proposedTimeline",
+          "proposedTimelineDays",
+          "quoteAmount",
+          "status",
+        ],
+        metadata: { campaignId, creatorId: creatorProfile.id },
+        createdAt: now,
+      });
       await createApplicationNotification(tx, {
         recipientUserId: brandUser.id,
         kind: "application_received",
@@ -486,6 +658,7 @@ export async function POST(req: Request) {
     if (outcome.kind === "own_campaign") return Response.json({ error: "You cannot apply to your own campaign.", code: "own_campaign" }, { status: 403, headers: NO_STORE });
     if (outcome.kind === "content_not_allowed") return contentNotAllowedResponse("creatorContact");
     if (outcome.kind === "duplicate") return Response.json({ error: "You have already applied to this campaign.", code: "already_applied" }, { status: 409, headers: NO_STORE });
+    if (outcome.kind === "expired") return Response.json({ error: "This campaign has expired and is no longer accepting applications.", code: "campaign_expired" }, { status: 409, headers: NO_STORE });
     if (outcome.kind === "closed") return Response.json({ error: "This campaign is no longer accepting applications.", code: "campaign_closed" }, { status: 409, headers: NO_STORE });
     if (outcome.kind === "profile_incomplete") return Response.json({ error: "Please complete your creator profile before applying.", code: "creator_profile_incomplete" }, { status: 409, headers: NO_STORE });
     if (outcome.kind === "contact_not_owned") {
@@ -561,6 +734,14 @@ export async function PATCH(req: Request) {
       }
     }
 
+    const parsedProposal =
+      action === "edit" || action === "reactivate"
+        ? parseApplicationProposal(body, { partial: true })
+        : ({ ok: true, value: {} } as ValidationResult<Partial<ApplicationProposal>>);
+    if (!parsedProposal.ok) return validationErrorResponse(parsedProposal);
+    const proposalUpdate = parsedProposal.value;
+    const hasProposalUpdate = Object.keys(proposalUpdate).length > 0;
+
     const parsedDecisionNote = hasField(body, "decisionNote")
       ? parseApplicationText(body.decisionNote, {
           field: "decisionNote",
@@ -589,6 +770,7 @@ export async function PATCH(req: Request) {
             | "invalid_input"
             | "invalid_transition"
             | "closed"
+            | "expired"
             | "profile_incomplete"
             | "contact_not_owned"
             | "contact_required"
@@ -618,7 +800,7 @@ export async function PATCH(req: Request) {
       const now = new Date();
 
       if (action === "edit") {
-        if (nextMessage === undefined && nextContact === undefined) return { kind: "invalid_input" } as const;
+        if (nextMessage === undefined && nextContact === undefined && !hasProposalUpdate) return { kind: "invalid_input" } as const;
         if (application.status !== "applied" && application.status !== "shortlisted") {
           return { kind: "invalid_transition", currentStatus: application.status } as const;
         }
@@ -645,19 +827,35 @@ export async function PATCH(req: Request) {
           }
           if (hasSuspiciousUrl(editedContact)) return { kind: "content_not_allowed" } as const;
         }
-        const editedCreatorName = creatorProfile?.name ? cleanCreatorName(creatorProfile.name) : "";
-        if (editedCreatorName && findDisallowedContent(editedCreatorName)) return { kind: "content_not_allowed" } as const;
-
+        // Editing an active application does not recapture its submitted
+        // creator name/profile snapshot. The live creatorId link is how a
+        // brand reaches the current profile; reactivation is the new
+        // submission point that refreshes the snapshot.
+        const updateValues = {
+          ...(nextMessage !== undefined ? { message: nextMessage } : {}),
+          ...(nextContact !== undefined ? { creatorContact: editedContact } : {}),
+          ...proposalUpdate,
+          updatedAt: now,
+        };
         const [updated] = await tx
           .update(applications)
-          .set({
-            ...(editedCreatorName ? { creatorName: editedCreatorName } : {}),
-            ...(nextMessage !== undefined ? { message: nextMessage } : {}),
-            ...(nextContact !== undefined ? { creatorContact: editedContact } : {}),
-            updatedAt: now,
-          })
+          .set(updateValues)
           .where(eq(applications.id, id))
           .returning();
+        if (!updated) return { kind: "not_found" } as const;
+        await recordAuditEvent(tx, {
+          actorType: "user",
+          actorUserId: user.id,
+          ownerUserId: application.userId,
+          entityType: "application",
+          entityId: updated.id,
+          action: "application.updated",
+          fromStatus: application.status,
+          toStatus: updated.status,
+          changedFields: changedFieldNames(application, updateValues),
+          metadata: { campaignId: campaign.id, creatorId: application.creatorId },
+          createdAt: now,
+        });
         return { kind: "updated", application: updated } as const;
       }
 
@@ -676,6 +874,20 @@ export async function PATCH(req: Request) {
           .set({ status: "withdrawn", decisionAt: now, updatedAt: now })
           .where(eq(applications.id, id))
           .returning();
+        if (!updated) return { kind: "not_found" } as const;
+        await recordAuditEvent(tx, {
+          actorType: "user",
+          actorUserId: user.id,
+          ownerUserId: application.userId,
+          entityType: "application",
+          entityId: updated.id,
+          action: "application.status_changed",
+          fromStatus: application.status,
+          toStatus: updated.status,
+          changedFields: ["decisionAt", "status"],
+          metadata: { campaignId: campaign.id, creatorId: application.creatorId },
+          createdAt: now,
+        });
         await createApplicationNotification(tx, {
           recipientUserId: brandUser.id,
           kind: "application_withdrawn",
@@ -701,7 +913,10 @@ export async function PATCH(req: Request) {
 
       if (action === "reactivate") {
         if (application.status !== "withdrawn") return { kind: "invalid_transition", currentStatus: application.status } as const;
-        if (!isOpenCampaign(campaign)) return { kind: "closed" } as const;
+        const expiredCampaign = isExpiredCampaign(campaign, now);
+        if (expiredCampaign) await markCampaignExpired(tx, campaign, now);
+        if (expiredCampaign) return { kind: "expired" } as const;
+        if (!isOpenCampaign(campaign, now)) return { kind: "closed" } as const;
         // Reactivation shares an application contact with the brand again,
         // including contacts created before explicit-consent UI was added.
         // Require fresh consent, a completed profile, and a contact saved on
@@ -738,6 +953,9 @@ export async function PATCH(req: Request) {
             creatorName: reactivatedCreatorName,
             creatorContact: resolvedContact.value,
             ...(nextMessage !== undefined ? { message: nextMessage } : {}),
+            ...proposalUpdate,
+            creatorProfileSnapshot: buildCreatorProfileSnapshot(creatorProfile, now),
+            snapshotCapturedAt: now,
             status: "applied",
             decisionNote: null,
             decisionAt: null,
@@ -745,6 +963,20 @@ export async function PATCH(req: Request) {
           })
           .where(eq(applications.id, id))
           .returning();
+        if (!updated) return { kind: "not_found" } as const;
+        await recordAuditEvent(tx, {
+          actorType: "user",
+          actorUserId: user.id,
+          ownerUserId: application.userId,
+          entityType: "application",
+          entityId: updated.id,
+          action: "application.status_changed",
+          fromStatus: application.status,
+          toStatus: updated.status,
+          changedFields: changedFieldNames(application, updated),
+          metadata: { campaignId: campaign.id, creatorId: creatorProfile.id, reactivated: true },
+          createdAt: now,
+        });
         await createApplicationNotification(tx, {
           recipientUserId: brandUser.id,
           kind: "application_received",
@@ -793,6 +1025,20 @@ export async function PATCH(req: Request) {
         .set({ status: nextStatus, decisionNote, decisionAt: now, updatedAt: now })
         .where(eq(applications.id, id))
         .returning();
+      if (!updated) return { kind: "not_found" } as const;
+      await recordAuditEvent(tx, {
+        actorType: "user",
+        actorUserId: user.id,
+        ownerUserId: application.userId,
+        entityType: "application",
+        entityId: updated.id,
+        action: "application.status_changed",
+        fromStatus: application.status,
+        toStatus: updated.status,
+        changedFields: ["decisionAt", "decisionNote", "status"],
+        metadata: { campaignId: campaign.id, creatorId: application.creatorId },
+        createdAt: now,
+      });
       await createApplicationNotification(tx, {
         recipientUserId: creatorUser.id,
         kind: "application_status",
@@ -846,6 +1092,7 @@ export async function PATCH(req: Request) {
         { status: 400, headers: NO_STORE },
       );
     }
+    if (outcome.kind === "expired") return Response.json({ error: "This campaign has expired and is no longer accepting applications.", code: "campaign_expired" }, { status: 409, headers: NO_STORE });
     if (outcome.kind === "closed") return Response.json({ error: "This campaign is no longer accepting applications.", code: "campaign_closed" }, { status: 409, headers: NO_STORE });
     return Response.json(
       { error: `This application cannot be changed from its current status (${outcome.currentStatus ?? "unknown"}).`, code: "application_status_conflict" },

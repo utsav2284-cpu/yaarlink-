@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, foreignKey, index, pgTable, uuid, text, integer, timestamp, unique, uniqueIndex } from "drizzle-orm/pg-core";
+import { check, foreignKey, index, jsonb, pgTable, uuid, text, integer, timestamp, unique, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const users = pgTable(
   "users",
@@ -16,6 +16,10 @@ export const users = pgTable(
     // Bumped on logout so previously issued session cookies stop working (server-side revocation).
     tokenVersion: integer("token_version").notNull().default(0),
     createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     // Login identity is case-insensitive even if a future writer forgets to normalize it.
@@ -48,7 +52,10 @@ export const pendingSignups = pgTable(
     lastEmailAttemptAt: timestamp("last_email_attempt_at").defaultNow().notNull(),
     lastEmailSentAt: timestamp("last_email_sent_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     unique("pending_signups_email_key").on(table.email),
@@ -89,7 +96,10 @@ export const accountTokens = pgTable(
     lastEmailAttemptAt: timestamp("last_email_attempt_at").defaultNow().notNull(),
     lastEmailSentAt: timestamp("last_email_sent_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     unique("account_tokens_user_purpose_key").on(table.userId, table.purpose),
@@ -153,6 +163,10 @@ export const brands = pgTable(
     phone: text("phone"),
     status: text("status").notNull().default("active"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     check("brands_status_check", sql`${table.status} = 'active'`),
@@ -173,7 +187,12 @@ export const creators = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     email: text("email"),
+    // Whether this profile contact intentionally mirrors the login account
+    // or is a separate creator-profile contact. Account email/phone changes
+    // only propagate to account-sourced values.
+    emailSource: text("email_source").notNull().default("profile"),
     phone: text("phone"),
+    phoneSource: text("phone_source").notNull().default("profile"),
     instagram: text("instagram"),
     youtube: text("youtube"),
     profileUrl: text("profile_url"),
@@ -190,15 +209,25 @@ export const creators = pgTable(
     verifiedFollowers: integer("verified_followers"),
     moderationNote: text("moderation_note"),
     reviewedAt: timestamp("reviewed_at"),
+    // Effective public-listing date. Signup creates an incomplete row long
+    // before some creators finish it; completion/approval sets this date so
+    // ordering and the displayed "listed" age do not use that stale signup.
+    listedAt: timestamp("listed_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     // Applications use this as the target of a composite FK, proving that the
     // linked creator profile belongs to the applying user.
     unique("creators_id_user_id_key").on(table.id, table.userId),
     index("creators_public_review_idx").on(table.status, table.verificationStatus, table.createdAt.desc()),
+    index("creators_public_listed_idx").on(table.status, table.verificationStatus, table.listedAt.desc()),
     index("creators_created_at_idx").on(table.createdAt.desc()),
+    check("creators_email_source_check", sql`${table.emailSource} in ('account', 'profile')`),
+    check("creators_phone_source_check", sql`${table.phoneSource} in ('account', 'profile')`),
     check("creators_platform_check", sql`${table.platform} in ('Instagram', 'YouTube', 'Both', 'Other')`),
     check(
       "creators_category_check",
@@ -236,6 +265,10 @@ export const campaigns = pgTable(
     ownerId: uuid("owner_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    // The account's one-to-one brand record. `businessName` remains the
+    // campaign's submitted display name, while this link lets reporting and
+    // future brand-level reads group campaigns without matching free text.
+    brandId: uuid("brand_id").references(() => brands.id, { onDelete: "set null" }),
     // Client-generated retry key + canonical payload hash. The pair lets a
     // submission whose response was lost return the original campaign rather
     // than creating a duplicate; legacy rows keep both null.
@@ -244,7 +277,12 @@ export const campaigns = pgTable(
     businessName: text("business_name").notNull(),
     contactName: text("contact_name"),
     email: text("email"),
+    // A blank/account-sourced campaign contact follows future account
+    // changes; a campaign-sourced value is an intentional per-campaign
+    // contact and is not overwritten by account edits.
+    emailSource: text("email_source").notNull().default("campaign"),
     phone: text("phone"),
+    phoneSource: text("phone_source").notNull().default("campaign"),
     title: text("title").notNull(),
     promotionType: text("promotion_type").notNull().default("Product"),
     category: text("category"),
@@ -260,12 +298,27 @@ export const campaigns = pgTable(
     verificationStatus: text("verification_status").notNull().default("unverified"),
     moderationNote: text("moderation_note"),
     reviewedAt: timestamp("reviewed_at"),
+    // Owner-chosen application deadline, when supplied. `expiresAt` is the
+    // enforced closing instant for every campaign (the deadline itself or
+    // the platform default), so no reviewed campaign can accept creators
+    // forever. `expiredAt` records when the lifecycle first closed it.
+    deadlineAt: timestamp("deadline_at"),
+    expiresAt: timestamp("expires_at")
+      .notNull()
+      .default(sql`now() + interval '45 days'`),
+    expiredAt: timestamp("expired_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     uniqueIndex("campaigns_owner_submission_unique").on(table.ownerId, table.submissionId),
     index("campaigns_public_review_idx").on(table.status, table.verificationStatus, table.createdAt.desc()),
+    index("campaigns_public_expiry_idx").on(table.status, table.verificationStatus, table.expiresAt),
+    index("campaigns_status_expires_idx").on(table.status, table.expiresAt),
+    index("campaigns_brand_created_idx").on(table.brandId, table.createdAt.desc()),
     index("campaigns_owner_created_idx").on(table.ownerId, table.createdAt.desc()),
     index("campaigns_created_at_idx").on(table.createdAt.desc()),
     check(
@@ -288,7 +341,16 @@ export const campaigns = pgTable(
       "campaigns_format_check",
       sql`${table.format} in ('Story', 'Reel', 'Post', 'UGC Video', 'YouTube Shorts', 'YouTube Video')`,
     ),
-    check("campaigns_status_check", sql`${table.status} in ('pending', 'open', 'paused', 'rejected', 'suspended', 'closed')`),
+    check("campaigns_email_source_check", sql`${table.emailSource} in ('account', 'campaign')`),
+    check("campaigns_phone_source_check", sql`${table.phoneSource} in ('account', 'campaign')`),
+    check(
+      "campaigns_status_check",
+      sql`${table.status} in ('pending', 'open', 'paused', 'rejected', 'suspended', 'closed', 'expired')`,
+    ),
+    check(
+      "campaigns_expiry_check",
+      sql`${table.expiresAt} > ${table.createdAt} and (${table.deadlineAt} is null or ${table.deadlineAt} = ${table.expiresAt}) and (${table.expiredAt} is null or ${table.expiredAt} >= ${table.expiresAt})`,
+    ),
     check(
       "campaigns_verification_status_check",
       sql`${table.verificationStatus} in ('unverified', 'pending', 'verified', 'failed')`,
@@ -317,11 +379,27 @@ export const applications = pgTable(
     creatorName: text("creator_name").notNull(),
     creatorContact: text("creator_contact"),
     message: text("message"),
+    // Commercial proposal captured with this application. The amount is in
+    // whole INR, like campaign budgets; the structured day count supports
+    // sorting/reporting while the text carries the creator's exact timing.
+    quoteAmount: integer("quote_amount"),
+    proposedTimelineDays: integer("proposed_timeline_days"),
+    proposedTimeline: text("proposed_timeline"),
+    // Brand-relevant creator-profile fields as they were when this
+    // application was submitted/reactivated. `creatorId` remains the live
+    // link to the creator's current profile. The snapshot deliberately
+    // excludes profile email/phone and verification/moderation internals;
+    // the separately consented application contact stays in its own field.
+    creatorProfileSnapshot: jsonb("creator_profile_snapshot"),
+    snapshotCapturedAt: timestamp("snapshot_captured_at"),
     status: text("status").notNull().default("applied"),
     decisionNote: text("decision_note"),
     decisionAt: timestamp("decision_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     // One application per creator account per campaign, enforced atomically by Postgres.
@@ -342,6 +420,22 @@ export const applications = pgTable(
     check(
       "applications_status_check",
       sql`${table.status} in ('applied', 'shortlisted', 'rejected', 'hired', 'completed', 'withdrawn')`,
+    ),
+    check(
+      "applications_quote_check",
+      sql`${table.quoteAmount} is null or ${table.quoteAmount} between 1 and 10000000`,
+    ),
+    check(
+      "applications_timeline_days_check",
+      sql`${table.proposedTimelineDays} is null or ${table.proposedTimelineDays} between 1 and 365`,
+    ),
+    check(
+      "applications_timeline_check",
+      sql`${table.proposedTimeline} is null or char_length(${table.proposedTimeline}) between 1 and 300`,
+    ),
+    check(
+      "applications_snapshot_check",
+      sql`(${table.creatorProfileSnapshot} is null and ${table.snapshotCapturedAt} is null) or (${table.creatorProfileSnapshot} is not null and jsonb_typeof(${table.creatorProfileSnapshot}) = 'object' and ${table.snapshotCapturedAt} is not null)`,
     ),
   ],
 );
@@ -364,6 +458,10 @@ export const notifications = pgTable(
     applicationStatus: text("application_status"),
     readAt: timestamp("read_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("notifications_user_created_idx").on(table.userId, table.createdAt.desc()),
@@ -391,6 +489,10 @@ export const contacts = pgTable(
     kind: text("kind").notNull().default("brand"),
     message: text("message"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("contacts_created_at_idx").on(table.createdAt.desc()),
@@ -416,6 +518,10 @@ export const reports = pgTable(
     status: text("status").notNull().default("open"),
     adminNote: text("admin_note"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
     resolvedAt: timestamp("resolved_at"),
   },
   (table) => [
@@ -435,7 +541,10 @@ export const reports = pgTable(
 export const settings = pgTable("settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date()),
 });
 
 export const adminAuditLogs = pgTable(
@@ -462,6 +571,54 @@ export const adminAuditLogs = pgTable(
   ],
 );
 
+// Append-only domain history for user, admin and system changes to the
+// marketplace records themselves. This is separate from the security-
+// focused admin login/moderation log above: application status history and
+// profile/campaign/application reporting read from these events. Only field
+// names and status transitions are recorded, never the old/new contact,
+// message, note or other free-text values. `entityId` intentionally has no
+// foreign key so a deletion event remains after the entity is gone.
+export const auditEvents = pgTable(
+  "audit_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    actorType: text("actor_type").notNull(),
+    actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    ownerUserId: uuid("owner_user_id").references(() => users.id, { onDelete: "set null" }),
+    entityType: text("entity_type").notNull(),
+    entityId: uuid("entity_id").notNull(),
+    action: text("action").notNull(),
+    fromStatus: text("from_status"),
+    toStatus: text("to_status"),
+    changedFields: jsonb("changed_fields").notNull().default(sql`'[]'::jsonb`),
+    metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("audit_events_entity_created_idx").on(table.entityType, table.entityId, table.createdAt.asc()),
+    index("audit_events_created_idx").on(table.createdAt.desc()),
+    index("audit_events_actor_created_idx").on(table.actorUserId, table.createdAt.desc()),
+    index("audit_events_owner_created_idx").on(table.ownerUserId, table.createdAt.desc()),
+    index("audit_events_action_created_idx").on(table.action, table.createdAt.desc()),
+    check("audit_events_actor_type_check", sql`${table.actorType} in ('user', 'admin', 'system')`),
+    check(
+      "audit_events_entity_type_check",
+      sql`${table.entityType} in ('user', 'brand', 'creator_profile', 'campaign', 'application', 'report', 'contact', 'setting')`,
+    ),
+    check("audit_events_action_check", sql`char_length(${table.action}) between 1 and 100`),
+    check("audit_events_from_status_check", sql`${table.fromStatus} is null or char_length(${table.fromStatus}) <= 40`),
+    check("audit_events_to_status_check", sql`${table.toStatus} is null or char_length(${table.toStatus}) <= 40`),
+    check(
+      "audit_events_changed_fields_check",
+      sql`jsonb_typeof(${table.changedFields}) = 'array' and pg_column_size(${table.changedFields}) <= 4096`,
+    ),
+    check(
+      "audit_events_metadata_check",
+      sql`jsonb_typeof(${table.metadata}) = 'object' and pg_column_size(${table.metadata}) <= 4096`,
+    ),
+  ],
+);
+
 // Shared fixed-window counters for every app instance/isolate. Only a
 // SHA-256 hash of the limiter key is stored, never the raw IP, email, token,
 // or user id that produced it. Expired rows are removed opportunistically.
@@ -472,7 +629,10 @@ export const rateLimitBuckets = pgTable(
     count: integer("count").notNull().default(0),
     windowStartedAt: timestamp("window_started_at").defaultNow().notNull(),
     expiresAt: timestamp("expires_at").notNull(),
-    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("rate_limit_buckets_expires_at_idx").on(table.expiresAt),
@@ -493,7 +653,10 @@ export const authFailureLockouts = pgTable(
     lastFailedAt: timestamp("last_failed_at").defaultNow().notNull(),
     lockedUntil: timestamp("locked_until"),
     expiresAt: timestamp("expires_at").notNull(),
-    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("auth_failure_lockouts_expires_at_idx").on(table.expiresAt),
@@ -520,3 +683,4 @@ export type Application = typeof applications.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
 export type RateLimitBucket = typeof rateLimitBuckets.$inferSelect;
 export type AuthFailureLockout = typeof authFailureLockouts.$inferSelect;
+export type AuditEvent = typeof auditEvents.$inferSelect;

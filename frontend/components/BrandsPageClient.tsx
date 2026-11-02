@@ -48,6 +48,7 @@ type BrandCampaignForm = {
   location: string;
   language: string;
   format: string;
+  deadlineAt: string;
   description: string;
 };
 
@@ -110,6 +111,7 @@ function BrandInner({ initialCreators }: { initialCreators: BrandsInitialCreator
     location: "",
     language: "",
     format: "",
+    deadlineAt: "",
     description: "",
   });
   const [done, setDone] = useState(false);
@@ -214,6 +216,7 @@ function BrandInner({ initialCreators }: { initialCreators: BrandsInitialCreator
             else if (field === "category") next[field] = normalizeCategory(value) ?? "";
             else if (field === "language") next[field] = normalizeLanguage(value) ?? "";
             else if (field === "format") next[field] = normalizeContentType(value) ?? "";
+            else if (field === "deadlineAt") next[field] = /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
             else next[field] = value;
           }
           // An explicit ?type= preset is the newest user intent and should
@@ -348,7 +351,7 @@ function BrandInner({ initialCreators }: { initialCreators: BrandsInitialCreator
             <Link href="/dashboard?view=brand" className="rounded-2xl bg-[#1c1917] px-6 py-3.5 text-[15px] font-bold text-white">{t("brand.dashboard")}</Link>
             <Link href="/campaigns" className="rounded-2xl border border-[#e9ddc3] bg-[#fffbf1] px-6 py-3.5 text-[15px] font-bold">{t("brand.viewAll")}</Link>
           </div>
-          <button onClick={() => { setDone(false); setVerificationCode(""); setBudgetAmount(""); setForm((f) => ({ ...f, title: "", promotionType: preset || "", category: "", targetAudience: "", location: "", language: "", format: "", description: "" })); }} className="mt-4 text-[13.5px] font-bold text-[#c7431f]">+ {t("brand.another")}</button>
+          <button onClick={() => { setDone(false); setVerificationCode(""); setBudgetAmount(""); setForm((f) => ({ ...f, title: "", promotionType: preset || "", category: "", targetAudience: "", location: "", language: "", format: "", deadlineAt: "", description: "" })); }} className="mt-4 text-[13.5px] font-bold text-[#c7431f]">+ {t("brand.another")}</button>
         </div>
       </div>
     );
@@ -509,6 +512,12 @@ function BrandInner({ initialCreators }: { initialCreators: BrandsInitialCreator
                 </label>
               </div>
 
+              <label className="grid gap-1.5" htmlFor="brand-deadline">
+                <span className="text-[13.5px] font-bold">{t("brand.deadline")}</span>
+                <input id="brand-deadline" name="deadlineAt" type="date" autoComplete="off" aria-describedby="brand-deadline-help" value={form.deadlineAt} onChange={(e) => set("deadlineAt", e.target.value)} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+                <span id="brand-deadline-help" className="text-[12.5px] leading-relaxed text-[#6f6862]">{t("brand.deadlineHelp")}</span>
+              </label>
+
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="grid gap-1.5" htmlFor="brand-phone">
                   <span className="text-[13.5px] font-bold">{t("brand.phone")}</span>
@@ -626,10 +635,10 @@ function BrandInner({ initialCreators }: { initialCreators: BrandsInitialCreator
                           </Link>
                         </p>
                         <p className="truncate text-[12px] text-white/80">{[opt(c.category), `${formatNumber(c.followers || 0)} ${t("browse.followers")}`, c.location, opt(c.languages)].filter(Boolean).join(" • ")}</p>
-                        {c.createdAt && (
+                        {(c.listedAt ?? c.createdAt) && (
                           <p className="mt-0.5 text-[11.5px] font-semibold text-white/65">
-                            <time dateTime={c.createdAt} title={formatDateTime(c.createdAt)}>
-                              {t("listing.listed", { age: formatRelativeTime(c.createdAt) })}
+                            <time dateTime={c.listedAt ?? c.createdAt} title={formatDateTime(c.listedAt ?? c.createdAt)}>
+                              {t("listing.listed", { age: formatRelativeTime(c.listedAt ?? c.createdAt) })}
                             </time>
                           </p>
                         )}

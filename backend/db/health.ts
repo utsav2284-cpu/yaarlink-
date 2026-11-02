@@ -5,6 +5,7 @@ import {
   accountTokens,
   adminAuditLogs,
   applications,
+  auditEvents,
   authFailureLockouts,
   brands,
   campaigns,
@@ -42,6 +43,7 @@ const REQUIRED_TABLES: readonly PgTable[] = [
   reports,
   settings,
   adminAuditLogs,
+  auditEvents,
   rateLimitBuckets,
   authFailureLockouts,
 ];

@@ -39,6 +39,8 @@ import {
   normalizePlatform,
 } from "@/shared/constants";
 import { isListingQueryError } from "@/backend/pagination";
+import { changedFieldNames, recordAuditEvent } from "@/backend/audit-events";
+import { contactSourceFor } from "@/backend/identity-sync";
 
 export const dynamic = "force-dynamic";
 
@@ -62,7 +64,9 @@ const CREATOR_FIELDS = [
 type CreatorProfileValues = {
   name: string;
   email: string | null;
+  emailSource: string;
   phone: string | null;
+  phoneSource: string;
   instagram: string | null;
   youtube: string | null;
   profileUrl: string | null;
@@ -268,7 +272,9 @@ function parseCreatorProfile(body: Record<string, unknown>, user: SessionUser, c
     values: {
       name: name.value,
       email,
+      emailSource: contactSourceFor(email, user.email, "profile"),
       phone,
+      phoneSource: contactSourceFor(phone, user.phone, "profile"),
       instagram: resolvedInstagram,
       youtube: resolvedYouTube,
       profileUrl,
@@ -354,6 +360,9 @@ export async function POST(req: Request) {
         verifiedFollowers: null,
         moderationNote: null,
         reviewedAt: null,
+        // Completing a signup placeholder is the profile's effective
+        // listing moment, even though the placeholder row may be much older.
+        listedAt: now,
         updatedAt: now,
       };
 
@@ -365,7 +374,21 @@ export async function POST(req: Request) {
             .set({ ...completedValues, verificationCode: createVerificationCode() })
             .where(eq(creators.id, existing.id))
             .returning(returningProfile);
-          if (row) return { kind: "created", creator: row } as const;
+          if (row) {
+            await recordAuditEvent(tx, {
+              actorType: "user",
+              actorUserId: user.id,
+              ownerUserId: user.id,
+              entityType: "creator_profile",
+              entityId: row.id,
+              action: "creator_profile.completed",
+              fromStatus: existing.status,
+              toStatus: row.status,
+              changedFields: changedFieldNames(existing, completedValues),
+              createdAt: now,
+            });
+            return { kind: "created", creator: row } as const;
+          }
         }
         return sameCreatorProfile(parsed.values, existing)
           ? { kind: "replay", creator: returningFromCreator(existing) } as const
@@ -377,7 +400,20 @@ export async function POST(req: Request) {
         .values({ ...completedValues, verificationCode: createVerificationCode() })
         .onConflictDoNothing({ target: creators.userId })
         .returning(returningProfile);
-      if (created) return { kind: "created", creator: created } as const;
+      if (created) {
+        await recordAuditEvent(tx, {
+          actorType: "user",
+          actorUserId: user.id,
+          ownerUserId: user.id,
+          entityType: "creator_profile",
+          entityId: created.id,
+          action: "creator_profile.created",
+          toStatus: created.status,
+          changedFields: Object.keys(parsed.values),
+          createdAt: now,
+        });
+        return { kind: "created", creator: created } as const;
+      }
 
       // A parallel request won the insert. Its row is now the arbiter: an
       // exact retry replays that profile; only a different profile conflicts.
@@ -388,7 +424,21 @@ export async function POST(req: Request) {
           .set({ ...completedValues, verificationCode: createVerificationCode(), updatedAt: new Date() })
           .where(eq(creators.id, raced.id))
           .returning(returningProfile);
-        if (row) return { kind: "created", creator: row } as const;
+        if (row) {
+          await recordAuditEvent(tx, {
+            actorType: "user",
+            actorUserId: user.id,
+            ownerUserId: user.id,
+            entityType: "creator_profile",
+            entityId: row.id,
+            action: "creator_profile.completed",
+            fromStatus: raced.status,
+            toStatus: row.status,
+            changedFields: changedFieldNames(raced, completedValues),
+            createdAt: now,
+          });
+          return { kind: "created", creator: row } as const;
+        }
       }
       return raced && sameCreatorProfile(parsed.values, raced)
         ? { kind: "replay", creator: returningFromCreator(raced) } as const
@@ -473,34 +523,55 @@ export async function PATCH(req: Request) {
       const materialChanged = materialFields.some(
         (field) => hasField(body, field) && parsed.values[field] !== existing[field],
       );
-      const contactChanged = parsed.values.email !== existing.email || parsed.values.phone !== existing.phone;
+      const contactChanged =
+        parsed.values.email !== existing.email ||
+        parsed.values.emailSource !== existing.emailSource ||
+        parsed.values.phone !== existing.phone ||
+        parsed.values.phoneSource !== existing.phoneSource;
       if (!materialChanged && !contactChanged) return { kind: "unchanged", creator: existing } as const;
 
+      const now = new Date();
+      const listedAt = existing.status === "incomplete" ? now : existing.listedAt ?? (materialChanged ? now : null);
+      const updateValues = materialChanged
+        ? {
+            ...parsed.values,
+            updatedAt: now,
+            status: "pending",
+            verificationCode: createVerificationCode(),
+            verificationStatus: "pending",
+            verifiedFollowers: null,
+            moderationNote: null,
+            reviewedAt: null,
+            ...(listedAt ? { listedAt } : {}),
+          }
+        : {
+            // Contact-only edits must not rewrite the already verified
+            // public profile representation.
+            email: parsed.values.email,
+            emailSource: parsed.values.emailSource,
+            phone: parsed.values.phone,
+            phoneSource: parsed.values.phoneSource,
+            updatedAt: now,
+          };
       const [row] = await tx
         .update(creators)
-        .set(
-          materialChanged
-            ? {
-                ...parsed.values,
-                updatedAt: new Date(),
-                status: "pending",
-                verificationCode: createVerificationCode(),
-                verificationStatus: "pending",
-                verifiedFollowers: null,
-                moderationNote: null,
-                reviewedAt: null,
-              }
-            : {
-                // Contact-only edits must not rewrite the already verified
-                // public profile representation.
-                email: parsed.values.email,
-                phone: parsed.values.phone,
-                updatedAt: new Date(),
-              },
-        )
+        .set(updateValues)
         .where(and(eq(creators.id, existing.id), eq(creators.userId, user.id)))
         .returning(returningProfile);
       if (!row) return { kind: "not_found" } as const;
+      await recordAuditEvent(tx, {
+        actorType: "user",
+        actorUserId: user.id,
+        ownerUserId: user.id,
+        entityType: "creator_profile",
+        entityId: row.id,
+        action: existing.status === "incomplete" ? "creator_profile.completed" : "creator_profile.updated",
+        fromStatus: existing.status,
+        toStatus: row.status,
+        changedFields: changedFieldNames(existing, updateValues),
+        metadata: { reviewRequired: materialChanged },
+        createdAt: now,
+      });
       return { kind: "updated", creator: row, reviewRequired: materialChanged } as const;
     });
 
@@ -536,7 +607,28 @@ export async function DELETE(req: Request) {
     const user = await getSessionUser();
     if (!user) return Response.json({ error: "Please log in to delete your creator profile.", code: "unauthorized" }, { status: 401, headers: NO_STORE });
 
-    const [row] = await db.delete(creators).where(eq(creators.userId, user.id)).returning({ id: creators.id });
+    const row = await db.transaction(async (tx) => {
+      const [existing] = await tx
+        .select({ id: creators.id, status: creators.status })
+        .from(creators)
+        .where(eq(creators.userId, user.id))
+        .limit(1)
+        .for("update");
+      if (!existing) return null;
+      const [deleted] = await tx.delete(creators).where(eq(creators.id, existing.id)).returning({ id: creators.id });
+      if (!deleted) return null;
+      await recordAuditEvent(tx, {
+        actorType: "user",
+        actorUserId: user.id,
+        ownerUserId: user.id,
+        entityType: "creator_profile",
+        entityId: deleted.id,
+        action: "creator_profile.deleted",
+        fromStatus: existing.status,
+        toStatus: "deleted",
+      });
+      return deleted;
+    });
     if (!row) return Response.json({ error: "Creator profile not found.", code: "creator_profile_not_found" }, { status: 404, headers: NO_STORE });
     return Response.json({ ok: true, deleted: true }, { headers: NO_STORE });
   } catch (e) {

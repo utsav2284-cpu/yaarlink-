@@ -20,6 +20,7 @@ import {
   type SortKey,
 } from "@/backend/pagination";
 import { APPLICATION_STATUSES, normalizeContentType } from "@/shared/constants";
+import { parseCreatorProfileSnapshot, type CreatorProfileSnapshot } from "@/backend/application-snapshot";
 
 const OWN_APPLICATION_SORTS = ["updated", "newest", "oldest", "status"] as const;
 
@@ -59,9 +60,15 @@ function ownApplicationSortKeys(sort: string): Array<SortKey<OwnApplicationSortR
 export interface OwnApplicationListItem {
   id: string;
   campaignId: string;
+  creatorId: string;
   creatorName: string;
   creatorContact: string | null;
   message: string | null;
+  quoteAmount: number | null;
+  proposedTimelineDays: number | null;
+  proposedTimeline: string | null;
+  creatorProfileSnapshot: CreatorProfileSnapshot | null;
+  snapshotCapturedAt: string | null;
   status: string;
   decisionNote: string | null;
   decisionAt: string | null;
@@ -121,6 +128,8 @@ export async function listOwnApplications(
         textExpression(sql`${applications.creatorName}`),
         textExpression(sql`${applications.creatorContact}`),
         textExpression(sql`${applications.message}`),
+        textExpression(sql`${applications.proposedTimeline}`),
+        textExpression(sql`${applications.quoteAmount}`),
         textExpression(sql`${applications.decisionNote}`),
         textExpression(sql`${applications.status}`),
         textExpression(sql`${campaigns.title}`),
@@ -150,9 +159,15 @@ export async function listOwnApplications(
         .select({
           id: applications.id,
           campaignId: applications.campaignId,
+          creatorId: applications.creatorId,
           creatorName: applications.creatorName,
           creatorContact: applications.creatorContact,
           message: applications.message,
+          quoteAmount: applications.quoteAmount,
+          proposedTimelineDays: applications.proposedTimelineDays,
+          proposedTimeline: applications.proposedTimeline,
+          creatorProfileSnapshot: applications.creatorProfileSnapshot,
+          snapshotCapturedAt: applications.snapshotCapturedAt,
           status: applications.status,
           decisionNote: applications.decisionNote,
           decisionAt: applications.decisionAt,
@@ -187,6 +202,8 @@ export async function listOwnApplications(
     return {
         applications: items.map((row) => ({
           ...row,
+          creatorProfileSnapshot: parseCreatorProfileSnapshot(row.creatorProfileSnapshot),
+          snapshotCapturedAt: row.snapshotCapturedAt ? new Date(row.snapshotCapturedAt).toISOString() : null,
           decisionAt: row.decisionAt ? new Date(row.decisionAt).toISOString() : null,
           createdAt: new Date(row.createdAt).toISOString(),
           updatedAt: new Date(row.updatedAt).toISOString(),

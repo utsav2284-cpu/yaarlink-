@@ -44,6 +44,7 @@ export default async function HomePage() {
             languages: creator.languages,
             contentTypes: creator.contentTypes,
             instagram: creator.instagram,
+            listedAt: creator.listedAt,
             createdAt: creator.createdAt,
           }))
         : [],

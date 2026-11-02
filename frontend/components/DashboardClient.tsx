@@ -43,6 +43,7 @@ type User = {
 };
 type Campaign = {
   id: string;
+  brandId?: string | null;
   title: string;
   businessName: string;
   contactName?: string | null;
@@ -61,6 +62,9 @@ type Campaign = {
   verificationCode?: string | null;
   verificationStatus?: string | null;
   moderationNote?: string | null;
+  deadlineAt?: string | null;
+  expiresAt?: string | null;
+  expiredAt?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
 };
@@ -86,6 +90,32 @@ type PublicCreatorProfile = {
   instagram?: string | null;
   youtube?: string | null;
 };
+type CreatorProfileSnapshot = {
+  version: 1;
+  creatorId: string;
+  name: string;
+  platform: string;
+  category: string | null;
+  languages: string;
+  location: string | null;
+  contentTypes: string;
+  bio: string | null;
+  followers: number;
+  verifiedFollowers: number | null;
+  effectiveFollowers: number;
+  status: string;
+  verificationStatus: string;
+  profileUrl: string | null;
+  instagram: string | null;
+  youtube: string | null;
+  listedAt: string | null;
+  capturedAt: string;
+};
+type CurrentCreatorProfile = {
+  id: string;
+  name: string;
+  href: string;
+};
 type Application = {
   id: string;
   campaignId: string | null;
@@ -93,7 +123,13 @@ type Application = {
   creatorName?: string | null;
   creatorContact?: string | null;
   creatorProfile?: PublicCreatorProfile | null;
+  creatorProfileSnapshot?: CreatorProfileSnapshot | null;
+  snapshotCapturedAt?: string | null;
+  currentCreatorProfile?: CurrentCreatorProfile | null;
   message: string | null;
+  quoteAmount?: number | null;
+  proposedTimelineDays?: number | null;
+  proposedTimeline?: string | null;
   status: string | null;
   decisionNote?: string | null;
   decisionAt?: string | null;
@@ -102,6 +138,10 @@ type Application = {
   statusHistory?: ApplicationStatusHistoryEvent[];
   campaignTitle?: string | null;
   businessName?: string | null;
+  campaignStatus?: string | null;
+  campaignVerificationStatus?: string | null;
+  campaignDeadlineAt?: string | null;
+  campaignExpiresAt?: string | null;
   format?: string | null;
 };
 type BrandProfile = {
@@ -112,6 +152,7 @@ type BrandProfile = {
   phone?: string | null;
   status?: string | null;
   createdAt?: string | null;
+  updatedAt?: string | null;
 };
 type Profile = {
   id: string;
@@ -133,6 +174,7 @@ type Profile = {
   verificationStatus?: string | null;
   verifiedFollowers?: number | null;
   moderationNote?: string | null;
+  listedAt?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
 };
@@ -199,8 +241,16 @@ type CampaignForm = {
   location: string;
   language: string;
   format: string;
+  deadlineAt: string;
   description: string;
   budget: string;
+};
+type ApplicationForm = {
+  creatorContact: string;
+  message: string;
+  quoteAmount: string;
+  proposedTimelineDays: string;
+  proposedTimeline: string;
 };
 type ProfileForm = {
   name: string;
@@ -286,6 +336,45 @@ function isCompletedDashboardProfile(profile: Profile) {
   );
 }
 
+function indiaDateInputValue(value: string | null | undefined): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return byType.year && byType.month && byType.day ? `${byType.year}-${byType.month}-${byType.day}` : "";
+}
+
+function campaignHasExpired(campaign: Campaign, now: number): boolean {
+  if (campaign.status === "expired") return true;
+  if (!campaign.status || !["pending", "open", "paused"].includes(campaign.status)) return false;
+  const expiresAt = campaign.expiresAt ? new Date(campaign.expiresAt).getTime() : Number.NaN;
+  return Number.isFinite(expiresAt) && expiresAt <= now;
+}
+
+function applicationCampaignHasExpired(application: Application, now: number): boolean {
+  if (application.campaignStatus === "expired") return true;
+  if (!["pending", "open", "paused"].includes(application.campaignStatus ?? "")) return false;
+  const expiresAt = application.campaignExpiresAt ? new Date(application.campaignExpiresAt).getTime() : Number.NaN;
+  return Number.isFinite(expiresAt) && expiresAt <= now;
+}
+
+function applicationToForm(application: Application): ApplicationForm {
+  return {
+    creatorContact: application.creatorContact ?? "",
+    message: application.message ?? "",
+    quoteAmount: application.quoteAmount == null ? "" : String(application.quoteAmount),
+    proposedTimelineDays:
+      application.proposedTimelineDays == null ? "" : String(application.proposedTimelineDays),
+    proposedTimeline: application.proposedTimeline ?? "",
+  };
+}
+
 function campaignToForm(c: Campaign): CampaignForm {
   return {
     businessName: c.businessName ?? "",
@@ -300,6 +389,7 @@ function campaignToForm(c: Campaign): CampaignForm {
     location: c.location ?? "",
     language: normalizeLanguage(c.language) ?? "",
     format: normalizeContentType(c.format) ?? "",
+    deadlineAt: indiaDateInputValue(c.deadlineAt),
     description: c.description ?? "",
     budget: c.budget == null ? "" : String(c.budget),
   };
@@ -356,6 +446,10 @@ function sanitizeCampaignForm(value: unknown, fallback: CampaignForm): CampaignF
     location: draftString(source.location, fallback.location),
     language: normalizeLanguage(source.language) ?? "",
     format: normalizeContentType(source.format) ?? "",
+    deadlineAt:
+      source.deadlineAt === "" || (typeof source.deadlineAt === "string" && /^\d{4}-\d{2}-\d{2}$/.test(source.deadlineAt))
+        ? source.deadlineAt
+        : fallback.deadlineAt,
     description: draftString(source.description, fallback.description),
     budget: draftString(source.budget, fallback.budget),
   };
@@ -416,6 +510,7 @@ export default function DashboardClient({
   const [actionErrorKey, setActionErrorKey] = useState<TranslationKey | "">("");
   const [busyKey, setBusyKey] = useState("");
   const [currentHour, setCurrentHour] = useState(() => new Date().getHours());
+  const [clientNow, setClientNow] = useState<number | null>(null);
   const [editingCampaignId, setEditingCampaignId] = useState("");
   const [campaignForm, setCampaignForm] = useState<CampaignForm | null>(null);
   const [campaignEditBaseUpdatedAt, setCampaignEditBaseUpdatedAt] = useState<string | null>(null);
@@ -426,7 +521,13 @@ export default function DashboardClient({
   const [profileDraftRestored, setProfileDraftRestored] = useState(false);
   const [editingApplicationId, setEditingApplicationId] = useState("");
   const [reactivatingApplicationId, setReactivatingApplicationId] = useState("");
-  const [applicationForm, setApplicationForm] = useState({ creatorContact: "", message: "" });
+  const [applicationForm, setApplicationForm] = useState<ApplicationForm>({
+    creatorContact: "",
+    message: "",
+    quoteAmount: "",
+    proposedTimelineDays: "",
+    proposedTimeline: "",
+  });
   const [applicationConsent, setApplicationConsent] = useState(false);
   const [decisionNotes, setDecisionNotes] = useState<Record<string, string>>({});
   const [campaignDraft, setCampaignDraft] = useState<ListQuery>({ q: "", status: "", sort: "newest" });
@@ -495,6 +596,13 @@ export default function DashboardClient({
   useEffect(() => {
     fetchDataRef.current = fetchData;
   }, [fetchData]);
+
+  useEffect(() => {
+    const updateNow = () => setClientNow(Date.now());
+    updateNow();
+    const interval = window.setInterval(updateNow, 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   const acceptDashboardData = useCallback((next: Data) => {
     const nextView =
@@ -716,7 +824,7 @@ export default function DashboardClient({
     setProfileDraftRestored(false);
     setEditingApplicationId("");
     setReactivatingApplicationId("");
-    setApplicationForm({ creatorContact: "", message: "" });
+    setApplicationForm({ creatorContact: "", message: "", quoteAmount: "", proposedTimelineDays: "", proposedTimeline: "" });
     setApplicationConsent(false);
     setDecisionNotes({});
     setCampaignDraft(emptyQuery);
@@ -979,6 +1087,78 @@ export default function DashboardClient({
     );
   };
 
+  const renderApplicationProposal = (a: Application) => {
+    const timelineDays =
+      a.proposedTimelineDays == null
+        ? null
+        : a.proposedTimelineDays === 1
+          ? t("dash.oneDay")
+          : t("dash.daysCount", { days: a.proposedTimelineDays });
+    const timeline = [timelineDays, a.proposedTimeline].filter(Boolean).join(" • ");
+    const hasProposal = a.quoteAmount != null || Boolean(timeline);
+    return (
+      <div className="mt-3 grid gap-1.5 rounded-lg border border-[#f0e6cc] bg-white p-2.5 text-[12.5px]">
+        {a.quoteAmount != null && (
+          <p><b>{t("dash.quote")}:</b> {formatCurrency(a.quoteAmount)}</p>
+        )}
+        {timeline && (
+          <p className="leading-relaxed"><b>{t("dash.proposedTimeline")}:</b> {timeline}</p>
+        )}
+        {!hasProposal && <p className="font-semibold text-[#6f6862]">{t("dash.noProposal")}</p>}
+      </div>
+    );
+  };
+
+  const renderProfileSnapshot = (a: Application, { own = false }: { own?: boolean } = {}) => {
+    const snapshot = a.creatorProfileSnapshot;
+    if (!snapshot) {
+      return own ? null : (
+        <p className="mt-3 rounded-lg border border-dashed border-[#e9ddc3] bg-white p-2.5 text-[12.5px] font-semibold text-[#6f6862]">
+          {t("dash.snapshotUnavailable")}
+        </p>
+      );
+    }
+    const socialLinks = [...new Set([
+      normalizeProfileUrl(snapshot.profileUrl, snapshot.platform),
+      normalizeInstagramUrl(snapshot.instagram),
+      normalizeYouTubeUrl(snapshot.youtube),
+    ].filter((link): link is string => Boolean(link)))];
+    const capturedAt = a.snapshotCapturedAt ?? snapshot.capturedAt;
+    return (
+      <div className="mt-3 rounded-lg border border-[#d9e8dc] bg-[#f7fbf7] p-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <p className="text-[11px] font-bold uppercase tracking-widest text-[#31543b]">
+            {own ? t("dash.yourProfileSnapshot") : t("dash.profileSnapshot")}
+          </p>
+          {capturedAt && (
+            <p className="text-[11.5px] font-semibold text-[#6f6862]">
+              {t("dash.snapshotCaptured", { date: formatDateTime(capturedAt) })}
+            </p>
+          )}
+        </div>
+        <p className="mt-1 text-[12px] leading-relaxed text-[#6f6862]">{t("dash.profileSnapshotHelp")}</p>
+        <p className="mt-2 text-[13px] font-extrabold text-[#1c1917]">{snapshot.name}</p>
+        <p className="mt-0.5 text-[12.5px] font-semibold text-[#44403c]">
+          {[platformLabel(snapshot.platform), opt(snapshot.category), opt(snapshot.languages), snapshot.location].filter(Boolean).join(" · ")}
+        </p>
+        <p className="mt-1 text-[12.5px] text-[#57534e]">
+          {snapshot.verifiedFollowers != null ? t("dash.verifiedFollowers") : t("dash.claimedFollowers")}: {formatNumber(snapshot.effectiveFollowers)}
+          {snapshot.contentTypes ? ` · ${opt(snapshot.contentTypes)}` : ""}
+        </p>
+        {snapshot.bio && <p className="mt-1 line-clamp-3 text-[12.5px] leading-relaxed text-[#6f6862]">{snapshot.bio}</p>}
+        {socialLinks.length > 0 && (
+          <div className="mt-2 grid gap-1">
+            {socialLinks.map((link) => (
+              <a key={link} href={link} target="_blank" rel="noopener noreferrer" className="break-all text-[12px] font-semibold text-[#c7431f] hover:underline">
+                {link}
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderStatusHistory = (a: Application) => {
     const history = a.statusHistory?.length
       ? a.statusHistory
@@ -989,7 +1169,10 @@ export default function DashboardClient({
         <ol className="mt-1.5 grid gap-1">
           {history.map((event, index) => (
             <li key={`${event.status}-${event.at}-${index}`} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-[12px]">
-              <span className="font-bold text-[#44403c]">{statusLabel(event.status)}</span>
+              <span className="font-bold text-[#44403c]">
+                {statusLabel(event.status)}
+                {event.actorName && <span className="ml-1.5 font-semibold text-[#6f6862]">{event.actorName}</span>}
+              </span>
               {event.at && (
                 <time dateTime={event.at} className="text-[#6f6862]">
                   {formatDateTime(event.at)}
@@ -1115,9 +1298,18 @@ export default function DashboardClient({
         }}
         onSubmit={(e) => {
           e.preventDefault();
+          const { deadlineAt, ...campaignFields } = campaignForm;
+          const deadlineChanged = deadlineAt !== campaignToForm(c).deadlineAt;
           runAction(
             `campaign:${c.id}:edit`,
-            () => jsonRequest("/api/campaigns", "PATCH", { id: c.id, ...campaignForm, expectedUpdatedAt: campaignEditBaseUpdatedAt ?? undefined }),
+            () => jsonRequest("/api/campaigns", "PATCH", {
+              id: c.id,
+              ...campaignFields,
+              // Omit an untouched deadline so a contact/content edit does not
+              // reset a default expiry that was already saved on the row.
+              ...(deadlineChanged ? { deadlineAt: deadlineAt || null } : {}),
+              expectedUpdatedAt: campaignEditBaseUpdatedAt ?? undefined,
+            }),
             () => closeCampaignEdit(c, true, true),
           );
         }}
@@ -1161,6 +1353,18 @@ export default function DashboardClient({
               {CONTENT_TYPES.map((format) => <option key={format} value={format}>{opt(format)}</option>)}
             </select>
           </label>
+          <label className={`${labelClass} sm:col-span-2`} htmlFor={`dashboard-campaign-${c.id}-deadline`}>
+            {t("brand.deadline")}
+            <input id={`dashboard-campaign-${c.id}-deadline`} name="deadlineAt" type="date" autoComplete="off" aria-describedby={`dashboard-campaign-${c.id}-deadline-help`} value={campaignForm.deadlineAt} onChange={(e) => set("deadlineAt", e.target.value)} className={inputClass} />
+            <span id={`dashboard-campaign-${c.id}-deadline-help`} className="text-[12px] font-semibold leading-relaxed text-[#6f6862]">
+              {t("dash.deadlineHelp")}
+              {(c.deadlineAt ?? c.expiresAt) && (
+                <>
+                  {" "}{t(c.status === "expired" ? "dash.expiredOn" : "dash.expiresOn")}: {formatDate(c.deadlineAt ?? c.expiresAt)}
+                </>
+              )}
+            </span>
+          </label>
           <p id={`dashboard-campaign-${c.id}-contact-note`} className="text-[12.5px] font-semibold leading-relaxed text-[#6f6862] sm:col-span-2">{t("brand.contactNote")}</p>
           <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-phone`}>{t("brand.phone")}<input id={`dashboard-campaign-${c.id}-phone`} name="phone" type="tel" inputMode="tel" autoComplete="tel" aria-describedby={`dashboard-campaign-${c.id}-contact-note`} value={campaignForm.phone} onChange={(e) => set("phone", e.target.value)} placeholder={t("brand.phPhone")} className={inputClass} /></label>
           <label className={labelClass} htmlFor={`dashboard-campaign-${c.id}-email`}>{t("brand.email")}<input id={`dashboard-campaign-${c.id}-email`} name="email" type="email" inputMode="email" autoComplete="email" aria-describedby={`dashboard-campaign-${c.id}-contact-note`} value={campaignForm.email} onChange={(e) => set("email", e.target.value)} placeholder={t("brand.phEmail")} className={inputClass} /></label>
@@ -1184,6 +1388,9 @@ export default function DashboardClient({
           normalizeYouTubeUrl(applicantProfile.youtube),
         ].filter((link): link is string => Boolean(link)))]
       : [];
+    const currentProfile = a.currentCreatorProfile ?? (applicantProfile
+      ? { id: applicantProfile.id, name: applicantProfile.name, href: `/creators/${applicantProfile.id}` }
+      : null);
     const decide = (action: string) => {
       if (action === "reject" && !window.confirm(t("dash.confirmRejectApplication"))) return;
       runAction(
@@ -1196,13 +1403,8 @@ export default function DashboardClient({
       <div key={a.id} className="rounded-lg bg-white p-3 text-[13.5px]">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <p className="font-bold">
-              {applicantProfile ? (
-                <Link href={`/creators/${applicantProfile.id}`} aria-label={`${t("detail.viewCreator")}: ${a.creatorName ?? applicantProfile.name}`} className="hover:text-[#c7431f] hover:underline">
-                  {a.creatorName ?? applicantProfile.name}
-                </Link>
-              ) : a.creatorName}
-            </p>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-[#6f6862]">{t("dash.submittedName")}</p>
+            <p className="font-bold">{a.creatorName ?? applicantProfile?.name}</p>
             {a.creatorContact && (
               <>
                 {renderContactActions(a.creatorContact, applicantProfile?.platform)}
@@ -1222,13 +1424,20 @@ export default function DashboardClient({
         </div>
         {a.message && <p className="mt-2 text-[#57534e]">“{a.message}”</p>}
         {a.decisionNote && <p className="mt-2 rounded-lg bg-[#fffbf1] p-2 text-[12.5px] text-[#57534e]"><b>{t("dash.brandNote")}:</b> {a.decisionNote}</p>}
+        {renderApplicationProposal(a)}
+        {renderProfileSnapshot(a)}
         {applicantProfile && (
           <div className="mt-3 rounded-lg border border-[#f0e6cc] bg-[#fffbf1] p-3">
             <div className="flex flex-wrap items-start justify-between gap-2">
-              <p className="text-[11px] font-bold uppercase tracking-widest text-[#6f6862]">{t("dash.applicantProfile")}</p>
-              <Link href={`/creators/${applicantProfile.id}`} className="text-[12px] font-bold text-[#c7431f] hover:underline">
-                {t("detail.viewCreator")}
-              </Link>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-[#6f6862]">{t("dash.currentCreatorProfile")}</p>
+                <p className="mt-0.5 text-[13px] font-extrabold text-[#1c1917]">{currentProfile?.name ?? applicantProfile.name}</p>
+              </div>
+              {currentProfile && (
+                <Link href={currentProfile.href} aria-label={`${t("dash.viewCurrentProfile")}: ${currentProfile.name}`} className="text-[12px] font-bold text-[#c7431f] hover:underline">
+                  {t("dash.viewCurrentProfile")}
+                </Link>
+              )}
             </div>
             <p className="mt-1.5 text-[12.5px] font-semibold text-[#44403c]">
               {[platformLabel(applicantProfile.platform), opt(applicantProfile.category), opt(applicantProfile.languages), applicantProfile.location].filter(Boolean).join(" · ")}
@@ -1382,6 +1591,7 @@ export default function DashboardClient({
     const applicationFormOpen = editing || reactivating;
     const canEdit = a.status === "applied" || a.status === "shortlisted";
     const canWithdraw = canEdit || a.status === "hired";
+    const campaignExpired = applicationCampaignHasExpired(a, clientNow ?? 0);
     return (
       <div key={a.id} className="rounded-2xl border border-[#e9ddc3] bg-white p-4">
         <div className="flex items-start justify-between gap-3">
@@ -1396,6 +1606,11 @@ export default function DashboardClient({
                 {t("dash.updatedOn")}: <time dateTime={a.decisionAt}>{formatDateTime(a.decisionAt)}</time>
               </p>
             )}
+            {(a.campaignDeadlineAt ?? a.campaignExpiresAt) && (
+              <p className="mt-0.5 text-[12px] font-semibold text-[#6f6862]">
+                {t("dash.deadline")}: <time dateTime={a.campaignDeadlineAt ?? a.campaignExpiresAt ?? undefined}>{formatDate(a.campaignDeadlineAt ?? a.campaignExpiresAt)}</time>
+              </p>
+            )}
           </div>
           <span className={`shrink-0 rounded-full px-3 py-1 text-[12px] font-bold ${statusPillClass(a.status)}`}>{statusLabel(a.status)}</span>
         </div>
@@ -1406,6 +1621,8 @@ export default function DashboardClient({
           </div>
         )}
         {a.decisionNote && <p className="mt-2 rounded-xl bg-[#fffbf1] p-3 text-[13px] text-[#57534e]"><b>{t("dash.brandNote")}:</b> {a.decisionNote}</p>}
+        {renderApplicationProposal(a)}
+        {renderProfileSnapshot(a, { own: true })}
         {a.status === "hired" && (
           <p role="note" className="mt-3 rounded-lg bg-[#faf6ed] px-3 py-2 text-[12.5px] font-semibold leading-relaxed text-[#9a3412]">
             {t("dash.offPlatformHiredNote")}
@@ -1471,6 +1688,21 @@ export default function DashboardClient({
               <span id={`dashboard-application-${a.id}-contact-note`} className="text-[12.5px] font-semibold leading-relaxed text-[#6f6862]">{t("camp.contactMustBeYours")}</span>
             </label>
             <label className={labelClass} htmlFor={`dashboard-application-${a.id}-message`}>{t("dash.yourMessage")}<textarea id={`dashboard-application-${a.id}-message`} name="message" autoComplete="off" value={applicationForm.message} onChange={(e) => setApplicationForm((f) => ({ ...f, message: e.target.value }))} rows={3} placeholder={t("camp.applyPhMsg")} className={inputClass} /></label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className={labelClass} htmlFor={`dashboard-application-${a.id}-quote`}>
+                {t("camp.quote")}
+                <input id={`dashboard-application-${a.id}-quote`} name="quoteAmount" autoComplete="off" inputMode="numeric" aria-describedby={`dashboard-application-${a.id}-quote-help`} value={applicationForm.quoteAmount} onChange={(e) => setApplicationForm((f) => ({ ...f, quoteAmount: e.target.value }))} maxLength={16} placeholder={t("camp.quotePlaceholder")} className={inputClass} />
+              </label>
+              <label className={labelClass} htmlFor={`dashboard-application-${a.id}-timeline-days`}>
+                {t("camp.timelineDays")}
+                <input id={`dashboard-application-${a.id}-timeline-days`} name="proposedTimelineDays" type="number" autoComplete="off" inputMode="numeric" min={1} max={365} step={1} value={applicationForm.proposedTimelineDays} onChange={(e) => setApplicationForm((f) => ({ ...f, proposedTimelineDays: e.target.value }))} placeholder={t("camp.timelineDaysPlaceholder")} className={inputClass} />
+              </label>
+            </div>
+            <p id={`dashboard-application-${a.id}-quote-help`} className="text-[12.5px] font-semibold leading-relaxed text-[#6f6862]">{t("camp.quoteHelp")}</p>
+            <label className={labelClass} htmlFor={`dashboard-application-${a.id}-timeline`}>
+              {t("camp.timelineNotes")}
+              <textarea id={`dashboard-application-${a.id}-timeline`} name="proposedTimeline" autoComplete="off" value={applicationForm.proposedTimeline} onChange={(e) => setApplicationForm((f) => ({ ...f, proposedTimeline: e.target.value }))} rows={2} maxLength={300} placeholder={t("camp.timelineNotesPlaceholder")} className={inputClass} />
+            </label>
             {reactivating && (
               <label htmlFor={`reactivate-consent-${a.id}`} className="flex w-full min-w-0 cursor-pointer items-start gap-3 rounded-xl border border-[#e9ddc3] bg-white px-3.5 py-3 text-[13px] font-semibold leading-relaxed text-[#57534e]">
                 <input
@@ -1525,7 +1757,7 @@ export default function DashboardClient({
                   setEditingApplicationId(a.id);
                   setReactivatingApplicationId("");
                   setApplicationConsent(false);
-                  setApplicationForm({ creatorContact: a.creatorContact ?? "", message: a.message ?? "" });
+                  setApplicationForm(applicationToForm(a));
                 }}
                 className="rounded-xl bg-[#1c1917] px-4 py-2 text-[13px] font-bold text-white"
               >
@@ -1546,7 +1778,10 @@ export default function DashboardClient({
                 {t("dash.withdrawApplication")}
               </button>
             )}
-            {a.status === "withdrawn" && (
+            {a.status === "withdrawn" && campaignExpired && (
+              <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] font-bold text-amber-900">{t("api.campaignExpired")}</p>
+            )}
+            {a.status === "withdrawn" && !campaignExpired && (
               <button
                 type="button"
                 id={`dashboard-application-${a.id}-reactivate-toggle`}
@@ -1557,7 +1792,7 @@ export default function DashboardClient({
                   setEditingApplicationId("");
                   setReactivatingApplicationId(a.id);
                   setApplicationConsent(false);
-                  setApplicationForm({ creatorContact: a.creatorContact ?? "", message: a.message ?? "" });
+                  setApplicationForm(applicationToForm(a));
                 }}
                 className="rounded-xl bg-[#c7431f] px-4 py-2 text-[13px] font-bold text-white disabled:opacity-50"
               >
@@ -1722,12 +1957,15 @@ export default function DashboardClient({
               const campaignApplicationCount = data.applicationCountsByCampaign?.[c.id] ?? apps.length;
               const campaignApplicationPagination = data.applicationPaginationByCampaign?.[c.id];
               const campaignBusy = busyKey.startsWith(`campaign:${c.id}:`);
+              const expired = campaignHasExpired(c, clientNow ?? 0);
+              const effectiveDeadline = c.deadlineAt ?? c.expiresAt;
+              const publicCampaign = c.status === "open" && c.verificationStatus === "verified" && !expired;
               return (
                 <div key={c.id} className="rounded-2xl border border-[#e9ddc3] bg-white p-5 card-shadow">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="text-[16px] font-extrabold">
-                        {c.status === "open" && c.verificationStatus === "verified" ? (
+                        {publicCampaign ? (
                           <Link href={`/campaigns/${c.id}`} aria-label={`${t("detail.viewCampaign")}: ${c.title}`} className="hover:text-[#c7431f] hover:underline">
                             {c.title}
                           </Link>
@@ -1739,19 +1977,31 @@ export default function DashboardClient({
                           <time dateTime={c.createdAt} title={formatDateTime(c.createdAt)}>
                             {t("listing.posted", { age: formatRelativeTime(c.createdAt) })}
                           </time>
+                          {effectiveDeadline && (
+                            <>
+                              {" · "}{t(expired ? "dash.expiredOn" : "dash.deadline")}:{" "}
+                              <time dateTime={effectiveDeadline} title={formatDateTime(effectiveDeadline)}>{formatDate(effectiveDeadline)}</time>
+                            </>
+                          )}
                         </p>
                       )}
                     </div>
                     <div className="flex gap-2">
                       <span className="rounded-full bg-[#fff4de] px-3 py-1 text-[12.5px] font-bold">🔒 {formatCurrency(c.budget || 0)}</span>
-                      <span className={`rounded-full px-3 py-1 text-[12.5px] font-bold ${statusPillClass(c.status)}`}>{statusLabel(c.status)}</span>
+                      <span className={`rounded-full px-3 py-1 text-[12.5px] font-bold ${statusPillClass(expired ? "expired" : c.status)}`}>{statusLabel(expired ? "expired" : c.status)}</span>
                     </div>
                   </div>
 
-                  {(c.status !== "open" || c.verificationStatus !== "verified" || c.moderationNote) && (
+                  {(expired || c.status !== "open" || c.verificationStatus !== "verified" || c.moderationNote) && (
                     <div className={`mt-3 rounded-xl border p-3 ${c.status === "rejected" || c.status === "suspended" ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50"}`}>
                       <p className="text-[13.5px] font-semibold text-[#44403c]">
-                        {c.status === "pending" ? t("dash.campaignInReview") : c.status === "paused" ? t("dash.campaignPaused") : t("verify.notPublic")}
+                        {expired
+                          ? t("dash.campaignExpiredHelp", { date: formatDate(c.expiredAt ?? effectiveDeadline) })
+                          : c.status === "pending"
+                            ? t("dash.campaignInReview")
+                            : c.status === "paused"
+                              ? t("dash.campaignPaused")
+                              : t("verify.notPublic")}
                       </p>
                       {c.status === "pending" && c.verificationCode && (
                         <>
@@ -1765,7 +2015,7 @@ export default function DashboardClient({
                   )}
 
                   <div className="mt-4 flex flex-wrap gap-2">
-                    {c.status === "open" && c.verificationStatus === "verified" && (
+                    {publicCampaign && (
                       <Link href={`/campaigns/${c.id}`} className="rounded-xl border border-[#1c1917] bg-white px-4 py-2 text-[13px] font-bold text-[#1c1917] hover:bg-[#fff4de]">
                         {t("detail.viewCampaign")}
                       </Link>
@@ -1780,15 +2030,15 @@ export default function DashboardClient({
                     >
                       {t("dash.editCampaign")}
                     </button>
-                    {c.status === "open" && (
+                    {c.status === "open" && !expired && (
                       <button type="button" disabled={campaignBusy} onClick={() => runAction(`campaign:${c.id}:pause`, () => jsonRequest("/api/campaigns", "PATCH", { id: c.id, action: "pause" }))} className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-[13px] font-bold text-amber-900 disabled:opacity-50">{t("dash.pauseCampaign")}</button>
                     )}
-                    {(c.status === "paused" || c.status === "closed" || c.status === "rejected") && (
+                    {(expired || c.status === "paused" || c.status === "closed" || c.status === "rejected" || c.status === "expired") && (
                       <button type="button" disabled={campaignBusy} onClick={() => runAction(`campaign:${c.id}:republish`, () => jsonRequest("/api/campaigns", "PATCH", { id: c.id, action: "republish" }))} className="rounded-xl bg-[#17452e] px-4 py-2 text-[13px] font-bold text-white disabled:opacity-50">
                         {c.status === "paused" ? t("dash.republishCampaign") : t("dash.resubmitCampaign")}
                       </button>
                     )}
-                    {c.status !== "closed" && (
+                    {c.status !== "closed" && !expired && (
                       <button
                         type="button"
                         disabled={campaignBusy}
@@ -1895,6 +2145,7 @@ export default function DashboardClient({
                   const followerCount = profile.verifiedFollowers ?? profile.followers ?? 0;
                   const publicProfile =
                     profile.status === "approved" && profile.verificationStatus === "verified" && isCompletedDashboardProfile(profile);
+                  const listedDate = profile.listedAt ?? (profile.status !== "incomplete" ? profile.createdAt : null);
                   return (
                     <div key={profile.id} className="rounded-2xl border border-[#e9ddc3] bg-white p-5 card-shadow">
                       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -1907,10 +2158,10 @@ export default function DashboardClient({
                             ) : profile.name}
                           </p>
                           <p className="text-[13px] text-[#6f6862]">{[platformLabel(profile.platform), opt(profile.category), opt(profile.languages), profile.location].filter(Boolean).join(" · ")}</p>
-                          {profile.createdAt && (
+                          {listedDate && (
                             <p className="mt-1 text-[12px] font-semibold text-[#6f6862]">
-                              <time dateTime={profile.createdAt} title={formatDateTime(profile.createdAt)}>
-                                {t("listing.listed", { age: formatRelativeTime(profile.createdAt) })}
+                              <time dateTime={listedDate} title={formatDateTime(listedDate)}>
+                                {t("listing.listed", { age: formatRelativeTime(listedDate) })}
                               </time>
                             </p>
                           )}
@@ -2085,6 +2336,12 @@ export default function DashboardClient({
                         <time dateTime={c.createdAt} title={formatDateTime(c.createdAt)}>
                           {t("listing.posted", { age: formatRelativeTime(c.createdAt) })}
                         </time>
+                        {(c.deadlineAt ?? c.expiresAt) && (
+                          <>
+                            {" · "}{t("dash.deadline")}:{" "}
+                            <time dateTime={c.deadlineAt ?? c.expiresAt ?? undefined} title={formatDateTime(c.deadlineAt ?? c.expiresAt)}>{formatDate(c.deadlineAt ?? c.expiresAt)}</time>
+                          </>
+                        )}
                       </p>
                     )}
                   </Link>

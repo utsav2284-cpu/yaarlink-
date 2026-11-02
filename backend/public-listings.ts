@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/backend/db";
 import { campaigns, creators } from "@/backend/db/schema";
 import { parseUuid } from "@/backend/validation";
@@ -45,6 +45,8 @@ export type PublicCampaignDetail = {
   website: string | null;
   status: string;
   verificationStatus: string;
+  deadlineAt: string | null;
+  expiresAt: string;
   createdAt: string;
 };
 
@@ -63,6 +65,7 @@ export type PublicCreatorDetail = {
   bio: string | null;
   status: string;
   verificationStatus: string;
+  listedAt: string;
   createdAt: string;
 };
 
@@ -100,6 +103,8 @@ export const getPublicCampaignDetail = cache(async (rawId: string): Promise<Publ
       website: campaigns.website,
       status: campaigns.status,
       verificationStatus: campaigns.verificationStatus,
+      deadlineAt: campaigns.deadlineAt,
+      expiresAt: campaigns.expiresAt,
       createdAt: campaigns.createdAt,
     })
     .from(campaigns)
@@ -108,6 +113,7 @@ export const getPublicCampaignDetail = cache(async (rawId: string): Promise<Publ
         eq(campaigns.id, id),
         eq(campaigns.status, "open"),
         eq(campaigns.verificationStatus, "verified"),
+        gt(campaigns.expiresAt, new Date()),
       ),
     )
     .limit(1);
@@ -120,6 +126,8 @@ export const getPublicCampaignDetail = cache(async (rawId: string): Promise<Publ
     category: normalizeCategory(row.category) ?? row.category,
     language: normalizeLanguage(row.language) ?? row.language,
     format: normalizeContentType(row.format) ?? row.format,
+    deadlineAt: row.deadlineAt ? serializeDate(row.deadlineAt) : null,
+    expiresAt: serializeDate(row.expiresAt),
     createdAt: serializeDate(row.createdAt),
   };
 });
@@ -150,6 +158,7 @@ export const getPublicCreatorDetail = cache(async (rawId: string): Promise<Publi
       bio: creators.bio,
       status: creators.status,
       verificationStatus: creators.verificationStatus,
+      listedAt: creators.listedAt,
       createdAt: creators.createdAt,
     })
     .from(creators)
@@ -200,6 +209,7 @@ export const getPublicCreatorDetail = cache(async (rawId: string): Promise<Publi
     bio: row.bio,
     status: row.status,
     verificationStatus: row.verificationStatus,
+    listedAt: serializeDate(row.listedAt ?? row.createdAt),
     createdAt: serializeDate(row.createdAt),
   };
 });
@@ -327,11 +337,14 @@ export async function listPublicCampaigns(
       format,
     });
     const keys = publicCampaignSortKeys(listing.sort);
+    const now = new Date();
     const baseWhere = allConditions([
-      // Fail closed: pending, paused, rejected, suspended, closed, and
-      // unverified campaigns stay private.
+      // Fail closed: pending, paused, rejected, suspended, closed, expired
+      // and unverified campaigns stay private. The expiry predicate also
+      // hides a stale "open" row before its lazy status transition runs.
       eq(campaigns.status, "open"),
       eq(campaigns.verificationStatus, "verified"),
+      gt(campaigns.expiresAt, now),
       language ? eq(campaigns.language, language) : undefined,
       category ? eq(campaigns.category, category) : undefined,
       promotionType ? eq(campaigns.promotionType, promotionType) : undefined,
@@ -390,6 +403,8 @@ export async function listPublicCampaigns(
           website: campaigns.website,
           status: campaigns.status,
           verificationStatus: campaigns.verificationStatus,
+          deadlineAt: campaigns.deadlineAt,
+          expiresAt: campaigns.expiresAt,
           createdAt: campaigns.createdAt,
         })
         .from(campaigns)
@@ -417,6 +432,8 @@ export async function listPublicCampaigns(
         category: normalizeCategory(row.category) ?? row.category,
         language: normalizeLanguage(row.language) ?? row.language,
         format: normalizeContentType(row.format) ?? row.format,
+        deadlineAt: row.deadlineAt ? serializeDate(row.deadlineAt) : null,
+        expiresAt: serializeDate(row.expiresAt),
         createdAt: serializeDate(row.createdAt),
       };
     });
@@ -440,50 +457,53 @@ type PublicCreatorSortRow = {
   verifiedFollowers: number | null;
   location: string | null;
   languages: string;
+  listedAt: Date | null;
   createdAt: Date;
 };
 
 function publicCreatorSortKeys(sort: string): Array<SortKey<PublicCreatorSortRow>> {
   const effectiveFollowers = sql`coalesce(${creators.verifiedFollowers}, ${creators.followers})`;
+  const effectiveListedAt = sql`coalesce(${creators.listedAt}, ${creators.createdAt})`;
+  const listedValue = (row: PublicCreatorSortRow) => row.listedAt ?? row.createdAt;
   switch (sort) {
     case "oldest":
       return [
-        { expression: sql`${creators.createdAt}`, direction: "asc", kind: "date", value: (row) => row.createdAt },
+        { expression: effectiveListedAt, direction: "asc", kind: "date", value: listedValue },
         { expression: sql`${creators.id}`, direction: "asc", kind: "uuid", value: (row) => row.id },
       ];
     case "name":
       return [
         { expression: sql`lower(${creators.name})`, direction: "asc", kind: "string", value: (row) => row.name.toLocaleLowerCase("en-US") },
-        { expression: sql`${creators.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
+        { expression: effectiveListedAt, direction: "desc", kind: "date", value: listedValue },
         { expression: sql`${creators.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
       ];
     case "followers_desc":
       return [
         { expression: effectiveFollowers, direction: "desc", kind: "number", value: (row) => row.verifiedFollowers ?? row.followers },
-        { expression: sql`${creators.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
+        { expression: effectiveListedAt, direction: "desc", kind: "date", value: listedValue },
         { expression: sql`${creators.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
       ];
     case "followers_asc":
       return [
         { expression: effectiveFollowers, direction: "asc", kind: "number", value: (row) => row.verifiedFollowers ?? row.followers },
-        { expression: sql`${creators.createdAt}`, direction: "asc", kind: "date", value: (row) => row.createdAt },
+        { expression: effectiveListedAt, direction: "asc", kind: "date", value: listedValue },
         { expression: sql`${creators.id}`, direction: "asc", kind: "uuid", value: (row) => row.id },
       ];
     case "city":
       return [
         { expression: sql`lower(coalesce(${creators.location}, ''))`, direction: "asc", kind: "string", value: (row) => (row.location ?? "").toLocaleLowerCase("en-US") },
-        { expression: sql`${creators.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
+        { expression: effectiveListedAt, direction: "desc", kind: "date", value: listedValue },
         { expression: sql`${creators.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
       ];
     case "language":
       return [
         { expression: sql`lower(${creators.languages})`, direction: "asc", kind: "string", value: (row) => row.languages.toLocaleLowerCase("en-US") },
-        { expression: sql`${creators.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
+        { expression: effectiveListedAt, direction: "desc", kind: "date", value: listedValue },
         { expression: sql`${creators.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
       ];
     default:
       return [
-        { expression: sql`${creators.createdAt}`, direction: "desc", kind: "date", value: (row) => row.createdAt },
+        { expression: effectiveListedAt, direction: "desc", kind: "date", value: listedValue },
         { expression: sql`${creators.id}`, direction: "desc", kind: "uuid", value: (row) => row.id },
       ];
   }
@@ -580,6 +600,7 @@ export async function listPublicCreators(
           bio: creators.bio,
           status: creators.status,
           verificationStatus: creators.verificationStatus,
+          listedAt: creators.listedAt,
           createdAt: creators.createdAt,
         })
         .from(creators)
@@ -612,6 +633,7 @@ export async function listPublicCreators(
         category: (normalizeCategory(row.category) ?? row.category) as string,
         languages: row.languages ? (normalizeLanguageList(row.languages, true) ?? []).join(", ") : row.languages,
         contentTypes: row.contentTypes ? (normalizeContentTypeList(row.contentTypes, true) ?? []).join(", ") : row.contentTypes,
+        listedAt: serializeDate(row.listedAt ?? row.createdAt),
         createdAt: serializeDate(row.createdAt),
       };
     });
@@ -640,6 +662,7 @@ export async function listPublicSitemapEntries(): Promise<{
         and(
           eq(campaigns.status, "open"),
           eq(campaigns.verificationStatus, "verified"),
+          gt(campaigns.expiresAt, new Date()),
         ),
       )
       .orderBy(desc(campaigns.updatedAt))

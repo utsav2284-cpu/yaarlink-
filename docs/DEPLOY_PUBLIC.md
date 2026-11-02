@@ -28,7 +28,7 @@ For the deployed application:
 
 Do not use `sslmode=no-verify`, `disable`, `prefer`, `require`, or `verify-ca` for a remote database. Without a configured CA, `backend/db/connection-config.ts` rejects those modes for remote hosts. When `DATABASE_CA_CERT` is set, the app strips the URL's SSL-mode parameters and passes that CA explicitly to node-postgres with `rejectUnauthorized: true`, so both the certificate chain and hostname are verified and a legacy weaker `sslmode` cannot downgrade the actual connection. New connection strings should still specify `verify-full` explicitly.
 
-For an existing production database, review schema changes and take a backup before applying them; do not blindly repeat an initial-provisioning push.
+For an existing production database, review schema changes and take a backup before applying them; do not blindly repeat an initial-provisioning push. A database created before the data-model/reporting fields must instead run the reviewed transactional file `backend/db/migrations/20261102_data_model_reporting.sql` with the verified-TLS Direct/Session provisioning URL (for example, `psql "$PROVISIONING_DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/db/migrations/20261102_data_model_reporting.sql`) before the matching application deployment. It includes historical listed-date, contact-source, brand-link, campaign-expiry, settings, and audit-table backfills that a schema-only push cannot reproduce; verify the commented read-only checks and `/api/health` afterward.
 
 ## 2. Required production environment variables
 

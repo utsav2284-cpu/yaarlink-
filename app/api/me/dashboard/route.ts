@@ -1,9 +1,11 @@
 import { applicationContactOptions, isCompletedCreatorProfile } from "@/backend/application-contact";
 import { db } from "@/backend/db";
-import { applications, brands, campaigns, creators, notifications } from "@/backend/db/schema";
+import { applications, brands, campaigns, creators, notifications, users } from "@/backend/db/schema";
 import { attachApplicationStatusHistory } from "@/backend/application-history";
+import { parseCreatorProfileSnapshot } from "@/backend/application-snapshot";
+import { expireOverdueCampaigns } from "@/backend/campaign-lifecycle";
 import { getSessionUser, isSessionUnavailableError, logSessionUnavailable, sessionSecretProblem, sessionUnavailableResponse } from "@/backend/auth";
-import { and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, ne, sql } from "drizzle-orm";
 import {
   APPLICATION_STATUSES,
   CAMPAIGN_REVIEW_STATUSES,
@@ -430,12 +432,17 @@ async function loadBrandProfile(userId: string) {
       id: brands.id,
       userId: brands.userId,
       name: brands.name,
-      email: brands.email,
-      phone: brands.phone,
+      // The brand record is the account's brand identity, not a second
+      // editable contact book. Read the canonical account contact so this
+      // surface can never display a stale copied email/phone.
+      email: users.email,
+      phone: users.phone,
       status: brands.status,
       createdAt: brands.createdAt,
+      updatedAt: brands.updatedAt,
     })
     .from(brands)
+    .innerJoin(users, eq(brands.userId, users.id))
     .where(eq(brands.userId, userId))
     .limit(1);
   return brandProfile ?? null;
@@ -451,7 +458,14 @@ async function loadCreatorCounts(userId: string) {
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(campaigns)
-      .where(and(eq(campaigns.status, "open"), eq(campaigns.verificationStatus, "verified"), ne(campaigns.ownerId, userId))),
+      .where(
+        and(
+          eq(campaigns.status, "open"),
+          eq(campaigns.verificationStatus, "verified"),
+          gt(campaigns.expiresAt, new Date()),
+          ne(campaigns.ownerId, userId),
+        ),
+      ),
   ]);
   return {
     profiles: Number(profileRow?.count ?? 0),
@@ -539,6 +553,8 @@ function brandApplicationSearch() {
     textExpression(sql`${applications.creatorName}`),
     textExpression(sql`${applications.creatorContact}`),
     textExpression(sql`${applications.message}`),
+    textExpression(sql`${applications.proposedTimeline}`),
+    textExpression(sql`${applications.quoteAmount}`),
     textExpression(sql`${applications.decisionNote}`),
     textExpression(sql`${applications.status}`),
     textExpression(sql`${campaigns.title}`),
@@ -559,6 +575,11 @@ type BrandApplicationRow = {
   creatorName: string;
   creatorContact: string | null;
   message: string | null;
+  quoteAmount: number | null;
+  proposedTimelineDays: number | null;
+  proposedTimeline: string | null;
+  creatorProfileSnapshot: unknown;
+  snapshotCapturedAt: Date | null;
   status: string;
   decisionNote: string | null;
   decisionAt: Date | null;
@@ -582,6 +603,8 @@ type BrandApplicationRow = {
 
 function outputBrandApplication(row: BrandApplicationRow) {
   const {
+    creatorProfileSnapshot: rawCreatorProfileSnapshot,
+    snapshotCapturedAt,
     profileName,
     profilePlatform,
     profileCategory,
@@ -638,9 +661,26 @@ function outputBrandApplication(row: BrandApplicationRow) {
       })
     : null;
 
-  // Show the linked creator profile's current name, not a legacy free-text
-  // snapshot stored on older applications.
-  return { ...application, creatorName: profileName || application.creatorName, creatorProfile };
+  const parsedSnapshot = parseCreatorProfileSnapshot(rawCreatorProfileSnapshot);
+  // The stored snapshot is exposed to this brand only under the same
+  // current public-profile gate as the live profile. This preserves the
+  // snapshot for reporting/admin/creator use without turning a private or
+  // later-suspended profile into brand-visible profile data.
+  const creatorProfileSnapshot = publicProfile ? parsedSnapshot : null;
+  const currentCreatorProfile = creatorProfile
+    ? { id: creatorProfile.id, name: creatorProfile.name, href: `/creators/${creatorProfile.id}` }
+    : null;
+
+  // `creatorName` is the submitted snapshot name. The current profile is a
+  // separate live link, so later profile edits do not rewrite what was
+  // submitted with this application.
+  return {
+    ...application,
+    creatorProfile,
+    creatorProfileSnapshot,
+    snapshotCapturedAt: creatorProfileSnapshot ? snapshotCapturedAt : null,
+    currentCreatorProfile,
+  };
 }
 
 async function loadBrandApplicationsForCampaignPage(userId: string, campaignIds: string[], params: URLSearchParams) {
@@ -675,6 +715,11 @@ async function loadBrandApplicationsForCampaignPage(userId: string, campaignIds:
       creatorName: applications.creatorName,
       creatorContact: applications.creatorContact,
       message: applications.message,
+      quoteAmount: applications.quoteAmount,
+      proposedTimelineDays: applications.proposedTimelineDays,
+      proposedTimeline: applications.proposedTimeline,
+      creatorProfileSnapshot: applications.creatorProfileSnapshot,
+      snapshotCapturedAt: applications.snapshotCapturedAt,
       status: applications.status,
       decisionNote: applications.decisionNote,
       decisionAt: applications.decisionAt,
@@ -795,6 +840,11 @@ async function loadBrandApplicationsForCampaign(userId: string, params: URLSearc
         creatorName: applications.creatorName,
         creatorContact: applications.creatorContact,
         message: applications.message,
+        quoteAmount: applications.quoteAmount,
+        proposedTimelineDays: applications.proposedTimelineDays,
+        proposedTimeline: applications.proposedTimeline,
+        creatorProfileSnapshot: applications.creatorProfileSnapshot,
+        snapshotCapturedAt: applications.snapshotCapturedAt,
         status: applications.status,
         decisionNote: applications.decisionNote,
         decisionAt: applications.decisionAt,
@@ -927,6 +977,8 @@ async function loadCreatorApplications(userId: string, params: URLSearchParams) 
       textExpression(sql`${applications.creatorName}`),
       textExpression(sql`${applications.creatorContact}`),
       textExpression(sql`${applications.message}`),
+      textExpression(sql`${applications.proposedTimeline}`),
+      textExpression(sql`${applications.quoteAmount}`),
       textExpression(sql`${applications.decisionNote}`),
       textExpression(sql`${applications.status}`),
       textExpression(sql`${campaigns.title}`),
@@ -954,6 +1006,11 @@ async function loadCreatorApplications(userId: string, params: URLSearchParams) 
         id: applications.id,
         status: applications.status,
         message: applications.message,
+        quoteAmount: applications.quoteAmount,
+        proposedTimelineDays: applications.proposedTimelineDays,
+        proposedTimeline: applications.proposedTimeline,
+        creatorProfileSnapshot: applications.creatorProfileSnapshot,
+        snapshotCapturedAt: applications.snapshotCapturedAt,
         creatorContact: applications.creatorContact,
         decisionNote: applications.decisionNote,
         decisionAt: applications.decisionAt,
@@ -962,6 +1019,10 @@ async function loadCreatorApplications(userId: string, params: URLSearchParams) 
         campaignId: applications.campaignId,
         campaignTitle: campaigns.title,
         businessName: campaigns.businessName,
+        campaignStatus: campaigns.status,
+        campaignVerificationStatus: campaigns.verificationStatus,
+        campaignDeadlineAt: campaigns.deadlineAt,
+        campaignExpiresAt: campaigns.expiresAt,
         format: campaigns.format,
         location: campaigns.location,
       })
@@ -980,7 +1041,11 @@ async function loadCreatorApplications(userId: string, params: URLSearchParams) 
   });
   return {
     applications: await attachApplicationStatusHistory(
-      page.items.map((row) => ({ ...row, format: normalizeContentType(row.format) ?? row.format })),
+      page.items.map((row) => ({
+        ...row,
+        creatorProfileSnapshot: parseCreatorProfileSnapshot(row.creatorProfileSnapshot),
+        format: normalizeContentType(row.format) ?? row.format,
+      })),
     ),
     pagination: page.pagination,
   };
@@ -1017,6 +1082,7 @@ async function loadOpenCampaigns(userId: string, params: URLSearchParams) {
   const baseWhere = allConditions([
     eq(campaigns.status, "open"),
     eq(campaigns.verificationStatus, "verified"),
+    gt(campaigns.expiresAt, new Date()),
     // A dual-purpose account cannot apply to its own campaign, so do not
     // present those campaigns as creator opportunities in this workspace.
     ne(campaigns.ownerId, userId),
@@ -1074,6 +1140,8 @@ async function loadOpenCampaigns(userId: string, params: URLSearchParams) {
         format: campaigns.format,
         promotionType: campaigns.promotionType,
         category: campaigns.category,
+        deadlineAt: campaigns.deadlineAt,
+        expiresAt: campaigns.expiresAt,
         createdAt: campaigns.createdAt,
       })
       .from(campaigns)
@@ -1100,6 +1168,8 @@ async function loadOpenCampaigns(userId: string, params: URLSearchParams) {
         language: canonical.language,
         format: canonical.format,
         promotionType: canonical.promotionType,
+        deadlineAt: row.deadlineAt,
+        expiresAt: row.expiresAt,
         createdAt: row.createdAt,
       };
     }),
@@ -1125,6 +1195,9 @@ export async function GET(req: Request) {
     // view is available to the same account; section loaders stay scoped to
     // resources this user owns or submitted.
     const activeView = (parseEnumParam(params, "view", USER_ROLES) as UserRole | null) ?? user.primaryRole;
+    // Materialize this owner's deadline transitions before counts/lists so
+    // the dashboard reports expired rather than a stale open/paused state.
+    await expireOverdueCampaigns({ ownerId: user.id });
     const includeNotifications = !section || section === "notifications";
     const notificationData = await loadNotifications(user.id, params, includeNotifications);
 
