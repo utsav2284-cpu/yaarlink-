@@ -1,6 +1,5 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
 import { ApiResponseError, fetchJsonObject } from "@/frontend/api-json";
 import { clearLocalFormDrafts } from "@/frontend/form-drafts";
 import { availableUserRoles, normalizeUserRole, primaryUserRole, type UserRole } from "@/shared/user-roles";
@@ -82,43 +81,4 @@ export async function requestLogout(): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-export function useSessionUser() {
-  const [user, setUser] = useState<SessionUserSummary | null>(null);
-  const [status, setStatus] = useState<SessionLoadStatus>("loading");
-  const [refreshKey, setRefreshKey] = useState(0);
-
-  const refresh = useCallback(() => {
-    setStatus("loading");
-    setRefreshKey((key) => key + 1);
-  }, []);
-
-  const markLoggedOut = useCallback(() => {
-    setUser(null);
-    setStatus("ready");
-  }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    let active = true;
-
-    fetchSessionUser(controller.signal)
-      .then((nextUser) => {
-        if (!active) return;
-        setUser(nextUser);
-        setStatus("ready");
-      })
-      .catch((error) => {
-        if (!active || (error instanceof DOMException && error.name === "AbortError")) return;
-        setStatus("error");
-      });
-
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, [refreshKey]);
-
-  return { user, status, refresh, markLoggedOut };
 }

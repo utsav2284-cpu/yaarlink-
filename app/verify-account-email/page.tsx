@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useLang } from "@/frontend/i18n";
-import { ApiResponseError, fetchJsonObject } from "@/frontend/api-json";
+import { useSession } from "@/frontend/session-context";
 import { buildAuthPath } from "@/shared/return-to";
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
@@ -17,6 +17,7 @@ function initialHashValue(key: string) {
 }
 
 export default function VerifyAccountEmailPage() {
+  const { refreshUser: refreshSession, markLoggedOut } = useSession();
   const { t } = useLang();
   const mounted = useSyncExternalStore(subscribeNoop, () => true, () => false);
   const [token, setToken] = useState(() => initialHashValue("token"));
@@ -41,16 +42,8 @@ export default function VerifyAccountEmailPage() {
   const checkSession = async () => {
     setSessionState("checking");
     try {
-      const me = await fetchJsonObject("/api/auth/me", { cache: "no-store" });
-      if (!("user" in me)) throw new ApiResponseError(502, "service_unavailable");
-      const user = me.user;
-      if (user === null) {
-        setSessionState("logged-out");
-      } else if (typeof user === "object" && !Array.isArray(user) && typeof (user as { id?: unknown }).id === "string") {
-        setSessionState("logged-in");
-      } else {
-        throw new ApiResponseError(502, "service_unavailable");
-      }
+      const sessionUser = await refreshSession();
+      setSessionState(sessionUser ? "logged-in" : "logged-out");
     } catch {
       setSessionState("unknown");
     }
@@ -78,6 +71,7 @@ export default function VerifyAccountEmailPage() {
       if (!isChange) {
         await checkSession();
       } else {
+        markLoggedOut();
         setSessionState("logged-out");
       }
     } catch {

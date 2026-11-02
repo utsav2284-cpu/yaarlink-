@@ -38,9 +38,9 @@ function buildContentSecurityPolicy(request: NextRequest, nonce: string): string
     "script-src-attr 'none'",
     // Next and React render a small number of inline style elements/attributes;
     // scripts—the executable XSS surface—remain nonce-only in production.
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
-    "font-src 'self' https://fonts.gstatic.com",
+    "font-src 'self' data:",
     `connect-src 'self'${isDevelopment ? " ws: wss:" : ""}`,
     "media-src 'none'",
     "object-src 'none'",

@@ -25,6 +25,7 @@ import PrivacyNotice from "@/frontend/components/PrivacyNotice";
 import { ListingError, ListingPagination } from "@/frontend/components/ListingState";
 import { appendUniqueById } from "@/frontend/api-json";
 import { requestLogout } from "@/frontend/session";
+import { useSession } from "@/frontend/session-context";
 import { buildAuthPath } from "@/shared/return-to";
 import { normalizeUserRole, USER_ROLES, type UserRole } from "@/shared/user-roles";
 import { contactLinks } from "@/shared/contact-links";
@@ -405,6 +406,7 @@ export default function DashboardClient({
   initialSessionUnavailable?: boolean;
 } = {}) {
   const router = useRouter();
+  const { markLoggedOut } = useSession();
   const { t, opt, promo, platform: platformLabel, status: statusLabel, apiErrorKey, formatNumber, formatCurrency, formatDate, formatDateTime, formatRelativeTime } = useLang();
   const [data, setData] = useState<Data | null>(null);
   const [activeView, setActiveView] = useState<UserRole>(initialView);
@@ -471,6 +473,7 @@ export default function DashboardClient({
       }
       if (r.status === 401) {
         const destination = requestedView === initialView ? returnTo : `/dashboard?view=${requestedView}`;
+        markLoggedOut();
         router.replace(buildAuthPath("/login", { returnTo: destination }));
         return null;
       }
@@ -486,7 +489,7 @@ export default function DashboardClient({
       if (result.activeView && result.activeView !== requestedView) return null;
       return result;
     },
-    [apiErrorKey, applicationQuery, campaignQuery, initialView, openSort, profileSort, returnTo, router],
+    [apiErrorKey, applicationQuery, campaignQuery, initialView, markLoggedOut, openSort, profileSort, returnTo, router],
   );
   const fetchDataRef = useRef(fetchData);
   useEffect(() => {
@@ -797,6 +800,7 @@ export default function DashboardClient({
     try {
       const res = await request();
       if (res.status === 401) {
+        markLoggedOut();
         router.replace(buildAuthPath("/login", { returnTo: `/dashboard?view=${activeViewRef.current}` }));
         return;
       }
@@ -828,6 +832,7 @@ export default function DashboardClient({
       setBusyKey("");
       return;
     }
+    markLoggedOut();
     router.push("/");
     router.refresh();
   };

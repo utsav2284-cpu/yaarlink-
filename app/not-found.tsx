@@ -1,21 +1,40 @@
-"use client";
+import type { Metadata } from "next";
+import { SITE } from "@/config/site";
+import NotFoundClient from "@/frontend/components/NotFoundClient";
+import { OPEN_GRAPH_LOCALES } from "@/frontend/i18n/config";
+import { getRequestLanguage, translateForRequest } from "@/frontend/i18n/server";
 
-import { useLang } from "@/frontend/i18n";
-import Link from "next/link";
+export async function generateMetadata(): Promise<Metadata> {
+  const [lang, notFoundTitle, description] = await Promise.all([
+    getRequestLanguage(),
+    translateForRequest("nf.title"),
+    translateForRequest("nf.body"),
+  ]);
+  const title = `${notFoundTitle} · YaarLink`;
+
+  return {
+    title: { absolute: title },
+    description,
+    robots: {
+      index: false,
+      follow: false,
+      googleBot: { index: false, follow: false },
+    },
+    openGraph: {
+      title,
+      description,
+      siteName: SITE.name,
+      locale: OPEN_GRAPH_LOCALES[lang],
+      type: "website",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+    },
+  };
+}
 
 export default function NotFound() {
-  const { t } = useLang();
-  return (
-    <div className="mx-auto grid min-h-[60vh] max-w-xl place-items-center px-4 py-16 text-center">
-      <div>
-        <p className="font-display text-[96px] font-black leading-none text-[#c7431f]">404</p>
-        <h1 className="font-display mt-3 text-[30px] font-black">{t("nf.title")}</h1>
-        <p className="mt-2 text-[16px] text-[#57534e]">{t("nf.body")}</p>
-        <div className="mt-6 flex flex-col justify-center gap-2 sm:flex-row">
-          <Link href="/" className="rounded-2xl bg-[#1c1917] px-6 py-3.5 text-[15px] font-bold text-white">{t("nf.home")}</Link>
-          <Link href="/campaigns" className="rounded-2xl border border-[#e9ddc3] bg-white px-6 py-3.5 text-[15px] font-bold">{t("nf.browse")}</Link>
-        </div>
-      </div>
-    </div>
-  );
+  return <NotFoundClient />;
 }

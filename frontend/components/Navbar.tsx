@@ -4,7 +4,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { LANGS, useLang, type Lang } from "@/frontend/i18n";
-import { fetchSessionUser, requestLogout, type SessionUserSummary } from "@/frontend/session";
+import { requestLogout } from "@/frontend/session";
+import { useSession } from "@/frontend/session-context";
 import { buildAuthPath, DEFAULT_RETURN_TO, safeReturnTo } from "@/shared/return-to";
 
 export function Logo({ dark = false }: { dark?: boolean }) {
@@ -21,47 +22,26 @@ export function Logo({ dark = false }: { dark?: boolean }) {
   );
 }
 
-type NavbarSessionUser = Pick<SessionUserSummary, "id">;
-
-export default function Navbar({
-  initialUser = null,
-  initialSessionStatus = "loading",
-}: {
-  initialUser?: NavbarSessionUser | null;
-  initialSessionStatus?: "loading" | "ready" | "error";
-} = {}) {
+export default function Navbar() {
   const { t, lang, pendingLang, languagePending, setLang } = useLang();
+  const {
+    user,
+    status: sessionStatus,
+    refresh: retrySessionCheck,
+    markLoggedOut,
+  } = useSession();
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
-  const [user, setUser] = useState<SessionUserSummary | NavbarSessionUser | null>(initialUser);
-  const [sessionStatus, setSessionStatus] = useState<"loading" | "ready" | "error">(initialSessionStatus);
-  const [sessionCheckId, setSessionCheckId] = useState(0);
-  const sessionCheckKey = `${pathname ?? ""}:${sessionCheckId}`;
-  const [completedSessionCheck, setCompletedSessionCheck] = useState(
-    initialSessionStatus === "loading" ? "" : sessionCheckKey,
-  );
   const [lastPathname, setLastPathname] = useState(pathname);
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutFailed, setLogoutFailed] = useState(false);
-  const initialUserKey = initialUser
-    ? initialUser.id
-    : initialSessionStatus === "error"
-      ? "error"
-      : "guest";
-  const [lastInitialUserKey, setLastInitialUserKey] = useState(initialUserKey);
-  const sessionCheckComplete = completedSessionCheck === sessionCheckKey;
-  const sessionChecking = !sessionCheckComplete || sessionStatus === "loading";
-  const sessionFailed = sessionCheckComplete && sessionStatus === "error";
+  const sessionChecking = sessionStatus === "loading";
+  const sessionFailed = sessionStatus === "error";
   const authReturnTo = pathname && pathname !== "/" ? safeReturnTo(pathname, DEFAULT_RETURN_TO) : DEFAULT_RETURN_TO;
   const loginHref = buildAuthPath("/login", { returnTo: authReturnTo });
   const signupHref = buildAuthPath("/signup", { returnTo: authReturnTo });
-
-  const retrySessionCheck = () => {
-    setSessionStatus("loading");
-    setSessionCheckId((value) => value + 1);
-  };
 
   const languageButtonRef = useRef<HTMLButtonElement>(null);
   const languageOptionRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -94,17 +74,6 @@ export default function Navbar({
     setLastPathname(pathname);
     setOpen(false);
     setLangOpen(false);
-    setLogoutFailed(false);
-  }
-
-  // A router.refresh() after login/logout re-renders the server layout with
-  // fresh session props. Adopt that authoritative result immediately rather
-  // than briefly retaining the previous client-side auth actions.
-  if (lastInitialUserKey !== initialUserKey) {
-    setLastInitialUserKey(initialUserKey);
-    setUser(initialUser);
-    setSessionStatus(initialSessionStatus);
-    setCompletedSessionCheck(initialSessionStatus === "loading" ? "" : sessionCheckKey);
     setLogoutFailed(false);
   }
 
@@ -148,28 +117,6 @@ export default function Navbar({
     }
   };
 
-  useEffect(() => {
-    let alive = true;
-    const checkKey = sessionCheckKey;
-    fetchSessionUser()
-      .then((nextUser) => {
-        if (!alive) return;
-        setUser(nextUser);
-        setSessionStatus("ready");
-        setCompletedSessionCheck(checkKey);
-      })
-      .catch(() => {
-        if (!alive) return;
-        // Keep any already-known user visible. Only a successful 200 with
-        // user:null is treated as logged out; an outage stays unknown.
-        setSessionStatus("error");
-        setCompletedSessionCheck(checkKey);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [sessionCheckKey]);
-
   const links = [
     { href: "/brands", label: t("nav.brands") },
     { href: "/creators", label: t("nav.creators") },
@@ -192,9 +139,7 @@ export default function Navbar({
       setLoggingOut(false);
       return;
     }
-    setUser(null);
-    setSessionStatus("ready");
-    setCompletedSessionCheck(sessionCheckKey);
+    markLoggedOut();
     setOpen(false);
     setLoggingOut(false);
     router.push("/");

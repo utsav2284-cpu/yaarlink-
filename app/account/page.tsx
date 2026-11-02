@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useLang } from "@/frontend/i18n";
 import { clearLocalFormDrafts } from "@/frontend/session";
+import { useSession } from "@/frontend/session-context";
 import { buildAuthPath } from "@/shared/return-to";
 import { primaryUserRole, USER_ROLES, type UserRole } from "@/shared/user-roles";
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, isPasswordLengthValid } from "@/shared/password-policy";
@@ -68,6 +69,7 @@ function Section({ title, help, children, danger = false }: { title: string; hel
 
 export default function AccountPage() {
   const router = useRouter();
+  const { markLoggedOut } = useSession();
   const { t, formatDateTime: formatDate } = useLang();
   const [data, setData] = useState<AccountData | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -89,13 +91,14 @@ export default function AccountPage() {
   const fetchAccount = useCallback(async (): Promise<AccountData | null> => {
     const res = await fetch("/api/me/account", { cache: "no-store" });
     if (res.status === 401) {
+      markLoggedOut();
       router.replace(buildAuthPath("/login", { returnTo: "/account" }));
       return null;
     }
     const d = (await res.json().catch(() => null)) as AccountData | null;
     if (!res.ok || !d?.user) throw new Error("load_failed");
     return d;
-  }, [router]);
+  }, [markLoggedOut, router]);
 
   const refresh = useCallback(async () => {
     const d = await fetchAccount();
@@ -326,6 +329,7 @@ export default function AccountPage() {
       const d = (await res.json().catch(() => null)) as ApiData | null;
       if (!res.ok) throw new ActionError(errorMessage(res.status, d?.code));
       clearLocalFormDrafts();
+      markLoggedOut();
       router.push("/");
       router.refresh();
     });

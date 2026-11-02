@@ -42,6 +42,20 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       url: path,
       type: "article",
     },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [
+        {
+          url: "/twitter-image",
+          width: 1200,
+          height: 630,
+          alt: "YaarLink — simple marketing for brands, creators, and local pages",
+          type: "image/png",
+        },
+      ],
+    },
   };
 }
 
