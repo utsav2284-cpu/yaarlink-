@@ -126,6 +126,8 @@ Logs: Vercel → your project → **Logs**. Application errors are one-line JSON
 
 For an existing database that predates the data-model/reporting fields, run the reviewed transactional migration `backend/db/migrations/20261102_data_model_reporting.sql` before deploying code that expects it. Use the Direct/Session provisioning connection with verified TLS, for example `psql "$PROVISIONING_DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/db/migrations/20261102_data_model_reporting.sql`, then verify `/api/health`. This migration also performs the historical listed-date, contact-source, brand-link, campaign-expiry, settings, and audit-table backfills that a schema-only push cannot reproduce. A brand-new database provisioned with `npm run db:bootstrap` does not need those legacy backfills.
 
+If an older existing database still contains legacy listing values such as a creator `platform` of `cr.both` or an application with `creator_id IS NULL`, use the separate reviewed repair file `backend/db/migrations/20261103_legacy_listing_integrity_repair.sql` after the same verified-backup gate. It canonicalizes known platform aliases, relinks an application only to the applicant's own provable creator profile, and then enforces the platform/NOT-NULL/foreign-key invariants; it deliberately does not delete or suspend test-looking listings. Review any public rows it lists in the commented queries and use the Admin UI's Suspend/Reject/Delete actions for confirmed test/spam content.
+
 ---
 
 ## Run on your own computer

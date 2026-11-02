@@ -79,6 +79,78 @@ function serializeDate(value: Date | string): string {
   return new Date(value).toISOString();
 }
 
+type PublicCreatorRow = {
+  id: string;
+  name: string;
+  instagram: string | null;
+  youtube: string | null;
+  profileUrl: string | null;
+  platform: string;
+  followers: number;
+  verifiedFollowers: number | null;
+  category: string | null;
+  languages: string;
+  location: string | null;
+  contentTypes: string;
+  bio: string | null;
+  status: string;
+  verificationStatus: string;
+  listedAt: Date | null;
+  createdAt: Date;
+};
+
+/**
+ * Canonicalize and fail closed on one creator row before it is exposed
+ * publicly. The SQL queries already require approved + verified + category,
+ * but a legacy row can still carry a display taxonomy value, an out-of-range
+ * follower count, or only profile links that no longer pass the write-time
+ * public-host rules. Detail, list, and homepage reads share this gate so a
+ * card never links to a creator detail page that correctly returns 404.
+ */
+function toPublicCreator(row: PublicCreatorRow): PublicCreatorDetail | null {
+  const category = normalizeCategory(row.category);
+  const languages = normalizeLanguageList(row.languages) ?? [];
+  const contentTypes = normalizeContentTypeList(row.contentTypes) ?? [];
+  const platform = normalizePlatform(row.platform);
+  const followers = row.verifiedFollowers ?? row.followers;
+  if (
+    !category ||
+    !platform ||
+    languages.length === 0 ||
+    contentTypes.length === 0 ||
+    !Number.isSafeInteger(followers) ||
+    followers < 0 ||
+    followers > 100_000_000
+  ) {
+    return null;
+  }
+
+  const instagram = normalizeInstagramUrl(row.instagram);
+  const youtube = normalizeYouTubeUrl(row.youtube);
+  const profileUrl = normalizeProfileUrl(row.profileUrl, platform);
+  if (!(profileUrl ?? instagram ?? youtube)) return null;
+
+  return {
+    id: row.id,
+    name: row.name,
+    instagram,
+    youtube,
+    profileUrl,
+    platform,
+    // Public cards show the count checked during review, not the raw claim.
+    followers,
+    category,
+    languages: languages.join(", "),
+    location: row.location,
+    contentTypes: contentTypes.join(", "),
+    bio: row.bio,
+    status: row.status,
+    verificationStatus: row.verificationStatus,
+    listedAt: serializeDate(row.listedAt ?? row.createdAt),
+    createdAt: serializeDate(row.createdAt),
+  };
+}
+
 /**
  * Load one campaign for its public detail page. The query deliberately
  * selects only public fields and fails closed unless the campaign is both
@@ -173,45 +245,7 @@ export const getPublicCreatorDetail = cache(async (rawId: string): Promise<Publi
     .limit(1);
   if (!row) return null;
 
-  const category = normalizeCategory(row.category);
-  const languages = normalizeLanguageList(row.languages) ?? [];
-  const contentTypes = normalizeContentTypeList(row.contentTypes) ?? [];
-  const platform = normalizePlatform(row.platform);
-  const followers = row.verifiedFollowers ?? row.followers;
-  if (
-    !category ||
-    !platform ||
-    languages.length === 0 ||
-    contentTypes.length === 0 ||
-    !Number.isSafeInteger(followers) ||
-    followers < 0 ||
-    followers > 100_000_000
-  ) {
-    return null;
-  }
-  const instagram = normalizeInstagramUrl(row.instagram);
-  const youtube = normalizeYouTubeUrl(row.youtube);
-  const profileUrl = normalizeProfileUrl(row.profileUrl, platform);
-  if (!(profileUrl ?? instagram ?? youtube)) return null;
-
-  return {
-    id: row.id,
-    name: row.name,
-    instagram,
-    youtube,
-    profileUrl,
-    platform,
-    followers,
-    category,
-    languages: languages.join(", "),
-    location: row.location,
-    contentTypes: contentTypes.join(", "),
-    bio: row.bio,
-    status: row.status,
-    verificationStatus: row.verificationStatus,
-    listedAt: serializeDate(row.listedAt ?? row.createdAt),
-    createdAt: serializeDate(row.createdAt),
-  };
+  return toPublicCreator(row);
 });
 
 const PUBLIC_CAMPAIGN_SORTS = [
@@ -615,29 +649,18 @@ export async function listPublicCreators(
       scope,
       keys,
     });
-    const canonicalRows = items.map((row) => {
-      const canonicalPlatform = normalizePlatform(row.platform) ?? row.platform;
-      return {
-        ...row,
-        // Public cards show the count checked during review, not the raw claim.
-        followers: row.verifiedFollowers ?? row.followers,
-        // Re-run stored links through the same profile/public-host rules used
-        // on write, so legacy non-profile or private destinations are not
-        // republished as creator profile links.
-        instagram: normalizeInstagramUrl(row.instagram),
-        youtube: normalizeYouTubeUrl(row.youtube),
-        profileUrl: normalizeProfileUrl(row.profileUrl, canonicalPlatform),
-        platform: canonicalPlatform,
-        // The query requires a non-null category; TypeScript cannot narrow
-        // that SQL predicate through Drizzle's selected-row type.
-        category: (normalizeCategory(row.category) ?? row.category) as string,
-        languages: row.languages ? (normalizeLanguageList(row.languages, true) ?? []).join(", ") : row.languages,
-        contentTypes: row.contentTypes ? (normalizeContentTypeList(row.contentTypes, true) ?? []).join(", ") : row.contentTypes,
-        listedAt: serializeDate(row.listedAt ?? row.createdAt),
-        createdAt: serializeDate(row.createdAt),
-      };
+    const canonicalRows = items.flatMap((row) => {
+      const creator = toPublicCreator(row);
+      return creator ? [{ ...creator, verifiedFollowers: row.verifiedFollowers }] : [];
     });
-    return { creators: canonicalRows, pagination };
+    return {
+      creators: canonicalRows,
+      // `total` still comes from the SQL publication predicates. The JS
+      // fail-closed gate above can hide a rare legacy row whose links or
+      // taxonomy no longer validate, so report the number actually returned
+      // while keeping the cursor based on the last SQL row in this page.
+      pagination: { ...pagination, returned: canonicalRows.length },
+    };
 }
 
 export interface PublicSitemapEntry {

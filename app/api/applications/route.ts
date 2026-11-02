@@ -657,10 +657,14 @@ export async function PATCH(req: Request) {
           return { kind: "invalid_transition", currentStatus: application.status } as const;
         }
 
+        // Resolve through the applicant's one-to-one profile, not only the
+        // application's stored creatorId. A legacy row whose creatorId is
+        // null/stale can still be edited by its owner, and the live link is
+        // healed below from that applicant-owned profile.
         const [creatorProfile] = await tx
           .select()
           .from(creators)
-          .where(eq(creators.id, application.creatorId))
+          .where(eq(creators.userId, application.userId))
           .limit(1)
           .for("update");
 
@@ -682,8 +686,12 @@ export async function PATCH(req: Request) {
         // Editing an active application does not recapture its submitted
         // creator name/profile snapshot. The live creatorId link is how a
         // brand reaches the current profile; reactivation is the new
-        // submission point that refreshes the snapshot.
+        // submission point that refreshes the snapshot. If that live link is
+        // missing/stale on a legacy row, repairing it to the applicant's own
+        // one-to-one profile does not change the submitted snapshot.
+        const healedCreatorId = creatorProfile && application.creatorId !== creatorProfile.id ? creatorProfile.id : undefined;
         const updateValues = {
+          ...(healedCreatorId ? { creatorId: healedCreatorId } : {}),
           ...(nextMessage !== undefined ? { message: nextMessage } : {}),
           ...(nextContact !== undefined ? { creatorContact: editedContact } : {}),
           ...proposalUpdate,
@@ -705,7 +713,7 @@ export async function PATCH(req: Request) {
           fromStatus: application.status,
           toStatus: updated.status,
           changedFields: changedFieldNames(application, updateValues),
-          metadata: { campaignId: campaign.id, creatorId: application.creatorId },
+          metadata: { campaignId: campaign.id, creatorId: healedCreatorId ?? application.creatorId },
           createdAt: now,
         });
         return { kind: "updated", application: updated } as const;
@@ -778,10 +786,13 @@ export async function PATCH(req: Request) {
         if (effectiveContact.length < 3) return { kind: "contact_required" } as const;
         if (!contactSharingConsent) return { kind: "consent_required" } as const;
 
+        // Use the applicant's one-to-one profile so a withdrawn legacy
+        // application with a null/stale creatorId can be reactivated and
+        // relinked below, instead of being stranded by its old foreign key.
         const [creatorProfile] = await tx
           .select()
           .from(creators)
-          .where(eq(creators.id, application.creatorId))
+          .where(eq(creators.userId, application.userId))
           .limit(1)
           .for("update");
         if (!isCompletedCreatorProfile(creatorProfile)) return { kind: "profile_incomplete" } as const;
