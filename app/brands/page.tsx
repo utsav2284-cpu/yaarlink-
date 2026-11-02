@@ -1,3 +1,5 @@
+import { headers } from "next/headers";
+import { logRouteError } from "@/backend/observability";
 import { listPublicCreators } from "@/backend/public-listings";
 import BrandsPageClient, { type BrandsInitialCreators } from "@/frontend/components/BrandsPageClient";
 
@@ -16,7 +18,7 @@ export default async function BrandsPage() {
       status: "success",
     };
   } catch (error) {
-    console.error(error);
+    logRouteError(await headers(), error, { operation: "list_public_creators" }, "GET /brands");
     initialCreators = { creators: [], pagination: null, status: "error" };
   }
 

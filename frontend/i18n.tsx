@@ -10,6 +10,7 @@ import {
   normalizePromotionType,
 } from "@/shared/constants";
 import { SITE } from "@/config/site";
+import { logError, logEvent } from "@/shared/observability";
 import {
   LANGUAGE_COOKIE,
   LANGUAGE_COOKIE_MAX_AGE_SECONDS,
@@ -155,7 +156,11 @@ const CONTACT_KIND_KEYS: Readonly<Record<string, TranslationKey>> = {
 
 function unknownDynamicValue(kind: string, value: string) {
   if (process.env.NODE_ENV !== "production") {
-    console.error(`Unknown localized ${kind} value: ${value}`);
+    logEvent("warn", "i18n.unknown_dynamic_value", {
+      component: "i18n",
+      valueKind: kind,
+      valueLength: value.length,
+    });
   }
 }
 
@@ -369,7 +374,12 @@ export function LangProvider({
         // Do not leave the cookie claiming a language whose bundle could not
         // be loaded in this browser. The current, working language remains.
         persistLanguage(lang);
-        console.error("Could not load the selected language", error);
+        logError("i18n.language_load_failed", error, {
+          component: "i18n",
+          operation: "load_locale",
+          currentLanguage: lang,
+          requestedLanguage: nextLang,
+        });
       } finally {
         if (requestId === languageRequest.current) setPendingLang(null);
       }

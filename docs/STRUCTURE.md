@@ -14,17 +14,22 @@ repository root, so an import reads like the folder it comes from: `@/backend/au
 │   ├── components/          #   shared React components (Navbar, Footer, …)
 │   └── i18n.tsx             #   language provider + dictionaries
 ├── backend/                 # Server-side only
-│   ├── db/                  #   Drizzle client, verified-TLS pool config + schema
+│   ├── db/                  #   Drizzle client, verified-TLS pool, schema, baseline migrations
+│   ├── observability.ts     #   request-scoped server logging context
 │   ├── auth.ts              #   password hashing + session cookies
 │   ├── admin.ts             #   owner/admin session
 │   ├── bot-challenge.ts     #   signed one-time public-form proof-of-work challenges
 │   └── rate-limit.ts        #   PostgreSQL-backed distributed request limiter + auth lockouts
 ├── shared/                  # Isomorphic domain code (usable on both sides)
-│   └── constants.ts         #   categories, languages, budgets, formatINR
+│   ├── constants.ts         #   categories, languages, budgets, formatINR
+│   └── observability.ts     #   dependency-free redacted JSON logging primitives
 ├── config/                  # Site configuration
 │   └── site.ts              #   contact details + WhatsApp/e-mail/Instagram links
-├── docs/                    # This folder — structure and deployment notes
-├── proxy.ts                 # Per-request CSP nonce + reporting headers for documents
+├── scripts/                 # Operator scripts (empty-database bootstrap/verifier)
+├── tests/                   # Node test suite
+├── .github/workflows/       # CI: quality checks + disposable-PostgreSQL bootstrap
+├── docs/                    # This folder — structure, deployment and observability notes
+├── proxy.ts                 # Document CSP nonce/reporting + API/document request IDs
 └── <tooling configs>        # next/tsconfig/drizzle/postcss/eslint at the root
 ```
 
@@ -47,4 +52,5 @@ in `frontend/`, `backend/`, `shared/` or `config/`, and the handlers import it f
 
 Tool configs (`next.config.ts`, `tsconfig.json`, `drizzle.config.json`, `eslint.config.mjs`,
 `postcss.config.mjs`) stay at the repository root because the tools look for them there;
-`drizzle.config.json` and the docs point at the moved schema at `backend/db/schema.ts`.
+`drizzle.config.json` points at the schema at `backend/db/schema.ts` and writes
+journalled migrations/snapshots to `backend/db/drizzle/`.

@@ -1,3 +1,4 @@
+import { logRouteError, logRouteEvent } from "@/backend/observability";
 import { adminPasswordProblem, adminSecretProblem, adminTotpProblem, createAdminSession, isAdminTotpEnabled, verifyAdminPassword, verifyAdminTotp } from "@/backend/admin";
 import { logAdminAudit } from "@/backend/admin-audit";
 import { authLockoutSeconds, clearAuthFailures, getClientKey, limitedResponse, rateLimit, registerAuthFailure } from "@/backend/rate-limit";
@@ -66,7 +67,12 @@ export async function POST(req: Request) {
     }
 
     const priorFailures = await clearAuthFailures(clientKey);
-    if (priorFailures > 0) console.warn(`[admin-login] success after ${priorFailures} failed attempt(s)`);
+    if (priorFailures > 0) {
+      logRouteEvent("warn", "admin_login.succeeded_after_failures", req, {
+        component: "admin-auth",
+        priorFailures,
+      });
+    }
     await createAdminSession();
     await logAdminAudit(req, {
       action: "admin.login",
@@ -74,7 +80,7 @@ export async function POST(req: Request) {
     });
     return Response.json({ ok: true, mfaUsed }, { headers: NO_STORE });
   } catch (error) {
-    console.error(error);
+    logRouteError(req, error);
     await logAdminAudit(req, {
       action: "admin.login",
       outcome: "failure",

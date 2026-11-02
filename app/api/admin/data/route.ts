@@ -1,3 +1,4 @@
+import { logRouteError } from "@/backend/observability";
 import { db } from "@/backend/db";
 import { adminAuditLogs, applications, auditEvents, brands, campaigns, contacts, creators, reports, userSessions, users } from "@/backend/db/schema";
 import { adminSessionUnavailableResponse, isAdmin, isAdminSessionUnavailableError, logAdminSessionUnavailable } from "@/backend/admin";
@@ -1109,13 +1110,13 @@ export async function GET(req: Request) {
     return Response.json({ entity, [entity]: page.rows, pagination: page.pagination, counts, platformSettings }, { headers: NO_STORE });
   } catch (e) {
     if (isAdminSessionUnavailableError(e)) {
-      logAdminSessionUnavailable(e);
+      logAdminSessionUnavailable(e, req);
       return adminSessionUnavailableResponse(NO_STORE);
     }
     if (isListingQueryError(e)) {
       return Response.json({ error: e.message, code: e.code }, { status: e.status, headers: NO_STORE });
     }
-    console.error(e);
+    logRouteError(req, e);
     return Response.json({ error: "Could not load data", code: "load_failed" }, { status: 500, headers: NO_STORE });
   }
 }

@@ -1,3 +1,4 @@
+import { logRouteError } from "@/backend/observability";
 import { hashPassword } from "@/backend/auth";
 import { emailDeliveryProblem, sendSignupVerificationEmail } from "@/backend/email";
 import {
@@ -153,11 +154,15 @@ export async function POST(req: Request) {
           verificationUrl: buildSignupVerificationUrl(req, claim.token, returnTo),
         });
         await markPendingSignupEmailSent(claim.pendingId, claim.tokenHash);
-      } catch {
+      } catch (error) {
         // Do not expose provider failures only for unregistered addresses;
         // that would become an enumeration signal. The pending claim's
         // cooldown still lets the legitimate user retry shortly afterwards.
-        console.error("Signup verification email failed", { pendingId: claim.pendingId });
+        logRouteError(req, error, {
+          component: "email",
+          operation: "send_signup_verification",
+          pendingId: claim.pendingId,
+        });
       }
     }
 
@@ -166,7 +171,7 @@ export async function POST(req: Request) {
     // Parallel requests are serialized by an advisory lock, but preserve the
     // generic response if a unique index still resolves a race.
     if (isPendingSignupUniqueViolation(error)) return verificationRequiredResponse();
-    console.error(error);
+    logRouteError(req, error);
     return Response.json({ error: "Could not sign up", code: "request_failed" }, { status: 500, headers: NO_STORE });
   }
 }

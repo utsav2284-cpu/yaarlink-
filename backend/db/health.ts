@@ -1,5 +1,6 @@
 import { getTableConfig, type PgTable } from "drizzle-orm/pg-core";
 import type { QueryConfig } from "pg";
+import { logError, logEvent } from "@/backend/observability";
 import { getDatabasePoolSnapshot, getPool, type DatabasePoolSnapshot } from "./index";
 import {
   accountTokens,
@@ -99,15 +100,6 @@ type ExistingColumnRow = {
   column_name: string;
 };
 
-function sanitizedDatabaseError(error: unknown): { name: string; code: string } {
-  if (!(error instanceof Error)) return { name: "UnknownError", code: "unknown" };
-  const code = (error as Error & { code?: unknown }).code;
-  return {
-    name: error.name || "Error",
-    code: typeof code === "string" || typeof code === "number" ? String(code) : "unknown",
-  };
-}
-
 async function runDatabaseHealthCheck(): Promise<DatabaseHealth> {
   const checkedAt = new Date().toISOString();
 
@@ -131,7 +123,9 @@ async function runDatabaseHealthCheck(): Promise<DatabaseHealth> {
     const missing = findMissingDatabaseColumns(existingColumns);
 
     if (missing.length > 0) {
-      console.error("[db-health] required database schema is incomplete", {
+      logEvent("error", "database.schema_incomplete", {
+        component: "database-health",
+        operation: "schema_check",
         missingCount: missing.length,
         missing: missing.slice(0, 20).map(({ table, column }) => `${table}.${column}`),
       });
@@ -149,7 +143,10 @@ async function runDatabaseHealthCheck(): Promise<DatabaseHealth> {
       pool: getDatabasePoolSnapshot(),
     };
   } catch (error) {
-    console.error("[db-health] database check failed", sanitizedDatabaseError(error));
+    logError("database.health_check_failed", error, {
+      component: "database-health",
+      operation: "connectivity_and_schema_check",
+    });
     return {
       ok: false,
       status: "degraded",

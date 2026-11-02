@@ -1,3 +1,4 @@
+import { logRouteError } from "@/backend/observability";
 import { consumeBotChallenge } from "@/backend/bot-challenge";
 import { db } from "@/backend/db";
 import { campaigns, creators, reports } from "@/backend/db/schema";
@@ -128,10 +129,10 @@ export async function POST(req: Request) {
     return Response.json({ report }, { status: 201, headers: NO_STORE_HEADERS });
   } catch (e) {
     if (isSessionUnavailableError(e)) {
-      logSessionUnavailable(e);
+      logSessionUnavailable(e, "lookup", req);
       return sessionUnavailableResponse(NO_STORE_HEADERS);
     }
-    console.error(e);
+    logRouteError(req, e);
     return errorResponse({ error: "Could not send report", code: "request_failed" }, 500);
   }
 }

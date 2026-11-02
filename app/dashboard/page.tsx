@@ -1,3 +1,4 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getSessionContext, isSessionUnavailableError, logSessionUnavailable } from "@/backend/auth";
 import DashboardClient from "@/frontend/components/DashboardClient";
@@ -35,7 +36,7 @@ export default async function DashboardPage({
     // existing retry/error surface rather than redirecting a possibly
     // signed-in person to login during a session-store outage.
     sessionUnavailable = true;
-    logSessionUnavailable(error);
+    logSessionUnavailable(error, "lookup", await headers(), "GET /dashboard");
   }
 
   if (!session && !sessionUnavailable) {

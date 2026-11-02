@@ -1,3 +1,4 @@
+import { logRouteError } from "@/backend/observability";
 import { consumeBotChallenge } from "@/backend/bot-challenge";
 import { db } from "@/backend/db";
 import { contacts } from "@/backend/db/schema";
@@ -88,7 +89,7 @@ export async function POST(req: Request) {
 
     return Response.json({ ok: true }, { status: 201, headers: NO_STORE_HEADERS });
   } catch (error) {
-    console.error(error);
+    logRouteError(req, error);
     return errorResponse({ error: "Could not send", code: "request_failed" }, 500);
   }
 }

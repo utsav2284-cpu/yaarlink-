@@ -1,3 +1,4 @@
+import { logRouteError } from "@/backend/observability";
 import { eq } from "drizzle-orm";
 import { hashPassword, sessionSecretProblem, setSessionCookie, verifyLoginPassword } from "@/backend/auth";
 import { db } from "@/backend/db";
@@ -99,7 +100,7 @@ export async function POST(req: Request) {
       { headers: NO_STORE },
     );
   } catch (error) {
-    console.error(error);
+    logRouteError(req, error);
     return serviceUnavailableResponse();
   }
 }

@@ -1,8 +1,10 @@
 # dependencies
 node_modules/
 
-# Next.js build output
+# Next.js and deployment build output
 .next/
+.open-next/
+.wrangler/
 out/
 next-env.d.ts
 

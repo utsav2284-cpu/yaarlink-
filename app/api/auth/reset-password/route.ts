@@ -1,3 +1,4 @@
+import { logRouteError } from "@/backend/observability";
 import { NextResponse } from "next/server";
 import { buildLoginUrl, consumePasswordResetToken, hashAccountToken, isAccountToken } from "@/backend/account-tokens";
 import { hashPassword, SESSION_COOKIE } from "@/backend/auth";
@@ -77,11 +78,17 @@ export async function POST(req: Request) {
       message: "Your YaarLink password was reset and all devices were signed out. If this was not you, reset your password again immediately and contact YaarLink.",
       actionLabel: "Log in",
       actionUrl: buildLoginUrl(req),
-    }).catch(() => console.error("Password reset security notice failed", { userId: completion.user.id }));
+    }).catch((error) =>
+      logRouteError(req, error, {
+        component: "email",
+        operation: "send_password_reset_notice",
+        userId: completion.user.id,
+      }),
+    );
 
     return response;
   } catch (error) {
-    console.error(error);
+    logRouteError(req, error);
     return Response.json(
       { error: "Could not reset password.", code: "request_failed" },
       { status: 500, headers: NO_STORE },

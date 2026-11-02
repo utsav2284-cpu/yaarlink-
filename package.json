@@ -11,7 +11,12 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test:health": "node --experimental-strip-types --test tests/health-diagnostics.test.mjs"
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "test:health": "node --experimental-strip-types --test tests/health-diagnostics.test.mjs",
+    "db:check": "drizzle-kit check --config=drizzle.config.json",
+    "db:generate": "drizzle-kit generate --config=drizzle.config.json",
+    "db:bootstrap": "node scripts/database-bootstrap.mjs",
+    "db:bootstrap:verify": "node scripts/database-bootstrap.mjs --verify-write"
   },
   "dependencies": {
     "bcryptjs": "3.0.3",

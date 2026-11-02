@@ -1,3 +1,5 @@
+import { headers } from "next/headers";
+import { logRouteError } from "@/backend/observability";
 import {
   getSessionUser,
   isSessionUnavailableError,
@@ -22,7 +24,7 @@ export default async function CampaignsPage() {
     campaigns = result.campaigns;
     pagination = result.pagination;
   } catch (error) {
-    console.error(error);
+    logRouteError(await headers(), error, { operation: "list_public_campaigns" }, "GET /campaigns");
     campaignsStatus = "error";
   }
 
@@ -46,8 +48,9 @@ export default async function CampaignsPage() {
     }
   } catch (error) {
     ownApplicationsStatus = "error";
-    if (isSessionUnavailableError(error)) logSessionUnavailable(error);
-    else console.error(error);
+    const requestHeaders = await headers();
+    if (isSessionUnavailableError(error)) logSessionUnavailable(error, "lookup", requestHeaders, "GET /campaigns");
+    else logRouteError(requestHeaders, error, { operation: "list_own_applications" }, "GET /campaigns");
   }
 
   return (

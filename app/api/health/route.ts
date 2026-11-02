@@ -48,7 +48,7 @@ async function getDiagnosticAccess(request: Request): Promise<DiagnosticAccess> 
   try {
     return (await isAdmin()) ? "authorized" : "public";
   } catch (error) {
-    if (isAdminSessionUnavailableError(error)) logAdminSessionUnavailable(error);
+    if (isAdminSessionUnavailableError(error)) logAdminSessionUnavailable(error, request);
     return "public";
   }
 }

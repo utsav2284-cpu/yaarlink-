@@ -1,3 +1,4 @@
+import { logRouteEvent } from "@/backend/observability";
 import { getClientKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -169,7 +170,7 @@ export async function POST(req: Request) {
   if (!reports.length) return errorResponse("invalid_report", 400);
 
   for (const report of reports) {
-    console.warn("[csp-report]", report);
+    logRouteEvent("warn", "security.csp_report", req, { component: "csp-report", report });
   }
 
   return new Response(null, { status: 204, headers: { "Cache-Control": "private, no-store" } });

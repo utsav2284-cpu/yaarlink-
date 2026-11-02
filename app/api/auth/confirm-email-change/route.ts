@@ -1,3 +1,4 @@
+import { logRouteError } from "@/backend/observability";
 import { NextResponse } from "next/server";
 import { buildLoginUrl, consumeEmailChangeToken, hashAccountToken, isAccountToken } from "@/backend/account-tokens";
 import { SESSION_COOKIE } from "@/backend/auth";
@@ -60,7 +61,7 @@ export async function POST(req: Request) {
 
     return response;
   } catch (error) {
-    console.error(error);
+    logRouteError(req, error);
     return Response.json({ error: "Could not confirm the email change.", code: "request_failed" }, { status: 500, headers: NO_STORE });
   }
 }

@@ -5,6 +5,7 @@ import { db } from "@/backend/db";
 import { userSessions, users } from "@/backend/db/schema";
 import { PASSWORD_MAX_LENGTH, passwordLength } from "@/backend/password-policy";
 import { getSigningSecret, signingSecretProblemForName } from "@/backend/secret-config";
+import { logEvent, requestLogContext, type RequestLogSource } from "@/backend/observability";
 import { availableUserRoles, primaryUserRole, type UserRole } from "@/shared/user-roles";
 
 /*
@@ -180,7 +181,12 @@ export function isSessionUnavailableError(error: unknown): error is SessionUnava
  * Drizzle cause can contain the SQL text and bound user/session identifiers,
  * neither of which belongs in routine operational logs.
  */
-export function logSessionUnavailable(error: SessionUnavailableError, operation = "lookup"): void {
+export function logSessionUnavailable(
+  error: SessionUnavailableError,
+  operation = "lookup",
+  source?: RequestLogSource,
+  explicitRoute?: string,
+): void {
   let current: unknown = error.cause ?? error;
   const seen = new Set<unknown>();
   while (current instanceof Error && !seen.has(current)) {
@@ -192,9 +198,13 @@ export function logSessionUnavailable(error: SessionUnavailableError, operation 
 
   const root = current instanceof Error ? current : null;
   const code = (root as (Error & { code?: unknown }) | null)?.code;
-  console.error(`[session] ${operation} failed`, {
-    name: root?.name || "UnknownError",
-    code: typeof code === "string" || typeof code === "number" ? String(code) : "unknown",
+  const context = requestLogContext(source, explicitRoute);
+  logEvent("error", "session.operation_failed", {
+    ...context,
+    component: "session",
+    operation,
+    errorName: root?.name || "UnknownError",
+    errorCode: typeof code === "string" || typeof code === "number" ? String(code) : "unknown",
   });
 }
 
