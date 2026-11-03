@@ -36,6 +36,7 @@ import {
 } from "@/backend/email";
 import {
   PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
   PasswordBreachCheckUnavailableError,
   passwordLength,
   validateNewPassword,
@@ -259,7 +260,7 @@ export async function PATCH(req: Request) {
               "That password has appeared in a known data breach. Choose a different one.",
               "password_breached",
             )
-          : jsonError(400, "Password must be between 10 and 256 characters.", "password_policy");
+          : jsonError(400, `Password needs at least ${PASSWORD_MIN_LENGTH} characters with uppercase and lowercase letters, a number, and a symbol.`, "password_policy");
       }
       if (sessionSecretProblem()) {
         return jsonError(503, "Password change is temporarily unavailable.", "service_unavailable");

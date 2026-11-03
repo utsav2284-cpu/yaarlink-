@@ -8,9 +8,10 @@ import { clearLocalFormDrafts } from "@/frontend/session";
 import { useSession } from "@/frontend/session-context";
 import { buildAuthPath } from "@/shared/return-to";
 import { primaryUserRole, USER_ROLES, type UserRole } from "@/shared/user-roles";
-import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, isPasswordLengthValid } from "@/shared/password-policy";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, isPasswordCompliant } from "@/shared/password-policy";
 import { sanitizePhoneInput } from "@/shared/phone-input";
 import RequiredMark from "@/frontend/components/RequiredMark";
+import NewPasswordField from "@/frontend/components/NewPasswordField";
 
 type AccountUser = {
   id: string;
@@ -252,7 +253,7 @@ export default function AccountPage() {
   const submitPassword = (e: React.FormEvent) => {
     e.preventDefault();
     run("change-password", async () => {
-      if (!isPasswordLengthValid(passwordForm.newPassword)) {
+      if (!isPasswordCompliant(passwordForm.newPassword)) {
         throw new ActionError(t("auth.passwordPolicy"));
       }
       if (passwordForm.newPassword !== passwordForm.confirmPassword) {
@@ -465,16 +466,24 @@ export default function AccountPage() {
               <span>{t("account.currentPassword")}<RequiredMark /></span>
               <input id="account-current-password" name="currentPassword" value={passwordForm.currentPassword} onChange={(e) => setPasswordForm((f) => ({ ...f, currentPassword: e.target.value }))} required type="password" maxLength={PASSWORD_MAX_LENGTH} autoComplete="current-password" className={inputClass} />
             </label>
-            <label className={labelClass} htmlFor="account-new-password">
-              <span>{t("auth.newPassword")}<RequiredMark /></span>
-              <input id="account-new-password" name="newPassword" aria-describedby="account-password-policy" value={passwordForm.newPassword} onChange={(e) => setPasswordForm((f) => ({ ...f, newPassword: e.target.value }))} required type="password" minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} autoComplete="new-password" className={inputClass} />
-            </label>
+            <div className={labelClass}>
+              <label htmlFor="account-new-password">
+                <span>{t("auth.newPassword")}<RequiredMark /></span>
+              </label>
+              <NewPasswordField
+                id="account-new-password"
+                name="newPassword"
+                value={passwordForm.newPassword}
+                onChange={(value) => setPasswordForm((f) => ({ ...f, newPassword: value }))}
+                onSuggest={(value) => setPasswordForm((f) => ({ ...f, confirmPassword: value }))}
+                inputClassName={inputClass}
+              />
+            </div>
             <label className={labelClass} htmlFor="account-confirm-password">
               <span>{t("auth.confirmPassword")}<RequiredMark /></span>
-              <input id="account-confirm-password" name="confirmPassword" aria-describedby="account-password-policy" value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm((f) => ({ ...f, confirmPassword: e.target.value }))} required type="password" minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} autoComplete="new-password" className={inputClass} />
+              <input id="account-confirm-password" name="confirmPassword" aria-describedby="account-new-password-requirements" value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm((f) => ({ ...f, confirmPassword: e.target.value }))} required type="password" minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} autoComplete="new-password" className={inputClass} />
             </label>
-            <p id="account-password-policy" className="text-[13px] text-[#6f6862]">{t("auth.passwordPolicy")}</p>
-            <button disabled={busyKey === "change-password"} className={primaryButtonClass}>{t("account.changePassword")}</button>
+            <button disabled={busyKey === "change-password" || !isPasswordCompliant(passwordForm.newPassword)} className={primaryButtonClass}>{t("account.changePassword")}</button>
           </form>
         </Section>
       </div>

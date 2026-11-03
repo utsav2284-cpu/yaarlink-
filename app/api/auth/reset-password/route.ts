@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { buildLoginUrl, consumePasswordResetToken, hashAccountToken, isAccountToken } from "@/backend/account-tokens";
 import { hashPassword, SESSION_COOKIE } from "@/backend/auth";
 import { sendAccountSecurityNoticeEmail } from "@/backend/email";
-import { PasswordBreachCheckUnavailableError, validateNewPassword } from "@/backend/password-policy";
+import { PASSWORD_MIN_LENGTH, PasswordBreachCheckUnavailableError, validateNewPassword } from "@/backend/password-policy";
 import { getClientKey, hashKey, limitedResponse, rateLimit } from "@/backend/rate-limit";
 import { readJsonObject } from "@/backend/validation";
 
@@ -52,7 +52,7 @@ export async function POST(req: Request) {
               error: "That password has appeared in a known data breach. Choose a different one.",
               code: "password_breached",
             }
-          : { error: "Password must be between 10 and 256 characters.", code: "password_policy" },
+          : { error: `Password needs at least ${PASSWORD_MIN_LENGTH} characters with uppercase and lowercase letters, a number, and a symbol.`, code: "password_policy" },
         { status: 400, headers: NO_STORE },
       );
     }

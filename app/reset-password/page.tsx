@@ -5,7 +5,8 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { useLang } from "@/frontend/i18n";
 import { useSession } from "@/frontend/session-context";
 import { buildAuthPath, DEFAULT_RETURN_TO, safeReturnTo } from "@/shared/return-to";
-import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, isPasswordLengthValid } from "@/shared/password-policy";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, isPasswordCompliant } from "@/shared/password-policy";
+import NewPasswordField from "@/frontend/components/NewPasswordField";
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const subscribeNoop = () => () => {};
@@ -37,7 +38,7 @@ export default function ResetPasswordPage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErr("");
-    if (!isPasswordLengthValid(newPassword)) {
+    if (!isPasswordCompliant(newPassword)) {
       setErr(t("auth.passwordPolicy"));
       return;
     }
@@ -106,12 +107,11 @@ export default function ResetPasswordPage() {
             <p className="mt-1 text-[14.5px] leading-relaxed text-[#6f6862]">{t("auth.resetSub")}</p>
             <form onSubmit={submit} className="mt-5 grid gap-3">
               <label htmlFor="reset-new-password" className="sr-only">{t("auth.newPassword")}</label>
-              <input id="reset-new-password" name="newPassword" aria-describedby="reset-password-policy" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required type="password" minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} autoComplete="new-password" placeholder={t("auth.newPassword")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+              <NewPasswordField id="reset-new-password" name="newPassword" value={newPassword} onChange={setNewPassword} onSuggest={setConfirmPassword} placeholder={t("auth.newPassword")} />
               <label htmlFor="reset-confirm-password" className="sr-only">{t("auth.confirmPassword")}</label>
-              <input id="reset-confirm-password" name="confirmPassword" aria-describedby="reset-password-policy" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required type="password" minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} autoComplete="new-password" placeholder={t("auth.confirmPassword")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
-              <p id="reset-password-policy" className="text-[13px] text-[#6f6862]">{t("auth.passwordPolicy")}</p>
+              <input id="reset-confirm-password" name="confirmPassword" aria-describedby="reset-new-password-requirements" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required type="password" minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} autoComplete="new-password" placeholder={t("auth.confirmPassword")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
               {err && <p className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-[13.5px] font-bold text-red-700">{err}</p>}
-              <button disabled={!mounted || saving} className="rounded-2xl bg-[#1c1917] py-3.5 text-[16px] font-extrabold text-white hover:bg-black disabled:opacity-60">
+              <button disabled={!mounted || saving || !isPasswordCompliant(newPassword)} className="rounded-2xl bg-[#1c1917] py-3.5 text-[16px] font-extrabold text-white hover:bg-black disabled:opacity-60">
                 {saving ? t("auth.resetting") : t("auth.resetBtn")}
               </button>
             </form>

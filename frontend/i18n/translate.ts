@@ -28,7 +28,7 @@ export function translateMessage(
   // Password copy must never drift from the policy enforced by the server,
   // so its bounds come from the same shared constants everywhere `t` is used.
   const resolvedValues: TranslationValues =
-    key === "auth.pwHint" || key === "auth.passwordPolicy"
+    key === "auth.pwHint" || key === "auth.passwordPolicy" || key === "auth.pwdReqLength"
       ? { min: PASSWORD_MIN_LENGTH, max: PASSWORD_MAX_LENGTH, ...values }
       : values;
 
