@@ -5,7 +5,7 @@
  * units so an emoji or other astral character counts as one character.
  */
 
-import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, passwordLength } from "@/shared/password-policy";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, checkPasswordRequirements, passwordLength } from "@/shared/password-policy";
 
 export { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, passwordLength };
 
@@ -142,6 +142,15 @@ export function localPasswordPolicyProblem(
 ): PasswordPolicyProblem | null {
   const length = passwordLength(password);
   if (length < PASSWORD_MIN_LENGTH || length > PASSWORD_MAX_LENGTH) return "length";
+
+  // Creation composition — the same four requirements the UI shows
+  // (uppercase + lowercase letters, a number, and a symbol), from the same
+  // shared checker so client and server can never drift. Reported through
+  // the existing "length" policy bucket, which every caller already maps
+  // to the localized password-policy message. The denylist/context/breach
+  // checks below remain as an additional safety net.
+  const requirements = checkPasswordRequirements(password);
+  if (!requirements.letterCases || !requirements.number || !requirements.symbol) return "length";
 
   const chars = Array.from(password);
   if (chars.every((char) => char === chars[0])) return "breached";

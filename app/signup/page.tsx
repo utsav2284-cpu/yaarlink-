@@ -7,8 +7,9 @@ import { Suspense, useEffect, useState } from "react";
 import { useSession } from "@/frontend/session-context";
 import { buildAuthPath, DEFAULT_RETURN_TO, safeReturnTo } from "@/shared/return-to";
 import { primaryUserRole, type UserRole } from "@/shared/user-roles";
-import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/shared/password-policy";
+import { isPasswordCompliant } from "@/shared/password-policy";
 import { sanitizePhoneInput } from "@/shared/phone-input";
+import NewPasswordField from "@/frontend/components/NewPasswordField";
 
 type SignupForm = {
   name: string;
@@ -169,7 +170,7 @@ function SignupContent() {
               <label htmlFor="signup-phone" className="sr-only">{t("auth.phone")}</label>
               <input id="signup-phone" name="phone" type="tel" inputMode="tel" value={form.phone} onChange={(e) => set("phone", sanitizePhoneInput(e.target.value))} autoComplete="tel" placeholder={t("auth.phone")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
               <label htmlFor="signup-password" className="sr-only">{t("auth.password")}</label>
-              <input id="signup-password" name="password" value={form.password} onChange={(e) => set("password", e.target.value)} required type="password" minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} autoComplete="new-password" placeholder={t("auth.pwHint")} className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
+              <NewPasswordField id="signup-password" name="password" value={form.password} onChange={(value) => set("password", value)} placeholder={t("auth.pwHint")} />
               <label htmlFor="signup-legal-consent" className="flex w-full min-w-0 cursor-pointer items-start gap-3 rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 text-[13.5px] font-semibold leading-relaxed text-[#57534e]">
                 <input
                   id="signup-legal-consent"
@@ -194,7 +195,7 @@ function SignupContent() {
                 </span>
               </label>
               {err && <p className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-[13.5px] font-bold text-red-700">{err}</p>}
-              <button disabled={saving} className="rounded-2xl bg-[#c7431f] py-3.5 text-[16px] font-extrabold text-white hover:bg-[#a93618] disabled:opacity-60">{saving ? t("auth.creating") : t("auth.signupBtn")}</button>
+              <button disabled={saving || !isPasswordCompliant(form.password)} className="rounded-2xl bg-[#c7431f] py-3.5 text-[16px] font-extrabold text-white hover:bg-[#a93618] disabled:opacity-60">{saving ? t("auth.creating") : t("auth.signupBtn")}</button>
             </form>
           </>
         )}
