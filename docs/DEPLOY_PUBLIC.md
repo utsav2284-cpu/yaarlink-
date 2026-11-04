@@ -1,6 +1,6 @@
 # YaarLink — Public Deployment Checklist
 
-Vercel + Supabase is the only supported production deployment path for this repository. Keeping one authoritative path prevents a second host configuration from drifting on environment variables, database TLS, client-IP trust, or security headers. Do not add a Cloudflare/OpenNext/Wrangler configuration, another hosting adapter, or a custom build-output directory; the standard Vercel Next.js build output is the deployable artifact.
+Vercel + Supabase is the only supported production deployment path for this repository. Keeping one authoritative path prevents a second host configuration from drifting on environment variables, database TLS, client-IP trust, or security headers. Do not add another hosting adapter or a custom build-output directory; the standard Vercel Next.js build output is the deployable artifact. External deployment/check integrations are controlled from the provider and GitHub App settings, not from files in this repository; disconnect and remove repository access for any non-Vercel deployment integration that appears on pull requests.
 
 ### Canonical production project
 
@@ -41,11 +41,20 @@ Set these as server-side Vercel environment variables for the Production environ
 
 - `DATABASE_URL`
 - `DATABASE_CA_CERT` (required for Supabase unless `sslrootcert` is used instead)
-- `ADMIN_PASSWORD`
 - `SESSION_SECRET`
 - `ADMIN_SESSION_SECRET`
 - `RESEND_API_KEY`
 - `EMAIL_FROM`
+
+> **Unified-login transition:** the retired `ADMIN_PASSWORD` and
+> `ADMIN_TOTP_SECRET` values are not read by the unified-login code. Do not
+> remove them from an existing production project until the unified build,
+> identity/MFA migrations, first-owner creation, backup/PITR evidence, and a
+> successful production sign-in + MFA + dashboard check have all been approved
+> and verified. Until that point they are rollback-only configuration for the
+> previous build. `ADMIN_SESSION_SECRET` remains mandatory because it signs
+> the database-backed administrator session cookie; it is not an admin login
+> password.
 
 Configure Preview separately. Do not give Preview deployments the production database URL or production signing secrets unless you intentionally want previews to share production data and sessions.
 
@@ -61,9 +70,9 @@ Generate each signing secret independently with:
 openssl rand -hex 32
 ```
 
-Use different values for `SESSION_SECRET` and `ADMIN_SESSION_SECRET`, and use a unique `ADMIN_PASSWORD` of at least 16 characters stored in a password manager. At server startup the app validates these values and refuses to start when a required value is missing, weak, copied from `.env.example`, or shared with another signing secret. Startup also validates the public origin/contact/social settings in `config/site.ts`; malformed entries emit a `startup.site_configuration_warning` containing only field/code pairs, and the corresponding link builders return no link rather than rendering a broken WhatsApp, email, or Instagram URL. Request-level fail-closed checks are also present: for example, a missing/weak/shared admin signing secret makes `/api/admin/login` and `/api/admin/logout` return HTTP 503 instead of sharing a signing key. Human passphrases are not accepted as signing secrets—use generated key material such as the OpenSSL output above.
+Use different values for `SESSION_SECRET` and `ADMIN_SESSION_SECRET`. At server startup the app validates these signing secrets and refuses to start when a required value is missing, weak, copied from `.env.example`, or shared with another signing secret. Startup also validates the public origin/contact/social settings in `config/site.ts`; malformed entries emit a `startup.site_configuration_warning` containing only field/code pairs, and the corresponding link builders return no link rather than rendering a broken WhatsApp, email, or Instagram URL. Request-level fail-closed checks are also present: for example, a missing/weak/shared administrator signing secret makes the database administrator identity endpoints return HTTP 503 instead of sharing a signing key. Human passphrases are not accepted as signing secrets—use generated key material such as the OpenSSL output above.
 
-Optional admin MFA: set `ADMIN_TOTP_SECRET` to a valid Base32 TOTP secret (at least 16 Base32 characters) after enrolling that secret in the owner's authenticator app. When set, `/admin` requires the current six-digit code in addition to `ADMIN_PASSWORD`. If the value is invalid or too short, startup/admin login fail closed; it does not fall back to password-only access.
+Administrator MFA is individual and database-backed, not an environment-shared secret. Each administrator enrolls TOTP and/or a Passkey after password sign-in; recovery codes are stored only as hashes. Set a dedicated `ADMIN_MFA_ENCRYPTION_SECRET` before production MFA enrollment if possible, or explicitly accept the documented domain-separated derivation from `ADMIN_SESSION_SECRET`; do not change that key material casually after enrollment. The retired `ADMIN_TOTP_SECRET` is ignored by unified-login code.
 
 Optional public-form challenge secret: generate `BOT_CHALLENGE_SECRET` separately and make it different from both session secrets. If unset, a validated `SESSION_SECRET` signs those short-lived, one-time challenges.
 
@@ -85,14 +94,14 @@ After changing Vercel environment variables, create a new deployment so the runn
 - Creator profile creation requires an authenticated **creator** account.
 - Campaign applications require an authenticated **creator** account.
 - Dashboard ownership is based only on the authenticated user ID, never an email match.
-- Admin access uses an HttpOnly signed session cookie; the admin password is never stored in browser storage.
+- Administrator access uses an individual database account, an HttpOnly signed session cookie, mandatory MFA, and server-side RBAC; no administrator password or MFA secret is stored in browser storage.
 - Login/signup/admin/public-write endpoints have request throttling. User and admin login also have database-backed failed-attempt lockouts with exponential backoff. A user-login lockout is keyed by the submitted normalized email whether or not an account exists, plus the client key.
 - Wrong user credentials return HTTP 401 with the same body for an unknown email and a wrong password; unknown emails still run a dummy PBKDF2 verification so password work is not skipped.
 - New passwords must be 6–256 Unicode characters with uppercase and lowercase letters, a number, and a symbol, and pass local predictable-password rules plus the breached-password check. Existing passwords are unaffected — login only verifies the stored hash. An authenticated password change keeps only the current device session (reissued at the new token version), revokes other sessions, and invalidates account action tokens.
 - Signup returns one generic verification-required response for new, pending, and already registered addresses and sets no session cookie. User/profile rows are created only after the emailed one-time link and the signup password are verified.
 - Session cookies are `__Host-`-prefixed and always `Secure`; logout revokes the session server-side.
-- Admin tokens carry a DB-backed session version; admin logout increments it, revoking copied or previously issued admin cookies, and the admin page clears loaded data from browser state.
-- Admin logins, logouts, and moderation decisions are recorded in the append-only `admin_audit_logs` table and shown on the admin **audit log** tab.
+- Administrator sessions are database-backed and individually revocable. A successful password creates only a short pending session; protected APIs stay locked until MFA enrollment/verification completes. Logout and password/MFA changes revoke sessions server-side according to the identity policy, and the dashboard clears loaded data from browser state.
+- Administrator security events and moderation decisions are recorded in append-only audit/security tables; moderation audit rows carry the individual administrator actor when the route is authorized through the identity boundary.
 - Public inputs have length/type/URL/email validation.
 - Sensitive admin/dashboard responses are `no-store`.
 - Public campaign/creator APIs do not expose private contact/budget fields.
@@ -125,7 +134,9 @@ Add `www.theyaar.com` and `theyaar.com` under Vercel **Settings → Domains**, p
 
 ## 5. Admin
 
-Open `/admin` and use the value of `ADMIN_PASSWORD` (plus the authenticator code if `ADMIN_TOTP_SECRET` is set). The password is exchanged only over HTTPS and replaced by a short-lived HttpOnly admin session cookie. Repeated wrong passwords/codes from one client trigger a temporary lockout. **Lock admin** revokes all current admin sessions server-side, so a copied cookie cannot be replayed after logout. Rotate `ADMIN_PASSWORD`, `SESSION_SECRET` and `ADMIN_SESSION_SECRET` if any admin session was ever issued while the old shared-secret fallback was in place.
+Open `/admin/sign-in` and sign in with the administrator's own registered email and individual password. A correct password creates only a short pending session and sends the administrator to `/admin/security`: an unenrolled administrator must enroll TOTP (QR/manual key plus first-code confirmation) or another supported factor, while an enrolled administrator must verify with TOTP, a recovery code, or a Passkey. Only then does server-side RBAC allow the relevant dashboard/APIs. Visiting `/admin` without a fully verified authorized session redirects to the official sign-in or MFA stage; it never presents a shared-password form.
+
+There is no public administrator registration or shared owner password. Create the first owner only through the restricted setup process in [`ADMIN_IDENTITY.md`](./ADMIN_IDENTITY.md), then invite additional administrators individually. Ordinary marketplace signup never grants administrator access.
 
 ## 6. Important operational recommendation
 
