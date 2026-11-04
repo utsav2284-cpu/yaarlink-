@@ -19,8 +19,6 @@ export type SigningSecretName = "SESSION_SECRET" | "ADMIN_SESSION_SECRET" | "BOT
 
 export const SIGNING_SECRET_MIN_LENGTH = 32;
 export const SIGNING_SECRET_MAX_LENGTH = 512;
-export const ADMIN_PASSWORD_MIN_LENGTH = 16;
-export const ADMIN_PASSWORD_MAX_LENGTH = 256;
 
 export class SecretConfigurationError extends Error {
   readonly problems: readonly SecretConfigurationProblem[];
@@ -169,71 +167,6 @@ export function getSigningSecret(name: SigningSecretName, env: SecretEnvironment
   return env[name] as string;
 }
 
-const COMMON_ADMIN_PASSWORDS = new Set([
-  "administrator",
-  "adminpassword",
-  "passwordpassword",
-  "letmeinletmein",
-  "yaarlinkadmin",
-  "adminyaarlink",
-  "changepassword",
-  "defaultpassword",
-]);
-
-export function adminPasswordProblem(
-  value: string | undefined,
-  env: SecretEnvironment = process.env,
-): "missing" | "weak" | "shared" | null {
-  if (value === undefined || value === "") return "missing";
-
-  const length = codePoints(value).length;
-  if (length < ADMIN_PASSWORD_MIN_LENGTH || length > ADMIN_PASSWORD_MAX_LENGTH) return "weak";
-  if (isPlaceholderSecret(value)) return "weak";
-  if (new Set(codePoints(value)).size <= 2 || isRepeatedPattern(value, 8)) return "weak";
-
-  const compact = value.normalize("NFKC").toLowerCase().replace(/[^a-z0-9]/g, "");
-  if (COMMON_ADMIN_PASSWORDS.has(compact)) return "weak";
-
-  if (
-    value === env.SESSION_SECRET ||
-    value === env.ADMIN_SESSION_SECRET ||
-    value === env.BOT_CHALLENGE_SECRET ||
-    value === env.HEALTH_DIAGNOSTIC_TOKEN
-  ) {
-    return "shared";
-  }
-  return null;
-}
-
-export function decodeBase32Secret(input: string): Uint8Array | null {
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-  const normalized = input.replace(/[\s-]/g, "").replace(/=+$/, "").toUpperCase();
-  if (!normalized || normalized.length % 8 === 1) return null;
-
-  const bytes: number[] = [];
-  let bits = 0;
-  let value = 0;
-  for (const char of normalized) {
-    const index = alphabet.indexOf(char);
-    if (index < 0) return null;
-    value = (value << 5) | index;
-    bits += 5;
-    if (bits >= 8) {
-      bytes.push((value >>> (bits - 8)) & 0xff);
-      bits -= 8;
-      value &= bits === 0 ? 0 : (1 << bits) - 1;
-    }
-  }
-  return new Uint8Array(bytes);
-}
-
-export function adminTotpSecretProblem(value: string | undefined): "invalid" | null {
-  if (value === undefined || value.trim() === "") return null;
-  const decoded = decodeBase32Secret(value.trim());
-  if (!decoded || decoded.byteLength < 10) return "invalid";
-  return new Set(decoded).size >= 4 ? null : "invalid";
-}
-
 export function botChallengeSecretProblem(env: SecretEnvironment = process.env): SecretConfigurationProblem | null {
   const botSecret = env.BOT_CHALLENGE_SECRET;
   if (botSecret) {
@@ -269,8 +202,7 @@ export function healthDiagnosticTokenProblem(
   if (
     token === env.SESSION_SECRET ||
     token === env.ADMIN_SESSION_SECRET ||
-    token === env.BOT_CHALLENGE_SECRET ||
-    token === env.ADMIN_PASSWORD
+    token === env.BOT_CHALLENGE_SECRET
   ) {
     return { name: "HEALTH_DIAGNOSTIC_TOKEN", reason: "shared" };
   }
@@ -285,9 +217,10 @@ export function getHealthDiagnosticToken(env: SecretEnvironment = process.env): 
 }
 
 /**
- * Validate every authentication secret needed by the deployed app. Optional
- * values are validated whenever present; optional TOTP must not silently
- * degrade to password-only admin login because its value is malformed.
+ * Validate every authentication secret needed by the deployed app. The
+ * retired shared administrator password/TOTP environment variables are not
+ * configuration inputs anymore; individual administrator credentials and
+ * MFA secrets live in the database-backed identity system.
  */
 export function collectServerSecretProblems(env: SecretEnvironment = process.env): SecretConfigurationProblem[] {
   const problems: SecretConfigurationProblem[] = [];
@@ -311,14 +244,6 @@ export function collectServerSecretProblems(env: SecretEnvironment = process.env
       const problem = signingSecretProblem(env.BOT_CHALLENGE_SECRET);
       if (problem) problems.push({ name: "BOT_CHALLENGE_SECRET", reason: problem });
     }
-  }
-
-  const passwordProblem = adminPasswordProblem(env.ADMIN_PASSWORD, env);
-  if (passwordProblem) problems.push({ name: "ADMIN_PASSWORD", reason: passwordProblem });
-
-  if (env.ADMIN_TOTP_SECRET?.trim()) {
-    const problem = adminTotpSecretProblem(env.ADMIN_TOTP_SECRET);
-    if (problem) problems.push({ name: "ADMIN_TOTP_SECRET", reason: problem });
   }
 
   const healthDiagnosticProblem = healthDiagnosticTokenProblem(env);

@@ -3,8 +3,6 @@ node_modules/
 
 # Next.js and deployment build output
 .next/
-.open-next/
-.wrangler/
 out/
 next-env.d.ts
 
@@ -14,6 +12,7 @@ next-env.d.ts
 .env.*.local
 
 # misc
+.local/
 .DS_Store
 *.log
 .vercel

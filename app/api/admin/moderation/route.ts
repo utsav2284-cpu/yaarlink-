@@ -1,7 +1,12 @@
 import { logRouteError } from "@/backend/observability";
 import { db } from "@/backend/db";
 import { applications, brands, campaigns, contacts, creators, reports, userSessions, users } from "@/backend/db/schema";
-import { adminSessionUnavailableResponse, isAdmin, isAdminSessionUnavailableError, logAdminSessionUnavailable } from "@/backend/admin";
+import { requireMonolithAdminAccess } from "@/backend/admin-access";
+import {
+  adminIdentityUnavailableResponse,
+  isAdminIdentityUnavailableError,
+  logAdminIdentityUnavailable,
+} from "@/backend/admin-identity";
 import { logAdminAudit } from "@/backend/admin-audit";
 import { createVerificationCode, normalizeReviewStatus } from "@/backend/moderation";
 import { MAX_FOLLOWERS, hasField, parseIntegerField, parseOptionalText, parseUuid, readJsonObject } from "@/backend/validation";
@@ -16,6 +21,12 @@ import {
   upsertCampaignExpiryPolicy,
   validCampaignExpiryPolicy,
 } from "@/backend/platform-settings";
+import {
+  getSiteAvailabilitySettings,
+  primeSiteAvailabilityCache,
+  upsertSiteAvailabilitySettings,
+} from "@/backend/site-availability";
+import { effectiveSiteAvailability, parseSiteAvailabilitySettings } from "@/shared/site-availability";
 
 export const dynamic = "force-dynamic";
 
@@ -55,7 +66,7 @@ async function resolveOpenReports(
 
 export async function POST(req: Request) {
   try {
-    if (!(await isAdmin())) return Response.json({ error: "Not allowed", code: "unauthorized" }, { status: 401, headers: NO_STORE });
+    if (!(await requireMonolithAdminAccess(req))) return Response.json({ error: "Not allowed", code: "unauthorized" }, { status: 401, headers: NO_STORE });
 
     const parsedBody = await readJsonObject(req, { headers: NO_STORE });
     if (!parsedBody.ok) return parsedBody.response;
@@ -95,7 +106,57 @@ export async function POST(req: Request) {
       });
 
     if (entity === "setting") {
-      if (id !== PLATFORM_SETTINGS_ENTITY_ID || action !== "update") return invalidTarget();
+      if (id !== PLATFORM_SETTINGS_ENTITY_ID) return invalidTarget();
+
+      if (action === "availability") {
+        const nextAvailability = parseSiteAvailabilitySettings(body.availability);
+        if (!nextAvailability) {
+          return Response.json(
+            { error: "Please enter valid website availability settings.", code: "invalid_site_availability" },
+            { status: 400, headers: NO_STORE },
+          );
+        }
+        const availabilityChange = await db.transaction(async (tx) => {
+          const previous = await getSiteAvailabilitySettings(tx);
+          const stored = await upsertSiteAvailabilitySettings(tx, nextAvailability, now);
+          await recordAuditEvent(tx, {
+            actorType: "admin",
+            entityType: "setting",
+            entityId: PLATFORM_SETTINGS_ENTITY_ID,
+            action: "setting.availability_updated",
+            fromStatus: previous.mode,
+            toStatus: stored.mode,
+            changedFields: [
+              ...(previous.mode !== stored.mode ? ["siteAvailabilityMode"] : []),
+              ...(previous.message !== stored.message ? ["siteAvailabilityMessage"] : []),
+              ...(previous.startsAt !== stored.startsAt ? ["siteAvailabilityStartsAt"] : []),
+              ...(previous.endsAt !== stored.endsAt ? ["siteAvailabilityEndsAt"] : []),
+            ],
+            metadata: {
+              siteAvailabilityMode: stored.mode,
+              siteAvailabilityStartsAt: stored.startsAt,
+              siteAvailabilityEndsAt: stored.endsAt,
+              messagePresent: Boolean(stored.message),
+            },
+            createdAt: now,
+          });
+          return { previous, stored };
+        });
+        primeSiteAvailabilityCache(availabilityChange.stored);
+        await auditModeration({
+          fromStatus: availabilityChange.previous.mode,
+          toStatus: availabilityChange.stored.mode,
+          startsAt: availabilityChange.stored.startsAt,
+          endsAt: availabilityChange.stored.endsAt,
+          notePresent: Boolean(availabilityChange.stored.message),
+        });
+        return Response.json(
+          { ok: true, siteAvailability: effectiveSiteAvailability(availabilityChange.stored, now) },
+          { headers: NO_STORE },
+        );
+      }
+
+      if (action !== "update") return invalidTarget();
       const parsedDefault = parseIntegerField(body.campaignDefaultExpiryDays, {
         field: "campaignDefaultExpiryDays",
         min: 7,
@@ -719,9 +780,9 @@ export async function POST(req: Request) {
     });
     return Response.json({ ok: true, report }, { headers: NO_STORE });
   } catch (e) {
-    if (isAdminSessionUnavailableError(e)) {
-      logAdminSessionUnavailable(e, req);
-      return adminSessionUnavailableResponse(NO_STORE);
+    if (isAdminIdentityUnavailableError(e)) {
+      logAdminIdentityUnavailable(e, req);
+      return adminIdentityUnavailableResponse(NO_STORE);
     }
     logRouteError(req, e);
     return Response.json({ error: "Could not complete moderation action", code: "moderation_failed" }, { status: 500, headers: NO_STORE });

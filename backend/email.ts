@@ -337,3 +337,93 @@ export async function sendAccountSecurityNoticeEmail({
       `,
   });
 }
+
+export async function sendAdminOwnerSetupEmail({
+  to,
+  setupUrl,
+}: {
+  to: string;
+  setupUrl: string;
+}) {
+  await sendAccountActionEmail({
+    to,
+    name: "YaarLink owner",
+    subject: "Set up your YaarLink Super Admin account",
+    heading: "Set up Super Admin access",
+    intro: "Use this restricted one-time link to create the first YaarLink Super Admin account and choose your own password.",
+    actionLabel: "Create Super Admin account",
+    actionUrl: setupUrl,
+    expiryText: "This one-time link expires in 20 minutes and works only for this email address.",
+    ignoreText: "If you did not request administrator setup, ignore this email and contact YaarLink through a trusted channel.",
+  });
+}
+
+export async function sendAdminInvitationEmail({
+  to,
+  invitationUrl,
+  roleLabel,
+}: {
+  to: string;
+  invitationUrl: string;
+  roleLabel: string;
+}) {
+  await sendAccountActionEmail({
+    to,
+    name: "YaarLink administrator",
+    subject: "You are invited to YaarLink Admin",
+    heading: "Accept your administrator invitation",
+    intro: `You have been invited to join YaarLink Admin as ${roleLabel}. You will choose your own password; nobody at YaarLink needs to know it.`,
+    actionLabel: "Accept invitation",
+    actionUrl: invitationUrl,
+    expiryText: "This one-time link expires in 24 hours and works only for this email address.",
+    ignoreText: "If you were not expecting this invitation, ignore this email and do not share the link.",
+  });
+}
+
+export async function sendAdminPasswordResetEmail({
+  to,
+  name,
+  resetUrl,
+}: {
+  to: string;
+  name: string;
+  resetUrl: string;
+}) {
+  await sendAccountActionEmail({
+    to,
+    name,
+    subject: "Reset your YaarLink administrator password",
+    heading: "Reset your administrator password",
+    intro: "We received a request to reset the password for your YaarLink administrator account.",
+    actionLabel: "Reset administrator password",
+    actionUrl: resetUrl,
+    expiryText: "This one-time link expires in 20 minutes. Resetting your password signs out every administrator session.",
+    ignoreText: "If you did not request this, ignore this email. Your password will not change unless this link is used.",
+  });
+}
+
+export async function sendAdminSecurityNoticeEmail({
+  to,
+  name,
+  subject,
+  heading,
+  message,
+  actionUrl,
+}: {
+  to: string;
+  name: string;
+  subject: string;
+  heading: string;
+  message: string;
+  actionUrl: string;
+}) {
+  await sendAccountSecurityNoticeEmail({
+    to,
+    name,
+    subject,
+    heading,
+    message,
+    actionLabel: "Open Admin security",
+    actionUrl,
+  });
+}

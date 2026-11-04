@@ -2,6 +2,18 @@ import { NextResponse, type NextRequest } from "next/server";
 import { SITE } from "@/config/site";
 import { isAllowedMutationOrigin } from "@/shared/csrf";
 import { REQUEST_ID_HEADER, requestIdFromHeaders } from "@/shared/observability";
+import {
+  isSiteAvailabilityExemptPath,
+  type EffectiveSiteAvailability,
+} from "@/shared/site-availability";
+import {
+  LANGUAGE_COOKIE,
+  LOCALES,
+  languageFromAcceptLanguage,
+  normalizeLanguageTag,
+} from "@/frontend/i18n/config";
+import { loadLocale } from "@/frontend/i18n/load-locale";
+import { translateMessage } from "@/frontend/i18n/translate";
 
 const CSP_REPORT_PATH = "/api/security/csp-report";
 const CSP_REPORT_GROUP = "csp-endpoint";
@@ -70,11 +82,111 @@ function buildContentSecurityPolicy(request: NextRequest, nonce: string): string
   return directives.join("; ");
 }
 
-export function proxy(request: NextRequest) {
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+async function siteUnavailableResponse(
+  request: NextRequest,
+  availability: EffectiveSiteAvailability,
+  requestId: string | null | undefined,
+): Promise<NextResponse> {
+  const lang = normalizeLanguageTag(request.cookies.get(LANGUAGE_COOKIE)?.value)
+    ?? languageFromAcceptLanguage(request.headers.get("accept-language"));
+  const locale = LOCALES[lang];
+  const localeData = await loadLocale(lang);
+  const t = (key: Parameters<typeof translateMessage>[2], values: Parameters<typeof translateMessage>[3] = {}) =>
+    translateMessage(localeData.messages, locale, key, values);
+  const message = availability.settings.message ?? t("maintenance.body");
+  const headers = new Headers({
+    "Cache-Control": "private, no-store",
+    "Retry-After": String(availability.retryAfterSeconds),
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+  });
+  if (requestId) headers.set(REQUEST_ID_HEADER, requestId);
+
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    return NextResponse.json(
+      {
+        error: message,
+        code: availability.effectiveMode === "emergency" ? "emergency_mode" : "maintenance_mode",
+      },
+      { status: 503, headers },
+    );
+  }
+
+  const backAt = availability.settings.endsAt
+    ? new Intl.DateTimeFormat(locale, {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone: "Asia/Kolkata",
+      }).format(new Date(availability.settings.endsAt))
+    : null;
+  const title = t("maintenance.title");
+  const backText = backAt ? t("maintenance.backAt", { date: backAt }) : "";
+  headers.set("Content-Type", "text/html; charset=utf-8");
+  headers.set(
+    "Content-Security-Policy",
+    "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+  );
+  const html = `<!doctype html>
+<html lang="${escapeHtml(locale)}">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <title>${escapeHtml(title)} · YaarLink</title>
+    <style>
+      :root { color-scheme: light; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; background: #fffbf1; color: #1c1917; font-family: Arial, system-ui, sans-serif; }
+      main { width: min(100%, 620px); border: 1px solid #e9ddc3; border-radius: 28px; background: #ffffff; padding: clamp(28px, 6vw, 48px); box-shadow: 0 24px 60px rgba(28, 25, 23, 0.10); }
+      .brand { margin: 0 0 18px; color: #c7431f; font-size: 13px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; }
+      h1 { margin: 0; font-family: Georgia, serif; font-size: clamp(32px, 7vw, 48px); line-height: 1.05; }
+      p { color: #57534e; font-size: 17px; line-height: 1.65; }
+      .back { display: inline-block; margin-top: 10px; border-radius: 999px; background: #fff4de; padding: 8px 14px; color: #1c1917; font-size: 14px; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <main role="main" aria-labelledby="maintenance-title">
+      <p class="brand">YaarLink</p>
+      <h1 id="maintenance-title">${escapeHtml(title)}</h1>
+      <p>${escapeHtml(message)}</p>
+      ${backText ? `<span class="back">${escapeHtml(backText)}</span>` : ""}
+    </main>
+  </body>
+</html>`;
+  return new NextResponse(html, { status: 503, headers });
+}
+
+export async function proxy(request: NextRequest) {
   const requestId = requestIdFromHeaders(request.headers);
   const requestHeaders = new Headers(request.headers);
   if (requestId) requestHeaders.set(REQUEST_ID_HEADER, requestId);
   requestHeaders.set("x-yaarlink-pathname", request.nextUrl.pathname);
+
+  // Website availability is an application-level control stored in the
+  // existing settings table. Admin, health, logout and static paths are
+  // exempt so the owner can always sign in and turn the public site back on.
+  // A settings-store failure returns the last known/online state from the
+  // cached reader; normal route/database error handling remains authoritative.
+  if (!isSiteAvailabilityExemptPath(request.nextUrl.pathname)) {
+    try {
+      const { getEffectiveSiteAvailabilityCached } = await import("@/backend/site-availability");
+      const availability = await getEffectiveSiteAvailabilityCached();
+      if (availability.isUnavailable) return await siteUnavailableResponse(request, availability, requestId);
+    } catch {
+      // If even the cached reader cannot be loaded, do not let the proxy turn
+      // a deployment/database failure into a second, misleading failure mode.
+    }
+  }
 
   // API responses keep their static deny-all CSP from next.config.ts. The
   // proxy establishes one correlation ID that route logs and the response

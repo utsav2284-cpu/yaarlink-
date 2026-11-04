@@ -15,6 +15,27 @@
       "when": 1793636956138,
       "tag": "0001_app_role_rls_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793721005276,
+      "tag": "0002_admin_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793727888392,
+      "tag": "0003_admin_mfa_session_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793730065159,
+      "tag": "0004_admin_passkeys",
+      "breakpoints": true
     }
   ]
 }

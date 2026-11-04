@@ -151,6 +151,19 @@ function toPublicCreator(row: PublicCreatorRow): PublicCreatorDetail | null {
   };
 }
 
+/** Exact public-detail eligibility for an already-loaded campaign row. */
+export function isCampaignPubliclyLive(
+  row: { status: string; verificationStatus: string; expiresAt: Date | string },
+  now: Date = new Date(),
+): boolean {
+  return row.status === "open" && row.verificationStatus === "verified" && new Date(row.expiresAt).getTime() > now.getTime();
+}
+
+/** Exact public-detail eligibility for an already-loaded creator row. */
+export function isCreatorPubliclyLive(row: PublicCreatorRow): boolean {
+  return row.status === "approved" && row.verificationStatus === "verified" && row.category !== null && toPublicCreator(row) !== null;
+}
+
 /**
  * Load one campaign for its public detail page. The query deliberately
  * selects only public fields and fails closed unless the campaign is both

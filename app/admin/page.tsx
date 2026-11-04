@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useLang, type TranslationKey } from "@/frontend/i18n";
 import { ListingPagination } from "@/frontend/components/ListingState";
 import { appendUniqueById, isListPagination, type ListPagination } from "@/frontend/api-json";
@@ -13,12 +14,21 @@ import {
   VERIFICATION_STATUSES,
 } from "@/shared/constants";
 import { normalizeInstagramUrl, normalizeProfileUrl, normalizeYouTubeUrl } from "@/shared/social-url";
+import {
+  DEFAULT_SITE_AVAILABILITY,
+  SITE_AVAILABILITY_MODES,
+  effectiveSiteAvailability,
+  parseSiteAvailabilitySettings,
+  type SiteAvailabilityMode,
+  type SiteAvailabilitySettings,
+} from "@/shared/site-availability";
 import { contactLinks } from "@/shared/contact-links";
 import { USER_ROLES } from "@/shared/user-roles";
 
 type Tab = "campaigns" | "creators" | "reports" | "applications" | "contacts" | "audit" | "activity" | "users" | "brands";
 type ModerationEntity = "campaign" | "creator" | "report" | "application" | "contact" | "user" | "brand" | "setting";
 type PlatformSettings = { defaultExpiryDays: number; maxExpiryDays: number };
+type SiteAvailabilityForm = { mode: SiteAvailabilityMode; message: string; startsAt: string; endsAt: string };
 
 interface AdminCounts {
   campaigns: number;
@@ -65,6 +75,7 @@ const AUDIT_ACTION_KEYS: Readonly<Record<string, TranslationKey>> = {
   reopen: "admin.auditAction.reopen",
   revoke_sessions: "admin.auditAction.revoke_sessions",
   sync: "admin.auditAction.sync",
+  availability: "admin.auditAction.availability",
 };
 
 const AUDIT_DETAIL_KEYS: Readonly<Record<string, TranslationKey>> = {
@@ -88,6 +99,8 @@ const AUDIT_DETAIL_KEYS: Readonly<Record<string, TranslationKey>> = {
   rows: "admin.auditDetail.rows",
   total: "admin.auditDetail.total",
   format: "admin.auditDetail.format",
+  startsAt: "admin.availabilityStarts",
+  endsAt: "admin.availabilityEnds",
 };
 
 const AUDIT_REASON_KEYS: Readonly<Record<string, TranslationKey>> = {
@@ -168,6 +181,10 @@ const ACTIVITY_FIELD_KEYS: Readonly<Record<string, TranslationKey>> = {
   campaignMaxExpiryDays: "admin.maxExpiryDays",
   defaultExpiryDays: "admin.defaultExpiryDays",
   maxExpiryDays: "admin.maxExpiryDays",
+  siteAvailabilityMode: "admin.availabilityMode",
+  siteAvailabilityMessage: "admin.availabilityMessage",
+  siteAvailabilityStartsAt: "admin.availabilityStarts",
+  siteAvailabilityEndsAt: "admin.availabilityEnds",
   tokenVersion: "admin.auditDetail.sessionVersion",
   updatedAt: "dash.updatedOn",
   resolvedAt: "status.resolved",
@@ -252,6 +269,36 @@ function StatusPill({ status, isReport = false }: { status?: string | null; isRe
     <span className={`inline-flex rounded-full px-2.5 py-1 text-[11.5px] font-bold ${statusClass(status, isReport)}`}>
       {localizeStatus(status)}
     </span>
+  );
+}
+
+function toDateTimeLocalValue(value: string | null | undefined): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
+function availabilityFormFromSettings(settings: SiteAvailabilitySettings): SiteAvailabilityForm {
+  return {
+    mode: settings.mode,
+    message: settings.message ?? "",
+    startsAt: toDateTimeLocalValue(settings.startsAt),
+    endsAt: toDateTimeLocalValue(settings.endsAt),
+  };
+}
+
+function LivePageLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="whitespace-nowrap rounded-lg border border-[#bfd8c6] bg-[#eef7f0] px-3 py-2 text-[12.5px] font-bold text-[#17452e] hover:bg-[#dff0e5]"
+    >
+      {children} ↗
+    </a>
   );
 }
 
@@ -378,13 +425,13 @@ export default function AdminPage() {
     formatCurrency,
     formatDateTime,
   } = useLang();
+  const router = useRouter();
+  const authRedirectingRef = useRef(false);
   const [listState, setListState] = useState<Record<Tab, AdminListState>>(emptyAdminListState);
   const [counts, setCounts] = useState<AdminCounts>(emptyAdminCounts);
   const [tab, setTab] = useState<Tab>("campaigns");
   const [adminDraft, setAdminDraft] = useState<AdminQuery>(() => emptyAdminQuery("campaigns"));
   const adminRequestRef = useRef<Record<string, number>>({});
-  const [key, setKey] = useState("");
-  const [totp, setTotp] = useState("");
   const [authed, setAuthed] = useState(false);
   const [errKey, setErrKey] = useState<TranslationKey | "">("");
   const [noticeKey, setNoticeKey] = useState<TranslationKey | "">("");
@@ -401,7 +448,34 @@ export default function AdminPage() {
     maxExpiryDays: String(CAMPAIGN_MAX_EXPIRY_DAYS),
   });
   const settingsDirtyRef = useRef(false);
+  const [siteAvailability, setSiteAvailability] = useState<SiteAvailabilitySettings>(DEFAULT_SITE_AVAILABILITY);
+  const [availabilityForm, setAvailabilityForm] = useState<SiteAvailabilityForm>(() =>
+    availabilityFormFromSettings(DEFAULT_SITE_AVAILABILITY),
+  );
+  const availabilityDirtyRef = useRef(false);
   const [clientNow, setClientNow] = useState<number | null>(null);
+
+  const redirectForAdminAccess = async () => {
+    if (authRedirectingRef.current) return;
+    authRedirectingRef.current = true;
+    try {
+      const response = await fetch("/api/admin/identity/me", { credentials: "include", cache: "no-store" });
+      const data = (await response.json().catch(() => null)) as {
+        admin?: { role?: string };
+        session?: { mfaSatisfied?: boolean };
+      } | null;
+      if (!response.ok || !data?.admin) {
+        router.replace("/admin/sign-in");
+        return;
+      }
+      if (!data.session?.mfaSatisfied && data.admin.role === "super_admin") {
+        window.sessionStorage.setItem("yl-admin-after-mfa", "/admin");
+      }
+      router.replace("/admin/security");
+    } catch {
+      authRedirectingRef.current = false;
+    }
+  };
 
   const clearAdminState = () => {
     setListState(emptyAdminListState());
@@ -411,9 +485,10 @@ export default function AdminPage() {
     setPlatformSettings({ defaultExpiryDays: CAMPAIGN_DEFAULT_EXPIRY_DAYS, maxExpiryDays: CAMPAIGN_MAX_EXPIRY_DAYS });
     setSettingsForm({ defaultExpiryDays: String(CAMPAIGN_DEFAULT_EXPIRY_DAYS), maxExpiryDays: String(CAMPAIGN_MAX_EXPIRY_DAYS) });
     settingsDirtyRef.current = false;
+    setSiteAvailability(DEFAULT_SITE_AVAILABILITY);
+    setAvailabilityForm(availabilityFormFromSettings(DEFAULT_SITE_AVAILABILITY));
+    availabilityDirtyRef.current = false;
     setTab("campaigns");
-    setKey("");
-    setTotp("");
     setNoticeKey("");
     setBusyKey("");
     setExporting(false);
@@ -450,7 +525,10 @@ export default function AdminPage() {
       if (adminRequestRef.current[targetTab] !== requestId) return;
       if (!res.ok) {
         const nextErrorKey = apiErrorKey(res.status, d?.code, "api.loadFailed");
-        if (res.status === 401 || !authed) {
+        if (res.status === 401 || res.status === 403) {
+          clearAdminState();
+          void redirectForAdminAccess();
+        } else if (!authed) {
           clearAdminState();
         }
         setErrKey(nextErrorKey);
@@ -477,6 +555,11 @@ export default function AdminPage() {
             maxExpiryDays: String(nextSettings.maxExpiryDays),
           });
         }
+      }
+      const nextSiteAvailability = parseSiteAvailabilitySettings(d?.siteAvailability?.settings);
+      if (nextSiteAvailability) {
+        setSiteAvailability(nextSiteAvailability);
+        if (!availabilityDirtyRef.current) setAvailabilityForm(availabilityFormFromSettings(nextSiteAvailability));
       }
       setCounts({ ...emptyAdminCounts(), ...d.counts });
       setListState((current) => ({
@@ -651,6 +734,55 @@ export default function AdminPage() {
     }
   };
 
+  const saveSiteAvailability = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const candidate = {
+      mode: availabilityForm.mode,
+      message: availabilityForm.message.trim() || null,
+      startsAt: availabilityForm.startsAt ? new Date(availabilityForm.startsAt).toISOString() : null,
+      endsAt: availabilityForm.endsAt ? new Date(availabilityForm.endsAt).toISOString() : null,
+      updatedAt: siteAvailability.updatedAt,
+    };
+    const nextAvailability = parseSiteAvailabilitySettings(candidate);
+    if (!nextAvailability) {
+      setErrKey("api.invalidSiteAvailability");
+      return;
+    }
+    if (nextAvailability.mode !== "online" && !window.confirm(t("admin.availabilityConfirm"))) return;
+
+    setBusyKey("setting:availability");
+    setErrKey("");
+    setNoticeKey("");
+    try {
+      const res = await fetch("/api/admin/moderation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          entity: "setting",
+          id: PLATFORM_SETTINGS_ENTITY_ID,
+          action: "availability",
+          availability: nextAvailability,
+        }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErrKey(apiErrorKey(res.status, d?.code, "api.invalidSiteAvailability"));
+        return;
+      }
+      const savedAvailability = parseSiteAvailabilitySettings(d?.siteAvailability?.settings) ?? nextAvailability;
+      availabilityDirtyRef.current = false;
+      setSiteAvailability(savedAvailability);
+      setAvailabilityForm(availabilityFormFromSettings(savedAvailability));
+      setNoticeKey("admin.availabilitySaved");
+      await load(tab);
+    } catch {
+      setErrKey("api.invalidSiteAvailability");
+    } finally {
+      setBusyKey("");
+    }
+  };
+
   const moderate = async (entity: ModerationEntity, id: string, action: string, extra: Record<string, unknown> = {}) => {
     if (action === "delete") {
       const label =
@@ -704,45 +836,6 @@ export default function AdminPage() {
     }
   };
 
-  const login = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setErrKey("");
-    setNoticeKey("");
-    try {
-      const res = await fetch("/api/admin/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ password: key, totp: totp.trim() || undefined }),
-      });
-      const d = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setListState(emptyAdminListState());
-        setCounts(emptyAdminCounts());
-        setAdminDraft(emptyAdminQuery("campaigns"));
-        setVerifiedFollowers({});
-        setTotp("");
-        setAuthed(false);
-        setErrKey(apiErrorKey(res.status, d?.code, "api.adminWrongCredentials"));
-        setLoading(false);
-        return;
-      }
-      setKey("");
-      setTotp("");
-      await load();
-    } catch {
-      setListState(emptyAdminListState());
-      setCounts(emptyAdminCounts());
-      setAdminDraft(emptyAdminQuery("campaigns"));
-      setVerifiedFollowers({});
-      setTotp("");
-      setAuthed(false);
-      setErrKey("api.adminLoginFailed");
-      setLoading(false);
-    }
-  };
-
   const lockAdmin = async () => {
     // Remove sensitive rows from memory/DOM immediately; the browser cookie is
     // independent of React state and is still sent with the logout request.
@@ -750,9 +843,14 @@ export default function AdminPage() {
     setErrKey("");
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/logout", { method: "POST", credentials: "include", cache: "no-store" });
+      const res = await fetch("/api/admin/identity/logout", { method: "POST", credentials: "include", cache: "no-store" });
       const d = await res.json().catch(() => ({}));
-      if (!res.ok) setErrKey(apiErrorKey(res.status, d?.code, "admin.signOutFailed"));
+      if (!res.ok) {
+        setErrKey(apiErrorKey(res.status, d?.code, "admin.signOutFailed"));
+        return;
+      }
+      router.replace("/admin/sign-in");
+      router.refresh();
     } catch {
       setErrKey("admin.signOutFailed");
     } finally {
@@ -763,43 +861,20 @@ export default function AdminPage() {
   if (!authed) {
     return (
       <div className="mx-auto max-w-md px-4 py-16">
-        <form
-          onSubmit={login}
-          className="rounded-[28px] border border-[#e9ddc3] bg-white p-8 card-shadow"
-        >
-          <p className="text-[12.5px] font-bold uppercase tracking-widest text-[#c7431f]">{t("admin.ownerOnly")}</p>
-          <h1 className="font-display mt-1 text-[28px] font-black">{t("admin.loginTitle")}</h1>
-          <p className="mt-1 text-[14px] text-[#6f6862]">{t("admin.loginSub")}</p>
-          <label htmlFor="admin-password" className="sr-only">{t("admin.passwordPlaceholder")}</label>
-          <input
-            id="admin-password"
-            name="password"
-            type="password"
-            required
-            maxLength={256}
-            value={key}
-            onChange={(e) => setKey(e.target.value)}
-            placeholder={t("admin.passwordPlaceholder")}
-            autoComplete="current-password"
-            className="mt-5 w-full rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]"
-          />
-          <label htmlFor="admin-totp" className="sr-only">{t("admin.totpPlaceholder")}</label>
-          <input
-            id="admin-totp"
-            name="totp"
-            type="text"
-            value={totp}
-            onChange={(e) => setTotp(e.target.value.replace(/[^0-9 ]/g, "").slice(0, 7))}
-            placeholder={t("admin.totpPlaceholder")}
-            autoComplete="one-time-code"
-            inputMode="numeric"
-            className="mt-3 w-full rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]"
-          />
-          {errKey && <p role="alert" className="mt-3 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-[13.5px] font-bold text-red-700">{t(errKey)}</p>}
-          <button disabled={loading || !key} className="mt-4 w-full rounded-2xl bg-[#1c1917] py-3.5 text-[15.5px] font-extrabold text-white disabled:opacity-50">
-            {loading ? t("admin.checking") : t("admin.open")}
-          </button>
-        </form>
+        <section className="rounded-[28px] border border-[#e9ddc3] bg-white p-8 card-shadow" aria-labelledby="admin-dashboard-sign-in-title">
+          <p className="text-[12.5px] font-bold uppercase tracking-widest text-[#c7431f]">{t("adminIdentity.eyebrow")}</p>
+          <h1 id="admin-dashboard-sign-in-title" className="font-display mt-1 text-[28px] font-black">{t("adminIdentity.signInTitle")}</h1>
+          <p className="mt-1 text-[14px] leading-relaxed text-[#6f6862]">
+            {loading ? t("admin.checking") : t("adminIdentity.signInSub")}
+          </p>
+          {errKey && <p role="alert" className="mt-4 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-[13.5px] font-bold text-red-700">{t(errKey)}</p>}
+          <a href="/admin/sign-in" className="mt-5 block rounded-2xl bg-[#1c1917] py-3.5 text-center text-[15.5px] font-extrabold text-white hover:bg-black">
+            {t("adminIdentity.accountSignInLink")}
+          </a>
+          <a href="/admin/security" className="mt-3 block text-center text-[14px] font-bold text-[#c7431f]">
+            {t("adminIdentity.securityTitle")}
+          </a>
+        </section>
       </div>
     );
   }
@@ -818,6 +893,18 @@ export default function AdminPage() {
   const activeList = listState[tab];
   const activeRows = activeList.rows;
   const activeHasFilters = Boolean(activeList.q || activeList.filter || activeList.verificationStatus || activeList.sort !== DEFAULT_ADMIN_SORT[tab]);
+  const currentSiteAvailability = effectiveSiteAvailability(siteAvailability, clientNow ? new Date(clientNow) : new Date());
+  const availabilityModeLabel = (mode: SiteAvailabilityMode) =>
+    mode === "maintenance"
+      ? t("admin.availabilityMaintenance")
+      : mode === "emergency"
+        ? t("admin.availabilityEmergency")
+        : t("admin.availabilityOnline");
+  const availabilityStateLabel = currentSiteAvailability.isUnavailable
+    ? `${availabilityModeLabel(currentSiteAvailability.effectiveMode)} · ${t("admin.availabilityActiveNow")}`
+    : currentSiteAvailability.isScheduled
+      ? `${availabilityModeLabel(siteAvailability.mode)} · ${t("admin.availabilityScheduled")}`
+      : t("admin.availabilityOnlineNow");
 
   const formatDate = formatDateTime;
   const statusLabel = (status?: string | null) => (status ? localizeStatus(status) : "—");
@@ -1034,7 +1121,13 @@ export default function AdminPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-      <div className="mb-2 flex justify-end">
+      <div className="mb-2 flex flex-wrap justify-end gap-2">
+        <a
+          href="/admin/security"
+          className="rounded-full border border-[#e9ddc3] bg-white px-4 py-2 text-[13px] font-bold"
+        >
+          {t("adminIdentity.securityTitle")}
+        </a>
         <button
           onClick={lockAdmin}
           disabled={loading}
@@ -1124,6 +1217,87 @@ export default function AdminPage() {
           </label>
           <button type="submit" disabled={busyKey === "setting:update" || loading} className="rounded-xl bg-[#1c1917] px-5 py-2.5 text-[13.5px] font-bold text-white disabled:opacity-50 sm:self-end">
             {busyKey === "setting:update" ? t("dash.saving") : t("admin.saveSettings")}
+          </button>
+        </form>
+      </section>
+
+      <section className="mt-4 rounded-2xl border border-[#e9ddc3] bg-white p-4" aria-labelledby="website-availability-heading">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 id="website-availability-heading" className="text-[16px] font-extrabold">{t("admin.websiteAvailability")}</h2>
+            <p className="mt-1 max-w-3xl text-[13px] leading-relaxed text-[#6f6862]">{t("admin.websiteAvailabilityHelp")}</p>
+          </div>
+          <p className={`rounded-full px-3 py-1 text-[12px] font-bold ${currentSiteAvailability.isUnavailable ? "bg-red-100 text-red-800" : currentSiteAvailability.isScheduled ? "bg-amber-100 text-amber-900" : "bg-green-100 text-green-800"}`}>
+            {t("admin.availabilityCurrent")}: {availabilityStateLabel}
+          </p>
+        </div>
+        <form onSubmit={saveSiteAvailability} className="mt-3 grid gap-2 lg:grid-cols-[190px_1fr_210px_210px_auto]">
+          <label htmlFor="admin-availability-mode" className="grid gap-1 text-[12.5px] font-bold text-[#57534e]">
+            {t("admin.availabilityMode")}
+            <select
+              id="admin-availability-mode"
+              name="siteAvailabilityMode"
+              value={availabilityForm.mode}
+              onChange={(e) => {
+                availabilityDirtyRef.current = true;
+                setAvailabilityForm((current) => ({ ...current, mode: e.target.value as SiteAvailabilityMode }));
+              }}
+              className={adminControlClass}
+            >
+              {SITE_AVAILABILITY_MODES.map((mode) => (
+                <option key={mode} value={mode}>{availabilityModeLabel(mode)}</option>
+              ))}
+            </select>
+          </label>
+          <label htmlFor="admin-availability-message" className="grid gap-1 text-[12.5px] font-bold text-[#57534e]">
+            {t("admin.availabilityMessage")}
+            <input
+              id="admin-availability-message"
+              name="siteAvailabilityMessage"
+              type="text"
+              autoComplete="off"
+              maxLength={500}
+              value={availabilityForm.message}
+              placeholder={t("admin.availabilityMessagePlaceholder")}
+              onChange={(e) => {
+                availabilityDirtyRef.current = true;
+                setAvailabilityForm((current) => ({ ...current, message: e.target.value }));
+              }}
+              className={adminControlClass}
+            />
+          </label>
+          <label htmlFor="admin-availability-starts" className="grid gap-1 text-[12.5px] font-bold text-[#57534e]">
+            {t("admin.availabilityStarts")}
+            <input
+              id="admin-availability-starts"
+              name="siteAvailabilityStartsAt"
+              type="datetime-local"
+              autoComplete="off"
+              value={availabilityForm.startsAt}
+              onChange={(e) => {
+                availabilityDirtyRef.current = true;
+                setAvailabilityForm((current) => ({ ...current, startsAt: e.target.value }));
+              }}
+              className={adminControlClass}
+            />
+          </label>
+          <label htmlFor="admin-availability-ends" className="grid gap-1 text-[12.5px] font-bold text-[#57534e]">
+            {t("admin.availabilityEnds")}
+            <input
+              id="admin-availability-ends"
+              name="siteAvailabilityEndsAt"
+              type="datetime-local"
+              autoComplete="off"
+              value={availabilityForm.endsAt}
+              onChange={(e) => {
+                availabilityDirtyRef.current = true;
+                setAvailabilityForm((current) => ({ ...current, endsAt: e.target.value }));
+              }}
+              className={adminControlClass}
+            />
+          </label>
+          <button type="submit" disabled={busyKey === "setting:availability" || loading} className="rounded-xl bg-[#1c1917] px-5 py-2.5 text-[13.5px] font-bold text-white disabled:opacity-50 lg:self-end">
+            {busyKey === "setting:availability" ? t("dash.saving") : t("admin.saveAvailability")}
           </button>
         </form>
       </section>
@@ -1274,6 +1448,9 @@ export default function AdminPage() {
                     <td className="p-4"><StatusPill status={campaignExpired ? "expired" : c.status} /></td>
                     <td className="p-4">
                       <div className="flex max-w-[220px] flex-wrap gap-1.5">
+                        {c.publicLive === true && !campaignExpired && (
+                          <LivePageLink href={`/campaigns/${c.id}`}>{t("detail.viewCampaign")}</LivePageLink>
+                        )}
                         {!deadlinePassed && c.status !== "open" && (
                           <ActionButton tone="primary" disabled={busy} onClick={() => moderate("campaign", c.id, "approve")}>{t("admin.approveOpen")}</ActionButton>
                         )}
@@ -1318,6 +1495,7 @@ export default function AdminPage() {
               {creators.map((c: any) => {
                 const busy = busyKey.startsWith(`creator:${c.id}:`);
                 const followerValue = verifiedFollowers[c.id] ?? String(c.verifiedFollowers ?? c.followers ?? 0);
+                const creatorLive = c.publicLive === true;
                 return (
                   <tr key={c.id} className="border-b border-[#faf3e0] align-top">
                     <td className="max-w-[220px] p-4">
@@ -1369,6 +1547,7 @@ export default function AdminPage() {
                     <td className="p-4"><StatusPill status={c.status} /></td>
                     <td className="p-4">
                       <div className="flex max-w-[220px] flex-wrap gap-1.5">
+                        {creatorLive && <LivePageLink href={`/creators/${c.id}`}>{t("detail.viewCreator")}</LivePageLink>}
                         {c.status !== "approved" && c.status !== "incomplete" && (
                           <ActionButton
                             tone="primary"

@@ -1,0 +1,2 @@
+ALTER TABLE "admin_sessions" ADD COLUMN "mfa_verified_at" timestamp;--> statement-breakpoint
+ALTER TABLE "admin_sessions" ADD CONSTRAINT "admin_sessions_mfa_verified_check" CHECK ("admin_sessions"."mfa_verified_at" is null or "admin_sessions"."mfa_verified_at" >= "admin_sessions"."created_at");

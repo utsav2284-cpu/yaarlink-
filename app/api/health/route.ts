@@ -1,9 +1,9 @@
+import { requireAdminAccess } from "@/backend/admin-access";
 import {
-  ADMIN_COOKIE,
-  isAdmin,
-  isAdminSessionUnavailableError,
-  logAdminSessionUnavailable,
-} from "@/backend/admin";
+  ADMIN_ACCOUNT_COOKIE,
+  isAdminIdentityUnavailableError,
+  logAdminIdentityUnavailable,
+} from "@/backend/admin-identity";
 import { checkDatabaseHealth } from "@/backend/db/health";
 import {
   getBearerToken,
@@ -48,12 +48,16 @@ async function getDiagnosticAccess(request: Request): Promise<DiagnosticAccessRe
 
   // Query parameters—including the historical `diag` cache-buster—never grant
   // access. A valid, database-revocable admin session is the browser path.
-  if (!hasCookie(request.headers.get("cookie"), ADMIN_COOKIE)) return { access: "public", via: null };
+  if (!hasCookie(request.headers.get("cookie"), ADMIN_ACCOUNT_COOKIE)) {
+    return { access: "public", via: null };
+  }
 
   try {
-    return (await isAdmin()) ? { access: "authorized", via: "admin-session" } : { access: "public", via: null };
+    return (await requireAdminAccess("system.health.view", request))
+      ? { access: "authorized", via: "admin-session" }
+      : { access: "public", via: null };
   } catch (error) {
-    if (isAdminSessionUnavailableError(error)) logAdminSessionUnavailable(error, request);
+    if (isAdminIdentityUnavailableError(error)) logAdminIdentityUnavailable(error, request);
     return { access: "public", via: null };
   }
 }

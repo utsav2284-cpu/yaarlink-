@@ -17,9 +17,17 @@
     "db:check": "drizzle-kit check --config=drizzle.config.json",
     "db:generate": "drizzle-kit generate --config=drizzle.config.json",
     "db:bootstrap": "node scripts/database-bootstrap.mjs",
-    "db:bootstrap:verify": "node scripts/database-bootstrap.mjs --verify-write"
+    "db:bootstrap:verify": "node scripts/database-bootstrap.mjs --verify-write",
+    "local:db:up": "docker compose up -d db",
+    "local:db:down": "docker compose down",
+    "local:db:logs": "docker compose logs -f db",
+    "local:services": "node scripts/local-dev-services.mjs",
+    "local:bootstrap": "node --env-file=.env.local scripts/database-bootstrap.mjs --verify-write",
+    "admin:bootstrap-owner": "node --env-file=.env.local scripts/admin-bootstrap-owner.mjs"
   },
   "dependencies": {
+    "@simplewebauthn/browser": "14.0.0",
+    "@simplewebauthn/server": "14.0.3",
     "bcryptjs": "3.0.3",
     "drizzle-orm": "0.45.4",
     "next": "16.4.3",

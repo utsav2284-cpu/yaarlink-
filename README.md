@@ -65,7 +65,7 @@ Never use `sslmode=no-verify`, `disable`, `prefer`, `require`, or `verify-ca` fo
 3. Set:
    - Install Command: `npm ci`
    - Build Command: `npm run build`
-   - Output Directory: leave as the Next.js default (do not set a custom `dist`, `out`, Cloudflare/OpenNext, or other adapter output)
+   - Output Directory: leave as the Next.js default (do not set a custom `dist`, `out`, or other adapter output)
    - Production Branch: `main`
 4. In **Settings → Environment Variables**, add these server-side values for Production:
 
@@ -73,13 +73,14 @@ Never use `sslmode=no-verify`, `disable`, `prefer`, `require`, or `verify-ca` fo
 |---|---|
 | `DATABASE_URL` | Supabase Transaction pooler URL with `sslmode=verify-full` |
 | `DATABASE_CA_CERT` | Complete Supabase root-certificate PEM downloaded in step 2 |
-| `ADMIN_PASSWORD` | Unique passphrase of at least 16 characters |
 | `SESSION_SECRET` | Fresh output from `openssl rand -hex 32` |
 | `ADMIN_SESSION_SECRET` | A different fresh output from `openssl rand -hex 32` |
 | `RESEND_API_KEY` | Resend API key |
 | `EMAIL_FROM` | Verified sender, e.g. `YaarLink <no-reply@theyaar.com>` |
 
-Optional variables are documented in `.env.example`: `APP_URL`, `ADMIN_TOTP_SECRET`, `BOT_CHALLENGE_SECRET`, `HEALTH_DIAGNOSTIC_TOKEN`, `PWNED_PASSWORDS_RANGE_URL`, and `SLOW_QUERY_THRESHOLD_MS`.
+Optional variables are documented in `.env.example`: `APP_URL`, `ADMIN_MFA_ENCRYPTION_SECRET`, `BOT_CHALLENGE_SECRET`, `HEALTH_DIAGNOSTIC_TOKEN`, `PWNED_PASSWORDS_RANGE_URL`, and `SLOW_QUERY_THRESHOLD_MS`.
+
+Administrator access is database-backed and individual: sign in at `/admin/sign-in`, complete mandatory MFA at `/admin/security`, and only an authorized role reaches its dashboard. The retired `ADMIN_PASSWORD` and `ADMIN_TOTP_SECRET` variables are not read by this code. During a production transition, do **not** delete existing production values until the unified-login build and its database migrations have been deployed and the database Super Admin sign-in/MFA path has been verified; retain them only as rollback configuration for the previous build, then remove them under an approved change. `ADMIN_SESSION_SECRET` is different and remains required to sign database administrator sessions.
 
 The server refuses to start when a required auth secret is missing, weak, copied from `.env.example`, or shared. The app needs no project-defined `NEXT_PUBLIC_*` variables, and the build fails if an unapproved or secret-like public variable name is configured. Signup also fails closed until the two email settings are present and the sending domain is verified in Resend.
 
@@ -102,7 +103,7 @@ HTTPS certificates are provisioned by Vercel automatically.
 - A page response includes an enforcing `Content-Security-Policy` header (not `Content-Security-Policy-Report-Only`) and a `Reporting-Endpoints` header
 - Sign up as a brand → verify the emailed link → create a campaign → it appears on your dashboard with the budget 🔒
 - Sign up as a creator (another email) → verify the emailed link → apply to the campaign → the brand sees it on their dashboard
-- `https://www.theyaar.com/admin` → your `ADMIN_PASSWORD` → all data, budgets and contacts
+- `https://www.theyaar.com/admin/sign-in` → the administrator's own registered email/password → mandatory MFA → the role-authorized dashboard
 - Contact page → WhatsApp / Call / Email / Instagram all open on your phone
 
 Logs: Vercel → your project → **Logs**. Application errors are one-line JSON with `level`, a stable `event`, `route`/`component`, and `requestId`; the same request ID is returned in the `x-request-id` response header. CSP violations use the `security.csp_report` event after being sanitized by `/api/security/csp-report`. A malformed public contact/social entry in `config/site.ts` produces a `startup.site_configuration_warning` with field/code pairs only (never the values), and the affected link builder returns no link instead of a broken one. See [`docs/OBSERVABILITY.md`](./docs/OBSERVABILITY.md) for slow-query logging, external log-drain setup, and uptime-monitor configuration.
@@ -114,7 +115,7 @@ Logs: Vercel → your project → **Logs**. Application errors are one-line JSON
 | What | Where |
 |---|---|
 | Phone, WhatsApp, email, Instagram, city, domain | `config/site.ts` |
-| Admin password and other secrets | Vercel → Settings → Environment Variables (redeploy after changing them) |
+| Administrator accounts | Restricted first-owner setup, then individual invitations under Admin Security; server secrets stay in Vercel → Settings → Environment Variables |
 | All data | `/admin` on your site, or Supabase → Table Editor |
 | English / Hindi / Punjabi text | `frontend/i18n/locales/en.ts`, `hi.ts`, and `pa.ts` |
 | Categories, languages, formats | `shared/constants.ts` |

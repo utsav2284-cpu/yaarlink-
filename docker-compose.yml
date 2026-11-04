@@ -1,0 +1,25 @@
+# Local-only development database. It binds to loopback and uses disposable
+# credentials that must never be reused outside this local stack.
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: yaarlink-local-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: yaarlink_local_admin
+      POSTGRES_DB: yaarlink_local
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - yaarlink_local_pgdata:/var/lib/postgresql/data
+      - ./scripts/local-postgres-init.sql:/docker-entrypoint-initdb.d/001-local-app-role.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d yaarlink_local"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  yaarlink_local_pgdata:
+    name: yaarlink_local_pgdata

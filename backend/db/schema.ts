@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, foreignKey, index, jsonb, pgTable, uuid, text, integer, timestamp, unique, uniqueIndex } from "drizzle-orm/pg-core";
+import { bigint, check, foreignKey, index, jsonb, pgTable, uuid, text, integer, timestamp, unique, uniqueIndex, type AnyPgColumn } from "drizzle-orm/pg-core";
 
 export const users = pgTable(
   "users",
@@ -147,6 +147,282 @@ export const userSessions = pgTable(
     check("user_sessions_expires_after_creation_check", sql`${table.expiresAt} > ${table.createdAt}`),
     check("user_sessions_last_seen_check", sql`${table.lastSeenAt} >= ${table.createdAt}`),
     check("user_sessions_revoked_check", sql`${table.revokedAt} is null or ${table.revokedAt} >= ${table.createdAt}`),
+  ],
+);
+
+// Individual administrator identities are deliberately separate from public
+// brand/creator accounts. A public signup can never create one of these rows.
+// An invited administrator exists with no password hash until they personally
+// accept a one-time invitation and choose a password.
+export const adminUsers = pgTable(
+  "admin_users",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    email: text("email").notNull().unique(),
+    name: text("name"),
+    passwordHash: text("password_hash"),
+    role: text("role").notNull(),
+    status: text("status").notNull().default("invited"),
+    emailVerifiedAt: timestamp("email_verified_at"),
+    passwordChangedAt: timestamp("password_changed_at"),
+    lastLoginAt: timestamp("last_login_at"),
+    tokenVersion: integer("token_version").notNull().default(0),
+    createdByAdminId: uuid("created_by_admin_id").references((): AnyPgColumn => adminUsers.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex("admin_users_email_lower_key").on(sql`lower(${table.email})`),
+    index("admin_users_role_status_idx").on(table.role, table.status),
+    index("admin_users_created_at_idx").on(table.createdAt.desc()),
+    check(
+      "admin_users_role_check",
+      sql`${table.role} in ('super_admin', 'admin', 'operations_manager', 'verification_manager', 'support_manager', 'finance_manager', 'content_manager', 'analyst')`,
+    ),
+    check("admin_users_status_check", sql`${table.status} in ('invited', 'active', 'suspended', 'revoked')`),
+    check(
+      "admin_users_email_canonical_check",
+      sql`${table.email} = lower(btrim(${table.email})) and ${table.email} ~ '^[^[:space:]@]+@[^[:space:]@]+\\.[^[:space:]@]+$'`,
+    ),
+    check("admin_users_name_check", sql`${table.name} is null or char_length(btrim(${table.name})) between 1 and 120`),
+    check(
+      "admin_users_activation_check",
+      sql`(${table.status} = 'invited' and ${table.passwordHash} is null) or (${table.status} <> 'invited' and ${table.passwordHash} is not null and ${table.name} is not null and ${table.emailVerifiedAt} is not null)`,
+    ),
+    check("admin_users_token_version_check", sql`${table.tokenVersion} >= 0`),
+  ],
+);
+
+// Hashed, single-use administrator action links. Raw tokens exist only in the
+// email fragment and in memory long enough to send that email.
+export const adminAuthTokens = pgTable(
+  "admin_auth_tokens",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    adminUserId: uuid("admin_user_id")
+      .notNull()
+      .references(() => adminUsers.id, { onDelete: "cascade" }),
+    purpose: text("purpose").notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    expiresAt: timestamp("expires_at").notNull(),
+    usedAt: timestamp("used_at"),
+    revokedAt: timestamp("revoked_at"),
+    emailSendCount: integer("email_send_count").notNull().default(0),
+    lastEmailAttemptAt: timestamp("last_email_attempt_at").defaultNow().notNull(),
+    lastEmailSentAt: timestamp("last_email_sent_at"),
+    createdByAdminId: uuid("created_by_admin_id").references(() => adminUsers.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index("admin_auth_tokens_admin_purpose_idx").on(table.adminUserId, table.purpose, table.createdAt.desc()),
+    index("admin_auth_tokens_expires_at_idx").on(table.expiresAt),
+    check(
+      "admin_auth_tokens_purpose_check",
+      sql`${table.purpose} in ('owner_setup', 'admin_invitation', 'password_reset')`,
+    ),
+    check("admin_auth_tokens_token_hash_check", sql`${table.tokenHash} ~ '^[0-9a-f]{64}$'`),
+    check("admin_auth_tokens_email_send_count_check", sql`${table.emailSendCount} between 0 and 5`),
+    check("admin_auth_tokens_expires_after_creation_check", sql`${table.expiresAt} > ${table.createdAt}`),
+    check("admin_auth_tokens_used_check", sql`${table.usedAt} is null or ${table.usedAt} >= ${table.createdAt}`),
+    check("admin_auth_tokens_revoked_check", sql`${table.revokedAt} is null or ${table.revokedAt} >= ${table.createdAt}`),
+  ],
+);
+
+// Database-backed administrator browser sessions. The signed cookie carries
+// only this row's ID plus the administrator/token version, so individual
+// devices and all sessions can be revoked immediately.
+export const adminSessions = pgTable(
+  "admin_sessions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    adminUserId: uuid("admin_user_id")
+      .notNull()
+      .references(() => adminUsers.id, { onDelete: "cascade" }),
+    tokenVersion: integer("token_version").notNull(),
+    userAgent: text("user_agent"),
+    ipAddress: text("ip_address"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+    // Null means password authentication succeeded but this browser has not
+    // yet completed TOTP/recovery/passkey verification or MFA enrolment.
+    mfaVerifiedAt: timestamp("mfa_verified_at"),
+    expiresAt: timestamp("expires_at").notNull(),
+    revokedAt: timestamp("revoked_at"),
+  },
+  (table) => [
+    index("admin_sessions_admin_last_seen_idx").on(table.adminUserId, table.lastSeenAt.desc()),
+    index("admin_sessions_admin_active_idx").on(table.adminUserId, table.revokedAt, table.expiresAt),
+    index("admin_sessions_expires_at_idx").on(table.expiresAt),
+    check("admin_sessions_token_version_check", sql`${table.tokenVersion} >= 0`),
+    check("admin_sessions_user_agent_check", sql`${table.userAgent} is null or char_length(${table.userAgent}) <= 500`),
+    check("admin_sessions_ip_address_check", sql`${table.ipAddress} is null or char_length(${table.ipAddress}) <= 120`),
+    check("admin_sessions_expires_after_creation_check", sql`${table.expiresAt} > ${table.createdAt}`),
+    check("admin_sessions_last_seen_check", sql`${table.lastSeenAt} >= ${table.createdAt}`),
+    check("admin_sessions_mfa_verified_check", sql`${table.mfaVerifiedAt} is null or ${table.mfaVerifiedAt} >= ${table.createdAt}`),
+    check("admin_sessions_revoked_check", sql`${table.revokedAt} is null or ${table.revokedAt} >= ${table.createdAt}`),
+  ],
+);
+
+// TOTP secrets are stored only as authenticated ciphertext. A credential is
+// not considered enrolled until verified_at is set by a correct first code.
+export const adminTotpCredentials = pgTable(
+  "admin_totp_credentials",
+  {
+    adminUserId: uuid("admin_user_id")
+      .primaryKey()
+      .references(() => adminUsers.id, { onDelete: "cascade" }),
+    secretCiphertext: text("secret_ciphertext").notNull(),
+    secretIv: text("secret_iv").notNull(),
+    verifiedAt: timestamp("verified_at"),
+    lastCounter: integer("last_counter").notNull().default(-1),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    check("admin_totp_credentials_ciphertext_check", sql`char_length(${table.secretCiphertext}) between 1 and 1000`),
+    check("admin_totp_credentials_iv_check", sql`${table.secretIv} ~ '^[A-Za-z0-9_-]{1,64}$'`),
+    check("admin_totp_credentials_counter_check", sql`${table.lastCounter} >= -1`),
+    check("admin_totp_credentials_verified_check", sql`${table.verifiedAt} is null or ${table.verifiedAt} >= ${table.createdAt}`),
+  ],
+);
+
+// Only purpose-separated SHA-256 hashes of one-time recovery codes are stored.
+export const adminRecoveryCodes = pgTable(
+  "admin_recovery_codes",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    adminUserId: uuid("admin_user_id")
+      .notNull()
+      .references(() => adminUsers.id, { onDelete: "cascade" }),
+    codeHash: text("code_hash").notNull().unique(),
+    usedAt: timestamp("used_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("admin_recovery_codes_admin_unused_idx").on(table.adminUserId, table.usedAt, table.createdAt.desc()),
+    check("admin_recovery_codes_hash_check", sql`${table.codeHash} ~ '^[0-9a-f]{64}$'`),
+    check("admin_recovery_codes_used_check", sql`${table.usedAt} is null or ${table.usedAt} >= ${table.createdAt}`),
+  ],
+);
+
+// WebAuthn public credentials only; private keys never leave the user's
+// authenticator. Registration/assertion is implemented in the passkey slice.
+export const adminPasskeys = pgTable(
+  "admin_passkeys",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    adminUserId: uuid("admin_user_id")
+      .notNull()
+      .references(() => adminUsers.id, { onDelete: "cascade" }),
+    credentialId: text("credential_id").notNull().unique(),
+    publicKey: text("public_key").notNull(),
+    // WebAuthn signature counters are unsigned 32-bit values, so a signed
+    // PostgreSQL integer is not wide enough for every authenticator.
+    counter: bigint("counter", { mode: "number" }).notNull().default(0),
+    transports: jsonb("transports").notNull().default(sql`'[]'::jsonb`),
+    deviceName: text("device_name"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    lastUsedAt: timestamp("last_used_at"),
+  },
+  (table) => [
+    index("admin_passkeys_admin_created_idx").on(table.adminUserId, table.createdAt.desc()),
+    // PostgreSQL regex repetition counts are capped at 255, so enforce the
+    // larger WebAuthn bounds with char_length plus an unbounded character set.
+    check(
+      "admin_passkeys_credential_id_check",
+      sql`char_length(${table.credentialId}) between 1 and 512 and ${table.credentialId} ~ '^[A-Za-z0-9_-]+$'`,
+    ),
+    check(
+      "admin_passkeys_public_key_check",
+      sql`char_length(${table.publicKey}) between 1 and 8192 and ${table.publicKey} ~ '^[A-Za-z0-9_-]+$'`,
+    ),
+    check("admin_passkeys_counter_check", sql`${table.counter} >= 0`),
+    check("admin_passkeys_transports_check", sql`jsonb_typeof(${table.transports}) = 'array' and pg_column_size(${table.transports}) <= 1024`),
+    check("admin_passkeys_device_name_check", sql`${table.deviceName} is null or char_length(${table.deviceName}) <= 120`),
+    check("admin_passkeys_last_used_check", sql`${table.lastUsedAt} is null or ${table.lastUsedAt} >= ${table.createdAt}`),
+  ],
+);
+
+// One-time WebAuthn ceremony state. Only a domain-separated SHA-256 hash of
+// the browser-visible challenge is persisted; a challenge is bound to one
+// administrator, one database session, one purpose, and a five-minute expiry.
+export const adminWebauthnChallenges = pgTable(
+  "admin_webauthn_challenges",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    adminUserId: uuid("admin_user_id")
+      .notNull()
+      .references(() => adminUsers.id, { onDelete: "cascade" }),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => adminSessions.id, { onDelete: "cascade" }),
+    purpose: text("purpose").notNull(),
+    challengeHash: text("challenge_hash").notNull().unique(),
+    expiresAt: timestamp("expires_at").notNull(),
+    usedAt: timestamp("used_at"),
+    revokedAt: timestamp("revoked_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("admin_webauthn_challenges_admin_purpose_created_idx").on(
+      table.adminUserId,
+      table.sessionId,
+      table.purpose,
+      table.createdAt.desc(),
+    ),
+    index("admin_webauthn_challenges_expires_at_idx").on(table.expiresAt),
+    check(
+      "admin_webauthn_challenges_purpose_check",
+      sql`${table.purpose} in ('passkey_registration', 'passkey_authentication')`,
+    ),
+    check("admin_webauthn_challenges_hash_check", sql`${table.challengeHash} ~ '^[0-9a-f]{64}$'`),
+    check("admin_webauthn_challenges_expiry_check", sql`${table.expiresAt} > ${table.createdAt}`),
+    check(
+      "admin_webauthn_challenges_terminal_check",
+      sql`(${table.usedAt} is null or ${table.usedAt} >= ${table.createdAt}) and (${table.revokedAt} is null or ${table.revokedAt} >= ${table.createdAt}) and not (${table.usedAt} is not null and ${table.revokedAt} is not null)`,
+    ),
+  ],
+);
+
+// Append-only authentication/security history. Administrator IDs deliberately
+// have no foreign key so history remains attributable after an account row is
+// removed by a database operator; the runtime role receives SELECT/INSERT.
+export const adminSecurityEvents = pgTable(
+  "admin_security_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    adminUserId: uuid("admin_user_id"),
+    actorAdminId: uuid("actor_admin_id"),
+    eventType: text("event_type").notNull(),
+    outcome: text("outcome").notNull().default("success"),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("admin_security_events_admin_created_idx").on(table.adminUserId, table.createdAt.desc()),
+    index("admin_security_events_actor_created_idx").on(table.actorAdminId, table.createdAt.desc()),
+    index("admin_security_events_type_created_idx").on(table.eventType, table.createdAt.desc()),
+    index("admin_security_events_created_idx").on(table.createdAt.desc()),
+    check("admin_security_events_type_check", sql`char_length(${table.eventType}) between 1 and 100`),
+    check("admin_security_events_outcome_check", sql`${table.outcome} in ('success', 'failure')`),
+    check("admin_security_events_ip_address_check", sql`${table.ipAddress} is null or char_length(${table.ipAddress}) <= 120`),
+    check("admin_security_events_user_agent_check", sql`${table.userAgent} is null or char_length(${table.userAgent}) <= 500`),
+    check(
+      "admin_security_events_metadata_check",
+      sql`jsonb_typeof(${table.metadata}) = 'object' and pg_column_size(${table.metadata}) <= 4096`,
+    ),
   ],
 );
 
@@ -555,6 +831,8 @@ export const adminAuditLogs = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     action: text("action").notNull(),
     outcome: text("outcome").notNull().default("success"),
+    // No FK: audit attribution must remain after an administrator is removed.
+    actorAdminId: uuid("actor_admin_id"),
     entity: text("entity"),
     entityId: uuid("entity_id"),
     details: text("details"),
@@ -564,6 +842,7 @@ export const adminAuditLogs = pgTable(
   (table) => [
     index("admin_audit_logs_created_at_idx").on(table.createdAt.desc()),
     index("admin_audit_logs_action_created_at_idx").on(table.action, table.createdAt.desc()),
+    index("admin_audit_logs_actor_created_at_idx").on(table.actorAdminId, table.createdAt.desc()),
     index("admin_audit_logs_entity_idx").on(table.entity, table.entityId, table.createdAt.desc()),
     check("admin_audit_logs_action_check", sql`char_length(${table.action}) between 1 and 100`),
     check("admin_audit_logs_outcome_check", sql`${table.outcome} in ('success', 'failure')`),
@@ -681,6 +960,14 @@ export type AppUser = typeof users.$inferSelect;
 export type PendingSignup = typeof pendingSignups.$inferSelect;
 export type AccountToken = typeof accountTokens.$inferSelect;
 export type UserSession = typeof userSessions.$inferSelect;
+export type AdminUser = typeof adminUsers.$inferSelect;
+export type AdminAuthToken = typeof adminAuthTokens.$inferSelect;
+export type AdminSession = typeof adminSessions.$inferSelect;
+export type AdminTotpCredential = typeof adminTotpCredentials.$inferSelect;
+export type AdminRecoveryCode = typeof adminRecoveryCodes.$inferSelect;
+export type AdminPasskey = typeof adminPasskeys.$inferSelect;
+export type AdminWebauthnChallenge = typeof adminWebauthnChallenges.$inferSelect;
+export type AdminSecurityEvent = typeof adminSecurityEvents.$inferSelect;
 export type Application = typeof applications.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
 export type RateLimitBucket = typeof rateLimitBuckets.$inferSelect;

@@ -1,7 +1,12 @@
 import { logRouteError } from "@/backend/observability";
 import { db } from "@/backend/db";
 import { adminAuditLogs, applications, auditEvents, brands, campaigns, contacts, creators, reports, userSessions, users } from "@/backend/db/schema";
-import { adminSessionUnavailableResponse, isAdmin, isAdminSessionUnavailableError, logAdminSessionUnavailable } from "@/backend/admin";
+import { requireMonolithAdminAccess } from "@/backend/admin-access";
+import {
+  adminIdentityUnavailableResponse,
+  isAdminIdentityUnavailableError,
+  logAdminIdentityUnavailable,
+} from "@/backend/admin-identity";
 import { logAdminAudit } from "@/backend/admin-audit";
 import { attachApplicationStatusHistory } from "@/backend/application-history";
 import { and, eq, gt, inArray, isNull, sql } from "drizzle-orm";
@@ -43,6 +48,9 @@ import { alias } from "drizzle-orm/pg-core";
 import { parseCreatorProfileSnapshot } from "@/backend/application-snapshot";
 import { expireOverdueCampaigns } from "@/backend/campaign-lifecycle";
 import { getCampaignExpiryPolicy } from "@/backend/platform-settings";
+import { getSiteAvailabilitySettings } from "@/backend/site-availability";
+import { effectiveSiteAvailability } from "@/shared/site-availability";
+import { isCampaignPubliclyLive, isCreatorPubliclyLive } from "@/backend/public-listings";
 
 export const dynamic = "force-dynamic";
 
@@ -251,7 +259,10 @@ async function loadCampaigns(params: URLSearchParams) {
     db.select().from(campaigns).where(pageWhere).orderBy(...sortOrder(keys)).limit(listing.limit + 1),
   ]);
   const page = paginateRows(rowsWithExtra, { limit: listing.limit, total: Number(totalRow?.count ?? 0), sort: listing.sort, scope, keys });
-  return { rows: page.items.map(canonicalCampaign), pagination: page.pagination };
+  return {
+    rows: page.items.map((row) => ({ ...canonicalCampaign(row), publicLive: isCampaignPubliclyLive(row) })),
+    pagination: page.pagination,
+  };
 }
 
 function creatorSortKeys(sort: string): Array<SortKey<CreatorSortRow>> {
@@ -353,7 +364,10 @@ async function loadCreators(params: URLSearchParams) {
     db.select().from(creators).where(pageWhere).orderBy(...sortOrder(keys)).limit(listing.limit + 1),
   ]);
   const page = paginateRows(rowsWithExtra, { limit: listing.limit, total: Number(totalRow?.count ?? 0), sort: listing.sort, scope, keys });
-  return { rows: page.items.map(canonicalCreator), pagination: page.pagination };
+  return {
+    rows: page.items.map((row) => ({ ...canonicalCreator(row), publicLive: isCreatorPubliclyLive(row) })),
+    pagination: page.pagination,
+  };
 }
 
 function applicationSortKeys(sort: string): Array<SortKey<ApplicationSortRow>> {
@@ -1091,7 +1105,7 @@ async function exportAdminEntity(req: Request, entity: AdminEntity, params: URLS
 // aggregate counts for every collection. Full rows include budgets/contacts.
 export async function GET(req: Request) {
   try {
-    if (!(await isAdmin())) return Response.json({ error: "Not allowed", code: "unauthorized" }, { status: 401, headers: NO_STORE });
+    if (!(await requireMonolithAdminAccess(req))) return Response.json({ error: "Not allowed", code: "unauthorized" }, { status: 401, headers: NO_STORE });
     const params = new URL(req.url).searchParams;
     const rawEntity = params.get("entity")?.trim() || "campaigns";
     const entity = (rawEntity === "audit" ? "auditLogs" : rawEntity) as AdminEntity;
@@ -1106,12 +1120,26 @@ export async function GET(req: Request) {
     }
 
     const page = await loadAdminEntity(entity, params);
-    const [counts, platformSettings] = await Promise.all([loadAdminCounts(), getCampaignExpiryPolicy()]);
-    return Response.json({ entity, [entity]: page.rows, pagination: page.pagination, counts, platformSettings }, { headers: NO_STORE });
+    const [counts, platformSettings, siteAvailabilitySettings] = await Promise.all([
+      loadAdminCounts(),
+      getCampaignExpiryPolicy(),
+      getSiteAvailabilitySettings(),
+    ]);
+    return Response.json(
+      {
+        entity,
+        [entity]: page.rows,
+        pagination: page.pagination,
+        counts,
+        platformSettings,
+        siteAvailability: effectiveSiteAvailability(siteAvailabilitySettings),
+      },
+      { headers: NO_STORE },
+    );
   } catch (e) {
-    if (isAdminSessionUnavailableError(e)) {
-      logAdminSessionUnavailable(e, req);
-      return adminSessionUnavailableResponse(NO_STORE);
+    if (isAdminIdentityUnavailableError(e)) {
+      logAdminIdentityUnavailable(e, req);
+      return adminIdentityUnavailableResponse(NO_STORE);
     }
     if (isListingQueryError(e)) {
       return Response.json({ error: e.message, code: e.code }, { status: e.status, headers: NO_STORE });
