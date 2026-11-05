@@ -15,7 +15,17 @@ test("verified Supabase transaction-pooler URI accepts the custom role/ref usern
   assert.doesNotMatch(config.connectionString, /sslmode=/i);
 });
 
-test("pooler URL with an unescaped shell wrapper is rejected as invalid", () => {
+test("a single matching quote pair around the pooler URI is normalized safely", () => {
+  for (const quote of ["'", '"']) {
+    const config = getDatabasePoolConfig({
+      DATABASE_URL: `${quote}${previewPoolerUrl}${quote}`,
+      DATABASE_CA_CERT: pem,
+    });
+    assert.match(config.connectionString, /^postgresql:\/\/yaarlink_app\.rjxpvkzlwhabuntfvkct:/);
+  }
+});
+
+test("a command-line psql wrapper is rejected as invalid", () => {
   assert.throws(
     () => getDatabasePoolConfig({ DATABASE_URL: `psql '${previewPoolerUrl}'`, DATABASE_CA_CERT: pem }),
     /valid PostgreSQL connection URL/,

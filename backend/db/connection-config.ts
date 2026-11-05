@@ -38,6 +38,24 @@ function withPoolDefaults(config: PoolConfig): PoolConfig {
   return { ...DATABASE_POOL_DEFAULTS, ...config };
 }
 
+/**
+ * Vercel's secret editor normally stores the URI verbatim, but connection
+ * strings copied from a shell/.env example are sometimes entered with one
+ * matching pair of surrounding quotes. Remove only that unambiguous wrapper;
+ * never rewrite the URI's credentials, hostname, query, or SSL parameters.
+ */
+export function normalizeDatabaseConnectionString(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length < 2) return trimmed;
+  const first = trimmed[0];
+  const last = trimmed[trimmed.length - 1];
+  if ((first === "'" || first === '"') && last === first) {
+    const unwrapped = trimmed.slice(1, -1).trim();
+    if (/^postgres(?:ql)?:\/\//i.test(unwrapped)) return unwrapped;
+  }
+  return trimmed;
+}
+
 function isLoopbackHostname(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
   return host === "localhost" || host.endsWith(".localhost") || host === "127.0.0.1" || host === "::1";
@@ -82,8 +100,9 @@ function configWithCa(url: URL, ca: string): PoolConfig {
 }
 
 export function getDatabasePoolConfig(env: DatabaseEnvironment = process.env): PoolConfig {
-  const connectionString = env.DATABASE_URL;
-  if (!connectionString) throw new Error("DATABASE_URL is required");
+  const configuredConnectionString = env.DATABASE_URL;
+  if (!configuredConnectionString) throw new Error("DATABASE_URL is required");
+  const connectionString = normalizeDatabaseConnectionString(configuredConnectionString);
 
   let url: URL;
   try {

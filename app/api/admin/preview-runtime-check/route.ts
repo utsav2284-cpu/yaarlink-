@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import type { PoolClient } from "pg";
 import { getClientIp } from "@/backend/rate-limit";
 import { getPool } from "@/backend/db";
+import { normalizeDatabaseConnectionString } from "@/backend/db/connection-config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -110,7 +111,7 @@ function inspectDatabaseConfiguration() {
   }
 
   try {
-    const url = new URL(connectionString);
+    const url = new URL(normalizeDatabaseConnectionString(connectionString));
     const username = decodeURIComponent(url.username).toLowerCase();
     const host = url.hostname.toLowerCase();
     const projectMatch = host.includes(EXPECTED_PREVIEW_REF) || username.split(/[.@]/).includes(EXPECTED_PREVIEW_REF);
