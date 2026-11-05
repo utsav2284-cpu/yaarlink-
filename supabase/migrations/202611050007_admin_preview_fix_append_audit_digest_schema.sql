@@ -1,0 +1,5 @@
+-- Applied to Preview as admin_preview_fix_append_audit_digest_schema (20261105195948).
+-- BUG: audit.append_audit called digest() unqualified with search_path=''; pgcrypto lives in
+-- the extensions schema, so every audit write failed. Body recreated identically except
+-- extensions.digest(...) (hash bytes unchanged). Execute remains service_role-only.
+-- Full body: see live definition via pg_get_functiondef in the Preview database.
