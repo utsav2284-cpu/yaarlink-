@@ -17,7 +17,6 @@ export const ROUTE_TITLE_KEYS: Readonly<Record<string, TranslationKey>> = {
   "/contact": "nav.contact",
   "/dashboard": "dash.title",
   "/account": "account.title",
-  "/admin": "admin.overview",
   "/login": "auth.login",
   "/signup": "nav.signup",
   "/forgot-password": "auth.forgotTitle",
@@ -46,7 +45,6 @@ export const ROUTE_DESCRIPTION_KEYS: Readonly<Record<string, TranslationKey>> = 
   "/contact": "cont.sub",
   "/dashboard": "dash.workspaceHint",
   "/account": "account.subtitle",
-  "/admin": "admin.overviewSub",
   "/login": "auth.loginSub",
   "/signup": "auth.signupSub",
   "/forgot-password": "auth.forgotSub",
@@ -64,7 +62,6 @@ export const ROUTE_DESCRIPTION_KEYS: Readonly<Record<string, TranslationKey>> = 
 export const NO_INDEX_ROUTES: ReadonlySet<string> = new Set([
   "/dashboard",
   "/account",
-  "/admin",
   "/login",
   "/signup",
   "/forgot-password",

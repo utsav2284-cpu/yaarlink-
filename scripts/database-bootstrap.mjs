@@ -8,14 +8,6 @@ const { Pool } = pg;
 const EXPECTED_TABLES = [
   "account_tokens",
   "admin_audit_logs",
-  "admin_auth_tokens",
-  "admin_passkeys",
-  "admin_recovery_codes",
-  "admin_security_events",
-  "admin_sessions",
-  "admin_totp_credentials",
-  "admin_users",
-  "admin_webauthn_challenges",
   "applications",
   "audit_events",
   "auth_failure_lockouts",
@@ -33,7 +25,7 @@ const EXPECTED_TABLES = [
 ];
 
 const FULL_ACCESS_TABLES = EXPECTED_TABLES.filter(
-  (table) => table !== "admin_audit_logs" && table !== "admin_security_events" && table !== "audit_events",
+  (table) => table !== "admin_audit_logs" && table !== "audit_events",
 );
 
 const verifyWrite = process.argv.includes("--verify-write");
@@ -132,7 +124,6 @@ async function assertRoleAndGrants(client) {
 
   const expectedRestrictedPrivileges = new Map([
     ["admin_audit_logs", new Set(["SELECT", "INSERT"])],
-    ["admin_security_events", new Set(["SELECT", "INSERT"])],
     ["audit_events", new Set(["SELECT", "INSERT", "UPDATE"])],
   ]);
   for (const [table, allowedPrivileges] of expectedRestrictedPrivileges) {
@@ -227,13 +218,7 @@ async function assertTablesRlsAndPolicies(client) {
     commandsByTable.get("admin_audit_logs")?.size === 2 &&
       commandsByTable.get("admin_audit_logs")?.has("r") &&
       commandsByTable.get("admin_audit_logs")?.has("a"),
-    "admin_audit_logs must have only SELECT and INSERT policies for yaarlink_app",
-  );
-  assert(
-    commandsByTable.get("admin_security_events")?.size === 2 &&
-      commandsByTable.get("admin_security_events")?.has("r") &&
-      commandsByTable.get("admin_security_events")?.has("a"),
-    "admin_security_events must have only SELECT and INSERT policies for yaarlink_app",
+    "legacy audit table must have only SELECT and INSERT policies for yaarlink_app",
   );
   assert(
     commandsByTable.get("audit_events")?.size === 3 &&
@@ -289,17 +274,6 @@ async function assertAppRoleWrites(pool) {
       client.query("DELETE FROM public.admin_audit_logs WHERE id = $1", [adminAudit.id]),
     );
 
-    const adminSecurityEvent = await one(
-      client,
-      "INSERT INTO public.admin_security_events (event_type) VALUES ('bootstrap.probe') RETURNING id",
-    );
-    assert(adminSecurityEvent?.id, "yaarlink_app could not insert an admin security-event probe");
-    await expectPermissionDenied(client, "UPDATE admin_security_events", () =>
-      client.query("UPDATE public.admin_security_events SET outcome = 'failure' WHERE id = $1", [adminSecurityEvent.id]),
-    );
-    await expectPermissionDenied(client, "DELETE admin_security_events", () =>
-      client.query("DELETE FROM public.admin_security_events WHERE id = $1", [adminSecurityEvent.id]),
-    );
 
     const auditEvent = await one(
       client,

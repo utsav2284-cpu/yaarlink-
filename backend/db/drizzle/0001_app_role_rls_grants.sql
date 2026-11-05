@@ -121,7 +121,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
 TO yaarlink_app;
 --> statement-breakpoint
 
--- Admin audit history is append-only for the runtime role.
+-- Legacy audit history is append-only for the runtime role.
 GRANT SELECT, INSERT ON TABLE public.admin_audit_logs TO yaarlink_app;
 --> statement-breakpoint
 

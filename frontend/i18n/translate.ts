@@ -1,7 +1,3 @@
-import {
-  ADMIN_ACCOUNT_PASSWORD_MAX_LENGTH,
-  ADMIN_ACCOUNT_PASSWORD_MIN_LENGTH,
-} from "@/shared/admin-password-policy";
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/shared/password-policy";
 import { formatNumberForLocale } from "./format";
 import type { Dictionary, TranslationKey } from "./types";
@@ -32,11 +28,9 @@ export function translateMessage(
   // Password copy must never drift from the policy enforced by the server,
   // so its bounds come from the same shared constants everywhere `t` is used.
   const resolvedValues: TranslationValues =
-    key === "adminIdentity.passwordPolicy"
-      ? { min: ADMIN_ACCOUNT_PASSWORD_MIN_LENGTH, max: ADMIN_ACCOUNT_PASSWORD_MAX_LENGTH, ...values }
-      : key === "auth.pwHint" || key === "auth.passwordPolicy" || key === "auth.pwdReqLength"
-        ? { min: PASSWORD_MIN_LENGTH, max: PASSWORD_MAX_LENGTH, ...values }
-        : values;
+    key === "auth.pwHint" || key === "auth.passwordPolicy" || key === "auth.pwdReqLength"
+      ? { min: PASSWORD_MIN_LENGTH, max: PASSWORD_MAX_LENGTH, ...values }
+      : values;
 
   return template.replace(/\{([A-Za-z0-9_]+)\}/g, (placeholder, name: string) => {
     if (!Object.prototype.hasOwnProperty.call(resolvedValues, name)) return placeholder;

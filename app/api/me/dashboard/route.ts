@@ -665,7 +665,7 @@ function outputBrandApplication(row: BrandApplicationRow) {
   const parsedSnapshot = parseCreatorProfileSnapshot(rawCreatorProfileSnapshot);
   // The stored snapshot is exposed to this brand only under the same
   // current public-profile gate as the live profile. This preserves the
-  // snapshot for reporting/admin/creator use without turning a private or
+  // snapshot for reporting and creator use without turning a private or
   // later-suspended profile into brand-visible profile data.
   const creatorProfileSnapshot = publicProfile ? parsedSnapshot : null;
   const currentCreatorProfile = creatorProfile

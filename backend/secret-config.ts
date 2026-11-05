@@ -15,7 +15,7 @@ export type SecretConfigurationProblem = {
   name: string;
   reason: SecretProblemReason;
 };
-export type SigningSecretName = "SESSION_SECRET" | "ADMIN_SESSION_SECRET" | "BOT_CHALLENGE_SECRET";
+export type SigningSecretName = "SESSION_SECRET" | "BOT_CHALLENGE_SECRET";
 
 export const SIGNING_SECRET_MIN_LENGTH = 32;
 export const SIGNING_SECRET_MAX_LENGTH = 512;
@@ -170,7 +170,7 @@ export function getSigningSecret(name: SigningSecretName, env: SecretEnvironment
 export function botChallengeSecretProblem(env: SecretEnvironment = process.env): SecretConfigurationProblem | null {
   const botSecret = env.BOT_CHALLENGE_SECRET;
   if (botSecret) {
-    if (botSecret === env.SESSION_SECRET || botSecret === env.ADMIN_SESSION_SECRET) {
+    if (botSecret === env.SESSION_SECRET) {
       return { name: "BOT_CHALLENGE_SECRET", reason: "shared" };
     }
     const problem = signingSecretProblem(botSecret);
@@ -178,20 +178,19 @@ export function botChallengeSecretProblem(env: SecretEnvironment = process.env):
   }
 
   if (!signingSecretProblem(env.SESSION_SECRET)) return null;
-  if (!signingSecretProblem(env.ADMIN_SESSION_SECRET) && env.ADMIN_SESSION_SECRET !== env.SESSION_SECRET) return null;
   return { name: "BOT_CHALLENGE_SECRET", reason: "missing" };
 }
 
 export function getBotChallengeSecret(env: SecretEnvironment = process.env): string {
   if (botChallengeSecretProblem(env)) return "";
-  return env.BOT_CHALLENGE_SECRET || env.SESSION_SECRET || env.ADMIN_SESSION_SECRET || "";
+  return env.BOT_CHALLENGE_SECRET || env.SESSION_SECRET || "";
 }
 
 /**
- * The health diagnostic credential is optional because a signed-in admin
- * session can already authorize detailed health output. When an operator
+ * The health diagnostic credential is optional; when configured, it authorizes
+ * detailed health output. When an operator
  * configures a bearer token for monitoring automation, it must be generated
- * key material and must not reuse any authentication secret/password.
+ * key material and must not reuse any authentication secret.
  */
 export function healthDiagnosticTokenProblem(
   env: SecretEnvironment = process.env,
@@ -201,7 +200,6 @@ export function healthDiagnosticTokenProblem(
 
   if (
     token === env.SESSION_SECRET ||
-    token === env.ADMIN_SESSION_SECRET ||
     token === env.BOT_CHALLENGE_SECRET
   ) {
     return { name: "HEALTH_DIAGNOSTIC_TOKEN", reason: "shared" };
@@ -217,10 +215,7 @@ export function getHealthDiagnosticToken(env: SecretEnvironment = process.env): 
 }
 
 /**
- * Validate every authentication secret needed by the deployed app. The
- * retired shared administrator password/TOTP environment variables are not
- * configuration inputs anymore; individual administrator credentials and
- * MFA secrets live in the database-backed identity system.
+ * Validate the authentication secrets needed by the deployed application.
  */
 export function collectServerSecretProblems(env: SecretEnvironment = process.env): SecretConfigurationProblem[] {
   const problems: SecretConfigurationProblem[] = [];
@@ -228,17 +223,8 @@ export function collectServerSecretProblems(env: SecretEnvironment = process.env
   const sessionProblem = signingSecretProblem(env.SESSION_SECRET);
   if (sessionProblem) problems.push({ name: "SESSION_SECRET", reason: sessionProblem });
 
-  if (!env.ADMIN_SESSION_SECRET) {
-    problems.push({ name: "ADMIN_SESSION_SECRET", reason: "missing" });
-  } else if (env.ADMIN_SESSION_SECRET === env.SESSION_SECRET) {
-    problems.push({ name: "ADMIN_SESSION_SECRET", reason: "shared" });
-  } else {
-    const problem = signingSecretProblem(env.ADMIN_SESSION_SECRET);
-    if (problem) problems.push({ name: "ADMIN_SESSION_SECRET", reason: problem });
-  }
-
   if (env.BOT_CHALLENGE_SECRET) {
-    if (env.BOT_CHALLENGE_SECRET === env.SESSION_SECRET || env.BOT_CHALLENGE_SECRET === env.ADMIN_SESSION_SECRET) {
+    if (env.BOT_CHALLENGE_SECRET === env.SESSION_SECRET) {
       problems.push({ name: "BOT_CHALLENGE_SECRET", reason: "shared" });
     } else {
       const problem = signingSecretProblem(env.BOT_CHALLENGE_SECRET);

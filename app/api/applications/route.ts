@@ -198,8 +198,7 @@ type EmailNotice = {
   decisionNote?: string | null;
 };
 
-// No GET handler here by design: admin application reads live in
-// /api/admin/data?entity=applications, and account owners read through
+// No GET handler here by design; account owners read applications through
 // /api/me/dashboard and /api/me/applications. This route only creates and
 // updates applications.
 export async function POST(req: Request) {
