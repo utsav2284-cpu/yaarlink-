@@ -108,6 +108,8 @@ Purpose: one-time first-owner bootstrap + permanent lockout.
 | `created_at`, `updated_at` | `timestamptz` | |
 
 Rule (future `SECURITY DEFINER` function `admin.claim_first_owner()`, §8.4): succeeds only if `owner_claimed_at IS NULL`, caller is AAL2, caller has a verified TOTP factor, and caller's profile was created from the controlled invitation; it atomically sets the owner, inserts the `owner` role assignment, writes audit rows, and permanently disables bootstrap. There is no public setup route and no shared password (§6 of Phase 6 doc).
+
+**Phase 7.1 correction (mandatory, race-proofing):** the claim must be a single atomic conditional update — `UPDATE admin_bootstrap_state SET owner_claimed_at = now(), owner_auth_user_id = <caller>, bootstrap_disabled_at = now() WHERE id = true AND owner_claimed_at IS NULL RETURNING …` — executed after locking the singleton row (`SELECT … FOR UPDATE`) inside one transaction. If the update affects zero rows, the claim fails. Check-then-insert without this atomic guard is prohibited: two simultaneous claims must not both succeed. Additionally: (a) the caller's profile must trace to an invitation whose `intended_role_key` is `super_admin` and whose granter held owner authority — an ordinary invitation can never be upgraded into an owner claim; (b) the singleton conditional update is the sole race guard and must be concurrency-tested (§14); (c) if the first owner is ever created via the Supabase dashboard instead, an equivalent `admin_invitations` + audit record must be written in the same operator procedure, or the bootstrap state will falsely appear unclaimed.
 RLS: no client access at all; only the definer function and server service role may read/write.
 
 ### 4.3 `admin.admin_invitations`
@@ -176,7 +178,8 @@ Permission keys (module.action): `dashboard.view`, `admins.read`, `admins.invite
 | site_config.manage | ✅ | — | — | — | — |
 | analytics.read | ✅ | ✅ | ✅ | ✅ | ✅ |
 | notifications.manage | ✅ | ✅ | — | ✅ | — |
-| crm.read / crm.manage | ✅ | ✅ | — | ✅(read)/— | ✅(read) |
+| crm.read | ✅ | ✅ | — | ✅ | ✅ |
+| crm.manage | ✅ | ✅ | — | — | — |
 | privacy.read | ✅ | ✅ | — | ✅ | ✅ |
 | privacy.manage | ✅ | — | — | — | — |
 | backups.read | ✅ | ✅ | — | — | ✅ |
@@ -198,6 +201,8 @@ Synced server-side from Supabase Auth factor state on login and on factor change
 Unique `(auth_user_id, code_index) WHERE used_at IS NULL AND invalidated_at IS NULL` guidance; index on `auth_user_id`.
 Use flow (server-only function): constant-time hash comparison, single use, rate-limited, revokes other sessions on use, writes `audit` + `security` events. RLS: **no client access**; server-only.
 
+**Phase 7.1 corrections (mandatory):** hashing is performed in server application code with argon2id (or bcrypt) plus a server-side pepper held only in the secret store — never in SQL, never a fast unsalted hash. Verification must atomically consume the code (`UPDATE … SET used_at = now() WHERE id = … AND used_at IS NULL AND invalidated_at IS NULL RETURNING …`); zero rows ⇒ failure. Failed attempts are counted per admin with lockout + `security_events` escalation after a small threshold. Using a recovery code must never by itself grant AAL2-equivalent privilege: the admin must set a new password **and** re-enroll/verify TOTP before privileged access resumes, and all existing sessions are revoked. Supabase Auth has no native recovery-code concept — this is application-level only and must be tested as such (§14).
+
 ### 6.3 `admin.admin_session_registry` (revocation mirror)
 `session_id uuid PK` (mirrors `auth.sessions.id`), `auth_user_id uuid NOT NULL FK → admin_profiles`, `aal_at_issue text`, `ip inet`, `user_agent text`, `created_at`, `last_seen_at`, `revoked_at timestamptz null`, `revoked_by uuid FK → admin_profiles`, `revoke_reason text`.
 Server registers sessions at login (from Auth session data), updates `last_seen_at` opportunistically. **Revocation flow:** mark `revoked_at` here *and* delete/revoke the session via the server-only Supabase Admin API; privileged checks also test this registry / profile status so revocation is effective server-side even while an access token is unexpired (§8.3). Index on `auth_user_id`, `revoked_at`.
@@ -206,6 +211,8 @@ RLS: own sessions `SELECT` (and self-revoke request via server function); `secur
 ### 6.4 `admin.admin_step_up_events`
 `id uuid PK`, `auth_user_id uuid NOT NULL FK`, `action_key text NOT NULL` (the sensitive permission/action), `method text` (`totp`, `recovery_code`), `verified_at timestamptz NOT NULL DEFAULT now()`, `expires_at timestamptz NOT NULL` (short window, e.g. 10 min), `consumed_at timestamptz null`, `ip inet`.
 Sensitive actions check for an unconsumed, unexpired step-up row for that action (or a fresh AAL2 challenge — §8.5). Server-only writes; own-row `SELECT` not required by client.
+
+**Phase 7.1 correction (mandatory):** consumption must be atomic (`UPDATE … SET consumed_at = now() WHERE id = … AND consumed_at IS NULL AND expires_at > now()`), step-up rows are bound to `auth_user_id` **and** the exact `action_key` (a step-up for one sensitive action never authorizes another), the default window is ≤ 10 minutes, and a step-up event can never be minted at AAL1 — issuing one requires a fresh successful TOTP verification at verification time, not merely an AAL2 session opened earlier.
 
 ### 6.5 `security.login_attempts`
 `id bigint GENERATED ALWAYS AS IDENTITY PK` (or uuid), `attempted_at timestamptz DEFAULT now()`, `email_attempted citext`, `auth_user_id uuid null FK → auth.users`, `outcome text CHECK` (`success`, `bad_password`, `mfa_failed`, `totp_failed`, `recovery_code_failed`, `blocked_signup`, `rate_limited`, `unknown_user`), `ip inet`, `user_agent text`, `aal_reached text null`.
@@ -238,6 +245,8 @@ Server-only writes; `security.read`/`audit.read` select via audit correlation. E
 
 Indexes: `(occurred_at DESC)`, `(actor_auth_user_id, occurred_at DESC)`, `(resource_type, resource_id)`, `(action)`.
 Append-only enforcement (future migration): `REVOKE UPDATE, DELETE` from all roles incl. the app role; `INSERT` only via server/definer path; a `BEFORE UPDATE OR DELETE` trigger raising an exception as defence-in-depth. Periodic export to encrypted off-project storage with retention/tamper-evidence (Phase 4 §5). Application must alert, not silently drop, on audit-insert failure.
+
+**Phase 7.1 corrections (mandatory):** (a) **Role separation** — migrations are applied by a migration owner role never used at runtime; runtime paths receive only `INSERT`/`SELECT` (permission-scoped) on `audit_log`. The table owner/superusers can technically disable triggers, so trigger/revokes are defence-in-depth, **not** the integrity guarantee. (b) **Tamper-evidence** — each audit row stores `prev_hash`/`row_hash` (hash chain over the previous row's hash + canonical row content), and the chain head is exported with the periodic encrypted off-project export; chain verification is part of quarterly review/restore. A silently removed row breaks the chain and is detectable. (c) **No cascade path** — no FK may reference `audit_log`; audit actor FKs use `ON DELETE SET NULL` with denormalized `actor_auth_user_id` retained; deleting a profile can never delete audit history. (d) **Denied-attempt coverage** — RLS denials are silent at the database layer; the mediating server must write `denied` audit rows for rejected privileged requests, and direct-API denial monitoring relies on Auth/PostgREST logs (Phase 9) — accepted explicitly, not assumed away. (e) `before_state`/`after_state` use a per-resource redaction allowlist; free-form record snapshots are prohibited.
 RLS: `SELECT` with `audit.read` (AAL2); no client inserts (server writes with its own authorization context recorded in the row).
 
 ### 7.2 `security.security_events`
@@ -259,10 +268,14 @@ Insert: server-only. Select: `security.read`.
 ### 8.2 Per-request authorization (every privileged operation)
 Server middleware **and** RLS both evaluate, in order: authenticated session → profile exists & `active` → session not in `admin_session_registry.revoked_at` → `aal='aal2'` → role permission (`admin.has_permission`) → resource scope → (if permission `is_sensitive`) fresh step-up (§8.5). Any failure ⇒ 403 + audit `denied` (+ security event for AAL/permission violations). Frontend hiding of controls is never the control.
 
+**Phase 7.1 correction (mandatory):** the session-revocation check must also hold for *direct* Supabase API calls, which bypass server middleware. Every privileged RLS policy therefore includes `admin.session_is_current()`: a `SECURITY DEFINER` helper that reads the `session_id` claim from `auth.jwt()`, looks up `admin_session_registry`, and returns true only if that exact session exists and `revoked_at IS NULL`. Policies must never accept a privileged request whose JWT session is absent from the registry. Combined with §8.3, this makes revocation effective on the next request through both the app and PostgREST. Server code must additionally never cache role/permission decisions beyond a single request, so permission revocation and suspension take effect immediately (§8.4).
+
 ### 8.3 Why revocation works despite JWT lifetime
 Access tokens live ≤ 3600s (Phase 6). Privileged server checks consult live state on every request (profile status + session registry + Auth session validity via the server client), so suspending an admin or revoking a session denies the next request even with an unexpired token. Refresh rotation is enabled; reuse interval 10s.
 
 ### 8.4 Database helper functions (future `SECURITY DEFINER`, `search_path` locked)
+
+**Phase 7.1 corrections (mandatory) for all definer functions:** (1) `REVOKE EXECUTE … FROM PUBLIC` on every function; grant `EXECUTE` only to the narrowest role that needs it (`authenticated` for user-context helpers such as `has_permission`, server-only for administrative functions) — Supabase grants execute to `anon`/`authenticated` by default, which must be explicitly removed where not intended. (2) Set `search_path = ''` (empty) and fully schema-qualify every referenced object, so a caller cannot shadow objects via their own schema. (3) Each privileged function re-checks caller identity (`auth.uid()`), active profile, AAL2, session currency (§8.2), and the specific permission **inside the function body** — being reachable is never itself authorization. (4) Functions that mutate state perform the mutation, permission/role change, and audit insert in one transaction; partial success without an audit row must be impossible. (5) Role/permission lookups read `admin_role_assignments`/`role_permissions` live on every call — no JWT-claim or application caching of roles. (6) `grant_role`/`revoke_role` refuse to grant or revoke `super_admin` unless the caller is an owner, and refuse to revoke the last active owner.
 - `admin.current_admin_id()` → `auth.uid()` mapped to an active profile, else null.
 - `admin.is_active_admin()` → profile exists and `status='active'`.
 - `admin.has_aal2()` → `(auth.jwt() ->> 'aal') = 'aal2'`.
@@ -278,6 +291,8 @@ Sensitive permissions (flagged `is_sensitive`, e.g. `settings.manage`, role gran
 
 All rows are fictional seed data. No FK, view, function, or job connects these tables to Production. Suggested synthetic marker: every `preview` table carries `is_synthetic boolean NOT NULL DEFAULT true CHECK (is_synthetic)` as a tripwire against accidental real-data import.
 
+**Phase 7.1 clarification (mandatory):** `is_synthetic` is a label, **not** an isolation control — a boolean cannot stop real data being typed into a row. Isolation actually rests on, in order: (1) the separate Supabase project/database/Auth tenant (Phase 5); (2) no Production credential, connection string, FDW, replica, or import path existing in this environment; (3) client roles having no direct `INSERT` on `preview` tables — writes are server-mediated and the seed path is a reviewed fixture with example-domain/fictional values only; (4) the Phase 4 pre-release check rejecting Production host/ref identifiers in Preview configuration; (5) UI-level "Synthetic Preview data" labelling in the future dashboard so records cannot be mistaken for real marketplace data. Any future Production data need goes through the separately authorized Production-owned API (Phase 4 §3) — never a table connection.
+
 | Table | Key columns (PK uuid unless noted) | Relationships / constraints | Retention |
 |---|---|---|---|
 | `preview.preview_creators` | `display_name`, `handle citext UNIQUE`, `niche`, `status` (`active`,`flagged`,`suspended`), `follower_band`, timestamps | referenced by applications/reports | keep while referenced; soft-delete |
@@ -285,7 +300,7 @@ All rows are fictional seed data. No FK, view, function, or job connects these t
 | `preview.preview_users` | `display_name`, `email citext UNIQUE` (example-domain only, CHECK `LIKE '%@example.%'` guidance), `status` | files reports, applies | as above |
 | `preview.preview_campaigns` | `brand_id FK`, `title`, `status` (`draft`,`live`,`paused`,`ended`), `budget_band`, `starts_on`, `ends_on` | brand 1:N | as above |
 | `preview.preview_campaign_applications` | `campaign_id FK`, `applicant_type` (`creator`,`user`), `creator_id FK null`, `user_id FK null`, `status` (`applied`,`shortlisted`,`rejected`,`accepted`), CHECK exactly one applicant FK | unique `(campaign_id, creator_id)`, `(campaign_id, user_id)` | as above |
-| `preview.preview_reports` | `reporter_user_id FK`, `subject_type` (`creator`,`campaign`,`user`), `subject_id uuid`, `reason`, `status` (`open`,`reviewing`,`resolved`,`dismissed`) | polymorphic subject documented, validated server-side | 24 months |
+| `preview.preview_reports` | `reporter_user_id FK`, `subject_creator_id FK null`, `subject_campaign_id FK null`, `subject_user_id FK null`, `reason`, `status` (`open`,`reviewing`,`resolved`,`dismissed`) | **Phase 7.1 correction:** no polymorphic `subject_id` — three nullable typed FKs (`ON DELETE RESTRICT`) with `CHECK` exactly one non-null, so integrity is database-enforced | 24 months |
 | `preview.moderation_actions` | `report_id FK`, `admin_id FK → admin_profiles`, `action`, `note`, `created_at` | admin performs; audited | 24 months |
 | `ops.ops_site_config` | `key text PK`, `value jsonb`, `updated_by FK`, `updated_at` | single-row-per-key config; writes `site_config.manage` + audit before/after | version via audit |
 | `preview.analytics_daily_rollups` | PK `(day date, metric text, campaign_id uuid null)`, `value numeric` | synthetic aggregates only | 13 months |
@@ -392,6 +407,26 @@ None of these is marked complete anywhere in this design. Phase 8 itself (execut
 - [ ] Privileged server function misuse → `SECURITY DEFINER` functions lock `search_path`, check caller permission + AAL2 internally, audit atomically.
 - [ ] Free-plan limits (backups/PITR/Auth rate limits) → confirm against Phase 4 §5 before relying on the environment; any paid need returns to the user for approval (no purchase in this design).
 
-## 17. Phase 7 non-action confirmation
+## 18. Phase 7.1 security-review amendments (2026-11-05)
+
+An independent security review (`docs/ADMIN_PREVIEW_V2_DATABASE_SECURITY_REVIEW.md`) required the corrections recorded inline in §§4.2, 6.2, 6.4, 7.1, 8.2, 8.4, 9 and summarized here. They **override** earlier text where they conflict; all other Phase 7 decisions are preserved. Items marked **[pre-implementation]** must be reflected in Phase 8 migration drafts before any SQL is executed.
+
+1. **[pre-implementation] Session currency in RLS (§8.2):** privileged policies must call `admin.session_is_current()` so revoked sessions fail through direct PostgREST calls, not only app middleware.
+2. **[pre-implementation] Definer-function lockdown (§8.4):** revoke default `EXECUTE` grants, empty `search_path`, in-function authorization, atomic audit, live permission reads, last-owner guard.
+3. **[pre-implementation] Bootstrap race-proofing (§4.2):** singleton row lock + single atomic conditional `UPDATE … WHERE owner_claimed_at IS NULL`; super-admin-grade invitation provenance; dashboard-created first owner must write matching invitation/audit records.
+4. **[pre-implementation] Audit integrity (§7.1):** migration-owner/runtime role separation, hash-chained rows with off-project chain-head export, no cascade path into/out of `audit_log`, redaction allowlists, explicit acceptance that RLS denials are silent and must be logged by the mediating server/Auth logs.
+5. **[pre-implementation] Recovery codes (§6.2):** app-side argon2id + pepper, atomic single-use consumption, attempt lockout, mandatory password reset + TOTP re-verification, full session revocation.
+6. **[pre-implementation] Step-up (§6.4):** atomic consumption, per-action binding, ≤10-minute window, fresh TOTP at issuance.
+7. **[pre-implementation] Report subjects (§9):** typed nullable FKs instead of a polymorphic `subject_id`.
+8. **[pre-implementation] Cascades:** every FK must state an explicit `ON DELETE` action in the migration draft; default `RESTRICT` for identity/marketplace references, `SET NULL` only where history must survive (audit actor). `CASCADE` is prohibited on identity, audit, security, and moderation tables.
+9. **Synthetic-data guard (§9):** `is_synthetic` is labelling only; isolation rests on project separation, absence of Production credentials/paths, server-mediated writes, config scanning, and UI labelling.
+10. **Auth-layer telemetry (§6.5):** failed logins made directly against Supabase Auth will not appear in `login_attempts` unless Auth hooks/log drains are configured in Phase 9; rate limits remain primary and this blind spot must be monitored.
+11. **Token lifetime:** `jwt_exp` 3600s is long for an Admin surface; Phase 8/9 must evaluate shortening (e.g. 900s) and must rely on §8.2/§8.3 live checks rather than expiry.
+12. **MFA factor lifecycle:** removing the last verified TOTP factor must force privileged-session revocation and re-enrollment; `admin_mfa_status` is never an authorization input. Reduce max enrolled factors (currently 10, e.g. to 2) in the Phase 8 Auth-configuration pass.
+13. **Naming/index clean-ups (low):** choose one naming convention in migration drafts (schema-qualified prose such as `preview.preview_reports` is redundant); add indexes on `admin_invitations(accepted_auth_user_id)`, `audit_log(request_id)`, `admin_recovery_codes(auth_user_id, used_at)`, `security_alerts(event_id)`.
+14. **Privacy minimization:** `privacy_requests.requester_email` and `crm_contacts.email` accept synthetic values only in this project; store the minimum needed, never real requester data in Preview.
+
+## 19. Phase 7 non-action confirmation (renumbered)
+
 
 This document is the only artefact of Phase 7. No database table, migration, SQL, Auth setting, Vercel variable, deployment, or Production resource was created, queried, or modified, and no secret was exposed. Implementation (§13) begins only after personal review and explicit approval of this design.
