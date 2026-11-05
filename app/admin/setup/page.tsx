@@ -42,6 +42,8 @@ export default function AdminSetupPage() {
   const [kind] = useState<SetupKind>(() => (fragmentValue("kind") === "admin_invitation" ? "admin_invitation" : "owner_setup"));
   const [inspection, setInspection] = useState<Inspection | null>(null);
   const [checking, setChecking] = useState(true);
+  const [checkError, setCheckError] = useState("");
+  const [setupCheckAttempt, setSetupCheckAttempt] = useState(0);
   // Stage 1 first-time setup (no invitation token): offered only while the
   // server reports zero administrator accounts.
   const [firstSetup, setFirstSetup] = useState(false);
@@ -65,27 +67,30 @@ export default function AdminSetupPage() {
     let cancelled = false;
     const inspect = async () => {
       if (!TOKEN_PATTERN.test(token)) {
-        // No invitation link: this may be the one-time Stage 1 first-account
-        // setup, which the server offers only while zero admins exist.
+        // No invitation link: this may be the one-time first-account setup,
+        // which the server offers only while zero administrator accounts exist.
         try {
-          const statusResponse = await fetch("/api/admin/identity/first-admin", {
-            credentials: "include",
-            cache: "no-store",
-          });
-          const statusData = (await statusResponse.json().catch(() => null)) as {
+          const response = await fetch("/api/admin/identity/first-admin", { credentials: "include", cache: "no-store", signal: AbortSignal.timeout(10_000) });
+          const data = (await response.json().catch(() => null)) as {
             setupOpen?: boolean;
             setupKeyRequired?: boolean;
+            code?: string;
           } | null;
-          if (!cancelled && statusResponse.ok && statusData?.setupOpen) {
+          if (cancelled) return;
+          if (!response.ok || typeof data?.setupOpen !== "boolean") {
+            const code = typeof data?.code === "string" ? ` (${data.code})` : "";
+            setCheckError(`Could not verify administrator setup (HTTP ${response.status}${code}). Retry the check.`);
+          } else if (data.setupOpen) {
             setFirstSetup(true);
-            setSetupKeyRequired(Boolean(statusData.setupKeyRequired));
-          } else if (!cancelled && statusResponse.ok) {
+            setSetupKeyRequired(Boolean(data.setupKeyRequired));
+          } else {
             setSetupClosed(true);
           }
         } catch {
-          if (!cancelled) setFirstSetup(false);
+          if (!cancelled) setCheckError("The administrator setup check could not complete within 10 seconds. Check your connection and retry.");
+        } finally {
+          if (!cancelled) setChecking(false);
         }
-        if (!cancelled) setChecking(false);
         return;
       }
       try {
@@ -93,15 +98,22 @@ export default function AdminSetupPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
+          cache: "no-store",
+          signal: AbortSignal.timeout(10_000),
           body: JSON.stringify({ token, kind }),
         });
-        const data = (await response.json().catch(() => null)) as { inspection?: Inspection } | null;
-        if (!cancelled && response.ok && data?.inspection) {
+        const data = (await response.json().catch(() => null)) as { inspection?: Inspection; code?: string } | null;
+        if (cancelled) return;
+        if (response.ok && data?.inspection) {
           setInspection(data.inspection);
           setName((current) => current || data.inspection?.name || "");
+        } else if (response.status >= 500 || !data) {
+          const code = typeof data?.code === "string" ? ` (${data.code})` : "";
+          setCheckError(`Could not check this setup link (HTTP ${response.status}${code}). Retry the check.`);
         }
+        // Invalid/expired links remain on the existing invalid-link state.
       } catch {
-        if (!cancelled) setInspection(null);
+        if (!cancelled) setCheckError("The setup-link check could not complete within 10 seconds. Check your connection and retry.");
       } finally {
         if (!cancelled) setChecking(false);
       }
@@ -110,7 +122,7 @@ export default function AdminSetupPage() {
     return () => {
       cancelled = true;
     };
-  }, [kind, token]);
+  }, [kind, token, setupCheckAttempt]);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -162,7 +174,7 @@ export default function AdminSetupPage() {
     }
   };
 
-  const invalid = mounted && !checking && !inspection && !firstSetup && !setupClosed && !success;
+  const invalid = mounted && !checking && !checkError && !inspection && !firstSetup && !setupClosed && !success;
   const title = firstSetup
     ? t("adminIdentity.firstSetupTitle")
     : inspection?.purpose === "admin_invitation"
@@ -186,6 +198,12 @@ export default function AdminSetupPage() {
             <Link href={createdFirstSetup ? "/admin" : "/admin/sign-in"} className="mt-5 block rounded-2xl bg-[#1c1917] py-3.5 text-center text-[15.5px] font-extrabold text-white hover:bg-black">
               {createdFirstSetup ? t("adminIdentity.openDashboard") : t("adminIdentity.goToSignIn")}
             </Link>
+          </div>
+        ) : checkError ? (
+          <div role="alert" className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-5">
+            <h2 className="text-[18px] font-black text-red-800">Setup status could not be verified</h2>
+            <p className="mt-2 text-[14px] leading-relaxed text-red-700">{checkError}</p>
+            <button type="button" onClick={() => { setChecking(true); setCheckError(""); setSetupClosed(false); setFirstSetup(false); setInspection(null); setSetupCheckAttempt((attempt) => attempt + 1); }} className="mt-4 rounded-xl bg-[#1c1917] px-4 py-2.5 text-sm font-extrabold text-white">Retry setup check</button>
           </div>
         ) : invalid ? (
           <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-5">

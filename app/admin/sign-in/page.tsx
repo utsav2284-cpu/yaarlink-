@@ -18,6 +18,9 @@ export default function AdminSignInPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [signingIn, setSigningIn] = useState(false);
+  const [setupStatus, setSetupStatus] = useState<"checking" | "open" | "closed" | "error">("checking");
+  const [setupStatusError, setSetupStatusError] = useState("");
+  const [setupCheckAttempt, setSetupCheckAttempt] = useState(0);
   // Inside an embedded cross-site preview frame the browser may refuse to
   // send the session cookie back (see shared/admin-cookie.ts). Detect that
   // context up front so the owner can open sign-in as a first-party tab,
@@ -39,20 +42,40 @@ export default function AdminSignInPage() {
 
   useEffect(() => {
     let cancelled = false;
+    const checkFirstAdminSetup = async () => {
+      try {
+        const response = await fetch("/api/admin/identity/first-admin", { credentials: "include", cache: "no-store", signal: AbortSignal.timeout(10_000) });
+        const data = (await response.json().catch(() => null)) as { setupOpen?: boolean; code?: string } | null;
+        if (cancelled) return;
+        if (!response.ok || typeof data?.setupOpen !== "boolean") {
+          const code = typeof data?.code === "string" ? ` (${data.code})` : "";
+          setSetupStatus("error");
+          setSetupStatusError(`Could not verify first-time setup (HTTP ${response.status}${code}). Retry the check before continuing.`);
+          return;
+        }
+        if (data.setupOpen) {
+          setSetupStatus("open");
+          router.replace("/admin/setup");
+          return;
+        }
+        setSetupStatus("closed");
+      } catch {
+        if (!cancelled) {
+          setSetupStatus("error");
+          setSetupStatusError("The first-time setup check could not complete within 10 seconds. Check your connection and retry.");
+        }
+      }
+    };
+    void checkFirstAdminSetup();
+    return () => {
+      cancelled = true;
+    };
+  }, [router, setupCheckAttempt]);
+
+  useEffect(() => {
+    let cancelled = false;
     const resumeExistingSession = async () => {
       try {
-        // Stage 1 first run: while no administrator account exists, the
-        // sign-in screen hands over to the one-time first-account setup.
-        try {
-          const setupResponse = await fetch("/api/admin/identity/first-admin", { credentials: "include", cache: "no-store" });
-          const setupData = (await setupResponse.json().catch(() => null)) as { setupOpen?: boolean } | null;
-          if (!cancelled && setupResponse.ok && setupData?.setupOpen) {
-            router.replace("/admin/setup");
-            return;
-          }
-        } catch {
-          // Fall through to the normal session probe / credential form.
-        }
         const response = await fetch("/api/admin/identity/me", { credentials: "include", cache: "no-store" });
         const data = (await response.json().catch(() => null)) as IdentitySessionView;
         if (cancelled || !response.ok || !data?.admin) return;
@@ -157,6 +180,23 @@ export default function AdminSignInPage() {
             </a>
             <p className="mt-3 text-[12.5px] font-bold leading-relaxed text-[#7a5410]">{t("adminIdentity.openFullTabFallback")}</p>
             <code className="mt-1 block select-all break-all rounded-lg bg-white/70 px-3 py-2 text-[12.5px] font-semibold text-[#1c1917]">{fullTabUrl}</code>
+          </div>
+        )}
+
+        {setupStatus === "checking" && (
+          <p role="status" className="mt-5 rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 text-[13.5px] font-semibold text-[#6f6862]">
+            Checking first-time administrator setup…
+          </p>
+        )}
+        {setupStatus === "open" && (
+          <div role="status" className="mt-5 rounded-xl border border-[#bfe3c5] bg-[#f2fbf3] px-4 py-3 text-[13.5px] font-semibold text-[#17452e]">
+            No administrator account is registered yet. If you are not redirected automatically, <Link href="/admin/setup" className="font-extrabold underline">continue to first-time setup</Link>.
+          </div>
+        )}
+        {setupStatus === "error" && (
+          <div role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13.5px] font-semibold text-red-700">
+            <p>{setupStatusError}</p>
+            <button type="button" onClick={() => { setSetupStatus("checking"); setSetupStatusError(""); setSetupCheckAttempt((attempt) => attempt + 1); }} className="mt-2 font-extrabold underline">Retry setup check</button>
           </div>
         )}
 
