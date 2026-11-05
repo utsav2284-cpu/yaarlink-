@@ -433,11 +433,6 @@ export default function AdminPage() {
   const [adminDraft, setAdminDraft] = useState<AdminQuery>(() => emptyAdminQuery("campaigns"));
   const adminRequestRef = useRef<Record<string, number>>({});
   const [authed, setAuthed] = useState(false);
-  // Stage 1 shows a simple signed-in home at /admin. The full legacy console
-  // below stays available only via ?console=legacy for Stage 2 development.
-  const [showLegacyConsole] = useState(
-    () => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("console") === "legacy",
-  );
   const [adminProfile, setAdminProfile] = useState<{
     name?: string | null;
     email?: string;
@@ -914,64 +909,6 @@ export default function AdminPage() {
     );
   }
 
-  if (!showLegacyConsole) {
-    const profileRole =
-      adminProfile?.role === "super_admin" ? t("adminIdentity.role.super_admin") : (adminProfile?.role ?? "—");
-    return (
-      <div className="mx-auto max-w-4xl px-4 py-14">
-        <section className="rounded-[28px] border border-[#e9ddc3] bg-white p-8 card-shadow" aria-labelledby="simple-admin-home-title">
-          <p className="text-[12.5px] font-bold uppercase tracking-widest text-[#c7431f]">{t("adminIdentity.eyebrow")}</p>
-          <div className="mt-1 flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <h1 id="simple-admin-home-title" className="font-display text-[30px] font-black">{t("adminIdentity.simpleHomeTitle")}</h1>
-              <p className="mt-1 max-w-xl text-[14.5px] leading-relaxed text-[#6f6862]">{t("adminIdentity.simpleHomeSub")}</p>
-            </div>
-            <button
-              type="button"
-              onClick={lockAdmin}
-              className="rounded-2xl bg-[#1c1917] px-5 py-3 text-[14.5px] font-extrabold text-white hover:bg-black"
-            >
-              {t("adminIdentity.signOut")}
-            </button>
-          </div>
-
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
-            <div className="rounded-2xl border border-[#e9ddc3] bg-[#fffbf1] p-5">
-              <h2 className="text-[16px] font-black">{t("adminIdentity.accountDetails")}</h2>
-              <dl className="mt-3 space-y-2 text-[14px] leading-relaxed">
-                <div>
-                  <dt className="font-bold text-[#6f6862]">{t("adminIdentity.signedInAs")}</dt>
-                  <dd className="font-semibold">{adminProfile?.name ?? "—"}</dd>
-                  <dd className="text-[#57534e]">{adminProfile?.email ?? "—"}</dd>
-                </div>
-                <div>
-                  <dt className="font-bold text-[#6f6862]">{t("adminIdentity.assignedRole")}</dt>
-                  <dd className="font-semibold">{profileRole}</dd>
-                </div>
-                <div>
-                  <dt className="font-bold text-[#6f6862]">{t("adminIdentity.lastLogin")}</dt>
-                  <dd className="font-semibold">
-                    {adminProfile?.lastLoginAt ? new Date(adminProfile.lastLoginAt).toLocaleString() : t("adminIdentity.never")}
-                  </dd>
-                </div>
-              </dl>
-            </div>
-
-            <div className="rounded-2xl border border-[#bfe3c5] bg-[#f2fbf3] p-5">
-              <h2 className="text-[16px] font-black text-[#17452e]">{t("adminIdentity.simpleHomePhaseTitle")}</h2>
-              <p className="mt-3 text-[14px] leading-relaxed text-[#57534e]">{t("adminIdentity.simpleHomePhaseBody")}</p>
-            </div>
-          </div>
-
-          <div className="mt-4 rounded-2xl border border-[#e9ddc3] p-5">
-            <h2 className="text-[16px] font-black">{t("adminIdentity.simpleHomeNextTitle")}</h2>
-            <p className="mt-2 text-[14px] leading-relaxed text-[#57534e]">{t("adminIdentity.simpleHomeNextBody")}</p>
-          </div>
-        </section>
-      </div>
-    );
-  }
-
   const campaigns = listState.campaigns.rows;
   const creators = listState.creators.rows;
   const applications = listState.applications.rows;
@@ -1395,7 +1332,9 @@ export default function AdminPage() {
         </form>
       </section>
 
-      <div className="mt-6 flex gap-2 overflow-x-auto no-scrollbar">
+      <div className="mt-6 grid items-start gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
+        <aside className="rounded-2xl border border-[#e9ddc3] bg-white p-3 lg:sticky lg:top-5" aria-label={t("admin.internal")}>
+          <nav className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-1" aria-label={t("admin.overview")}>
         {([
           { id: "campaigns", label: t("admin.campaigns") },
           { id: "creators", label: t("admin.creators") },
@@ -1416,8 +1355,9 @@ export default function AdminPage() {
             {item.label}
           </button>
         ))}
-      </div>
-
+          </nav>
+        </aside>
+        <main className="min-w-0">
       <form onSubmit={applyAdminFilters} className="mt-4 grid gap-2 rounded-2xl border border-[#e9ddc3] bg-white p-3 md:grid-cols-2 xl:grid-cols-[1fr_190px_190px_190px_auto]">
         <label htmlFor="admin-search">
           <span className="sr-only">{t("listing.searchLabel")}</span>
@@ -2131,6 +2071,8 @@ export default function AdminPage() {
         loading={loading}
         onLoadMore={loadMoreAdminRows}
       />
+        </main>
+      </div>
     </div>
   );
 }

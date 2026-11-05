@@ -54,16 +54,9 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 const enc = new TextEncoder();
 const FIRST_ADMIN_SETUP_LOCK_ID = 778_899;
 
-/**
- * Stage 1 (Simple Admin Dashboard) deliberately runs with email + strong
- * password sign-in only: set ADMIN_MFA_REQUIRED=false and a password session
- * is complete on its own. The full Stage 2 policy stays the default — with
- * the variable unset or "true", a session is only MFA-pending until TOTP,
- * passkey, or recovery verification, exactly as before.
- */
+/** Administrator access always requires an enrolled and completed MFA check. */
 export function isAdminMfaRequired(): boolean {
-  const raw = (process.env.ADMIN_MFA_REQUIRED ?? "true").trim().toLowerCase();
-  return !["false", "0", "no", "off"].includes(raw);
+  return true;
 }
 
 function firstAdminSetupKey(): string {
