@@ -43,7 +43,7 @@ erDiagram
     admin_profiles ||--o{ admin_session_registry : mirrors
     admin_profiles ||--o{ admin_step_up_events : performs
     admin_profiles ||--o{ audit_log : actor
-    audit_chain_head ..> audit_log : "LOGICAL POINTER ONLY (not a table relationship): singleton last_id/last_row_hash -> zero-or-one latest row; no FK"
+    %% LOGICAL POINTER ONLY (not a table relationship): audit_chain_head is a singleton; last_id/last_row_hash point to zero-or-one latest audit_log row; no FK references audit_log
     admin_profiles ||--o{ identity_operations : "actor / subject"
     admin_invitations ||--o{ identity_operations : "saga for invitation"
     admin_profiles ||--o{ security_events : "actor / subject"
@@ -426,7 +426,7 @@ Order (each step a separate reviewable migration; no step executed in Phase 7/7.
 3. RBAC tables (§5.1) + seed of the exact 31-entry permission catalogue (30 assignable + `owner.bootstrap`) and system roles + role-permission matrix (§5.2).
 4. Security metadata tables (§6) + audit (§7.1) + `audit_chain_head` singleton (§7.4, seeded) + security events/alerts (§7.2–7.3), incl. append-only revokes/triggers.
 5. Module F tables (§9) + their policies, same-transaction rule.
-6. **Helper-function real implementations:** `CREATE OR REPLACE` the Step-1 stubs with the verified §8.4/§20.11 bodies (identical signatures, lockdown re-asserted in the same transaction), immediately followed in the same migration series by the §20.9 policy/function acceptance tests. A table must never exist without RLS enabled — policies land **with** their tables in steps 2–5, not in a later migration; what lands later is only the helpers' internal logic, which transitions the system from deny-all to the intended predicate without any permissive intermediate state.
+6. **Helper-function real implementations:** `CREATE OR REPLACE` the Step-1 stubs with the verified §8.4/§20.11 bodies (identical signatures, lockdown re-asserted in the same transaction), immediately followed in the same migration series by the §20.9 policy/function acceptance tests. **Explicit function grants installed with their implementations (and re-asserted whenever a function is replaced):** `audit.append_audit()` — `REVOKE EXECUTE FROM PUBLIC, anon, authenticated`; `GRANT EXECUTE TO service_role` only (all runtime audit writes arrive via the server path or other definer functions, which call it as their owner context permits); `admin.claim_first_owner()` — `REVOKE EXECUTE FROM PUBLIC, anon, service_role`; `GRANT EXECUTE TO authenticated` only, and it internally requires the invitee's JWT (§20.1A); all other §8.4 helpers — `authenticated` only for user-context predicates, server-only functions have no client grant at all. Any migration that leaves a privileged function executable by `anon` or `PUBLIC` fails review. A table must never exist without RLS enabled — policies land **with** their tables in steps 2–5, not in a later migration; what lands later is only the helpers' internal logic, which transitions the system from deny-all to the intended predicate without any permissive intermediate state.
 7. Indexes/constraints not created inline (§11).
 8. Synthetic seed fixtures (clearly fictional, example domains) — separate seed step, never in Production.
 9. Verification suite (§14 + §20.9) run against the Preview project only. Until step 6 completes, the environment is intentionally unusable for Admin sign-in (fail-closed), which is the safe intermediate state.
@@ -509,6 +509,8 @@ Bootstrap procedure (no existing admin required — resolves the circular depend
 
 `claim_first_owner` deliberately does **not** use the general predicate (§20.11), which requires an active profile and a registered session that cannot exist yet. It is the single, narrowly scoped exception, authorized by its own bootstrap predicate evaluated *inside* the definer function:
 
+**Execution and grants (Phase 7.7 authoritative):** `claim_first_owner()` is a `SECURITY DEFINER` function owned by the migration-owner role, `search_path=''`, with `REVOKE EXECUTE FROM PUBLIC, anon, service_role` and `GRANT EXECUTE TO authenticated` only — a **narrowly granted authenticated RPC**, not a general bypass. It must be called with the **invitee's own authenticated JWT** (so `auth.uid()`, `aal`, `amr`, and `session_id` are the invitee's); a service-role call carries no invitee identity and therefore always fails the predicate. The **service role is used only by the server saga coordinator** for operations that cannot be the invitee's: creating/reading the `admin.identity_operations` saga row before authentication completes, writing failure-audit records when the claim transaction rolls back, and reconciliation (§20.12). All Auth-side steps (sign-in, email verification, TOTP enroll/challenge/verify) use the invitee's authenticated JWT through Supabase Auth APIs. The saga row is bound to `operation_type='bootstrap_claim'`, the exact `invitation_id`, the exact `auth_user_id` (filled in once the Auth identity is known and thereafter immutable), and the deterministic idempotency key `bootstrap:<invitation_id>`; the saga also persists non-secret **validation evidence** (`invitation_validated_at`, `auth_identity_validated_at`, `mfa_validated_at` timestamps in `payload_summary`). A saga row in `pending` — or any saga state — **never by itself authorizes anything**: authorization comes only from re-evaluating `BOOTSTRAP_AUTHORIZED` inside the claim transaction under the singleton lock.
+
 ```text
 BOOTSTRAP_AUTHORIZED :=
     admin_bootstrap_state.owner_claimed_at IS NULL                    (bootstrap still open)
@@ -574,7 +576,7 @@ Migration atomicity and role separation are specified in §13 (revised). Exact r
                a 4-byte big-endian element count followed by ENC(element) per element;
                other text fields: UTF-8 bytes as stored
              occurred_at: UTC ISO-8601 "YYYY-MM-DDTHH:MM:SS.ffffffZ" (microseconds, always 6 digits)
-             ip: lowercase canonical host(ip) text, UTF-8
+             ip: lowercase canonical host(ip) text, UTF-8 — IPv4 in dotted-quad form; IPv6 in the RFC 5952 canonical text form produced by PostgreSQL inet output (lowercase, longest-run `::` compression); writers must store the value as inet so this form is deterministic
              bigint id: decimal text, UTF-8
              jsonb (before_state, after_state, metadata): RFC 8785 (JCS) canonical JSON, UTF-8
   ```
@@ -594,7 +596,7 @@ Migration atomicity and role separation are specified in §13 (revised). Exact r
 |---|---|---|---|
 | Revoke current session | `signOut({scope:'local'})` + registry mark | None at Auth layer | Registry check in RLS/server denies next request |
 | Revoke all sessions of self | `signOut({scope:'global'})` (default) + registry mark-all | None at Auth layer | Same registry barrier for every session |
-| Revoke all sessions of *another* admin | Server-side sign-out using that user's JWT is not always obtainable; therefore: mark all registry rows revoked + set profile `suspended` (or revoke via operator-triggered global sign-out when a valid user JWT is available) | None at Auth layer | Registry + profile-status checks deny next request on all paths |
+| Revoke all sessions of *another* admin (account stays `active`) | Mark **all** of that admin's registry rows revoked; optionally follow with documented Auth cleanup where a mechanism is legitimately available. This operation **never changes profile `status`** — suspension is a separate, separately authorized operation (§20.12(6)) that also revokes all sessions | None at Auth layer | Registry checks deny the next request on all paths; the account may sign in again and register a new session unless separately suspended |
 | Revoke one *specific other* session | No supported per-session Admin API — **not assumed** | — | Registry row for that `session_id` is marked revoked; RLS `session_is_current()` rejects exactly that JWT while the admin's other sessions continue |
 | Invalidate an issued access token immediately | Not supported (stateless JWT) | Token remains cryptographically valid until `exp` | Short admin token lifetime (M-4) + live profile/session/permission checks make the token useless for privileged access |
 | Prevent refresh-token reuse | Refresh rotation + 10s reuse interval (Phase 6); sign-out deletes the Auth session/refresh token | Refresh after revocation fails | Registry remains the authorization barrier |
@@ -625,7 +627,7 @@ The registry is therefore **not** a replacement for Auth session management — 
 | Removal attempted during an active AAL2 session | Allowed by Auth only at AAL2; in this design it additionally requires fresh step-up and follows the row above; all *other* sessions are revoked at removal, the current session's privileged access ends at the next request (live-factor check). |
 | Lost authenticator | Recovery-code flow (§6.2 as corrected): code use ⇒ revoke all sessions, force password reset + new TOTP enrollment/verification; privileged access only after a verified factor exists again and a fresh AAL2 session is established. Owner-assisted recovery (two-person) for the owner account itself. |
 | Factor replaced | Enroll + verify the new factor first (session promotes/stays AAL2), then remove the old one; both events audited; other sessions revoked per Auth behaviour on verify. |
-| Suspicious removal (unusual IP, repeated attempts, removal outside a server flow) | Live-factor defence (above) contains the access impact; the next server contact (login, privileged request, or periodic reconciliation — **not** an assumed Auth event/webhook, §6.1) detects factor-count change via the §20.11 live check and cache sync, raises `security_events(mfa_failure/factor_removed)`, alerts, and may auto-suspend pending review. |
+| Suspicious removal (unusual IP, repeated attempts, removal outside a server flow) | Live-factor defence (above) contains the access impact; the next server contact (login, privileged request, or periodic reconciliation — **not** an assumed Auth event/webhook, §6.1) detects factor-count change via the §20.11 live check and cache sync, raises a `security_events` record (`event_type='factor_removed'`, or `'mfa_failure'` for failed attempts), alerts, and may auto-suspend pending review. |
 
 **Detection distinction (Phase 7.6):** *authorization* uses only the live Boolean "at least one verified TOTP factor exists" (§20.11); removal of one factor while another verified factor remains does not interrupt authorization. *Detection* of that single-factor removal compares the live verified-factor **count** with `admin_mfa_status.totp_verified_factor_count` at login/opportunistic/periodic synchronization and records `security_events(event_type='factor_removed')` on a decrease — a reconciliation-detected event, never a guaranteed Auth webhook.
 
@@ -781,4 +783,68 @@ All previously accepted Phase 7.1, 7.3, and 7.4 security requirements are preser
 | 9 | Cross-section regression (see the Phase 7.6 review report) | throughout | Contradictory operative wording corrected in place; amendment registers aligned | Open product decisions listed in the review report |
 
 **Regression categorization (Phase 7.6):** *Verified platform facts* — Phase 6 Auth configuration; Supabase JWT `aal`/`amr` semantics and sign-out scope limitations (official docs, Phases 7.3–7.4); PostgreSQL 15+ `security_invoker` on this project's PostgreSQL 17; the audit test-vector hash was actually computed from the §20.4 formula for this document. *Specified in writing only* — the entire schema, bootstrap predicate, saga, hash chain, and all policies. *Not implemented* — every database object and enforcement mechanism. *Requires future runtime testing* — §§14/20.9 cases 1–28; no test has been run or passed.
+
+## 25. Consolidated foreign-key inventory (Phase 7.7 — normative)
+
+Every foreign key in the design, with its explicit `ON DELETE` action. No FK relies on a PostgreSQL default. "Preserve history" means the referenced row's deletion must be blocked (`RESTRICT`) or the reference nullified without deleting the history row (`SET NULL`); `CASCADE` is prohibited on identity, audit, security, and moderation tables (§18.8).
+
+| Source table.column | → Referenced table.column | ON DELETE | Reason | Preserve history |
+|---|---|---|---|:---:|
+| admin_profiles.auth_user_id (PK) | auth.users.id | RESTRICT | an admin identity must not vanish silently | Yes |
+| admin_profiles.invited_by | admin_profiles.auth_user_id | RESTRICT | inviter accountability | Yes |
+| admin_profiles.invitation_id | admin_invitations.id | RESTRICT | provenance of the profile | Yes |
+| admin_bootstrap_state.owner_auth_user_id | auth.users.id | RESTRICT | ownership seat integrity | Yes |
+| admin_invitations.invited_by | admin_profiles.auth_user_id | RESTRICT | inviter accountability (NULL only for bootstrap) | Yes |
+| admin_invitations.intended_role_key | admin_roles.key | RESTRICT | catalogue integrity | n/a |
+| admin_invitations.accepted_auth_user_id | auth.users.id | RESTRICT | acceptance binding | Yes |
+| admin_role_assignments.auth_user_id | admin_profiles.auth_user_id | RESTRICT | assignment history | Yes |
+| admin_role_assignments.role_key | admin_roles.key | RESTRICT | catalogue integrity | Yes |
+| admin_role_assignments.granted_by / revoked_by | admin_profiles.auth_user_id | RESTRICT | grant accountability | Yes |
+| role_permissions.role_key / permission_key | admin_roles.key / admin_permissions.key | RESTRICT | catalogue changes are migrations, not deletes | n/a |
+| role_permissions.granted_by | admin_profiles.auth_user_id | RESTRICT | accountability | Yes |
+| admin_mfa_status.auth_user_id (PK) | admin_profiles.auth_user_id | RESTRICT | factor-status history tied to identity | Yes |
+| admin_recovery_codes.auth_user_id | admin_profiles.auth_user_id | RESTRICT | recovery artefacts must not orphan | Yes |
+| admin_session_registry.auth_user_id / revoked_by | admin_profiles.auth_user_id | RESTRICT | session/revocation history | Yes |
+| admin_step_up_events.auth_user_id | admin_profiles.auth_user_id | RESTRICT | sensitive-action evidence | Yes |
+| admin_step_up_events.session_id | (logical → admin_session_registry.session_id; no FK — registry rows may be archived independently) | — | binding is validated by the issuing/consuming functions | Yes |
+| identity_operations.invitation_id | admin_invitations.id | RESTRICT | saga accountability | Yes |
+| identity_operations.auth_user_id | auth.users.id | RESTRICT | saga accountability | Yes |
+| identity_operations.actor_auth_user_id | admin_profiles.auth_user_id | RESTRICT | actor accountability | Yes |
+| account_recovery_events.auth_user_id / requested_by | admin_profiles.auth_user_id | RESTRICT | recovery history | Yes |
+| login_attempts.auth_user_id | auth.users.id | SET NULL | telemetry may survive account removal; email/IP context kept in-row | Yes (row kept) |
+| audit_log.actor_profile_id | admin_profiles.auth_user_id | SET NULL | audit rows are never deleted; denormalized `actor_auth_user_id` retains identity | Yes |
+| security_events.auth_user_id / actor_auth_user_id | (no FK by design — telemetry must survive identity changes; IDs are plain uuid columns) | — | append-only telemetry | Yes |
+| security_alerts.event_id | security_events.id | RESTRICT | alert evidence | Yes |
+| security_alerts.assigned_to / resolved_by | admin_profiles.auth_user_id | RESTRICT | accountability | Yes |
+| preview_creators / brands / users (roots) | — | — | synthetic roots | n/a |
+| preview_campaigns.brand_id | preview_brands.id | RESTRICT | synthetic referential integrity | Yes |
+| preview_campaign_applications.campaign_id | preview_campaigns.id | RESTRICT | integrity | Yes |
+| preview_campaign_applications.creator_id / user_id | preview_creators.id / preview_users.id | RESTRICT | exactly-one-applicant CHECK (§9) | Yes |
+| preview_reports.reporter_user_id | preview_users.id | RESTRICT | integrity | Yes |
+| preview_reports.subject_creator_id / subject_campaign_id / subject_user_id | preview_creators.id / preview_campaigns.id / preview_users.id | RESTRICT | typed subject FKs (§9 as corrected) | Yes |
+| moderation_actions.report_id | preview_reports.id | RESTRICT | moderation evidence | Yes |
+| moderation_actions.admin_id | admin_profiles.auth_user_id | RESTRICT | accountability | Yes |
+| ops_site_config.updated_by | admin_profiles.auth_user_id | RESTRICT | accountability | Yes |
+| ops_notifications.recipient_admin_id | admin_profiles.auth_user_id | RESTRICT | delivery history | Yes |
+| crm_interactions.contact_id | crm_contacts.id | RESTRICT | CRM history (synthetic) | Yes |
+| crm_interactions.admin_id | admin_profiles.auth_user_id | RESTRICT | accountability | Yes |
+| privacy_requests.handled_by | admin_profiles.auth_user_id | RESTRICT | handling accountability | Yes |
+| ops_backup_records.recorded_by | admin_profiles.auth_user_id | RESTRICT | accountability | Yes |
+| analytics_daily_rollups.campaign_id | preview_campaigns.id | RESTRICT | aggregate lineage (declared FK — resolves the Phase 7.3 drafting flag) | Yes |
+
+Any FK added in implementation that is absent from this inventory, or with a different `ON DELETE`, is a design deviation requiring a design update first.
+
+## 26. Phase 7.7 amendment register and regression categorization
+
+| # | Correction | Sections |
+|---|---|---|
+| 7.7-1 | All-sessions revocation of another admin no longer conflated with suspension; revocation never changes `status`; suspension is a separate authorized operation that also revokes all sessions; both are audited | §§5.2, 6.3, 20.5, 20.12(6) |
+| 7.7-2 | Bootstrap execution model pinned: authenticated-RPC `claim_first_owner` (EXECUTE: `authenticated` only; revoked from PUBLIC/anon/service_role), invitee-JWT operations vs service-role saga-coordinator operations enumerated; saga bound to type/invitation/user/idempotency key with persisted validation evidence; a `pending` saga row authorizes nothing | §20.1A |
+| 7.7-3 | Explicit grants for `audit.append_audit` (service_role only) and `claim_first_owner` (authenticated only) installed with the Step-6 function implementations | §13 |
+| 7.7-4 | Consolidated FK inventory with explicit `ON DELETE` for every FK in all five schemas | §25 |
+| 7.7-5 | Invalid Mermaid dotted relationship removed; the chain-head logical pointer is an ERD comment, so the diagram renders with only valid entity relationships | ERD |
+| 7.7-6 | Audit hash clarified: IPv4 dotted-quad / IPv6 RFC 5952 canonical forms. Field count (17), domain separator (17 ASCII bytes + `0x00`), snapshot sorting/deduplication, NULL handling, and RFC 8785 rules unchanged; the verified test vector `06e5994cb5616437ea5196920ed84c34c33db64636f1a3c3817c9896cf08f187` is preserved — no specification defect was found that would justify changing it | §20.4 |
+| 7.7-7 | Ambiguous `mfa_failure/factor_removed` event notation in §20.7 corrected to the formal event types | §20.7 |
+
+**Regression categorization:** *Verified platform facts* — as §24. *Specified in writing only* — the entire schema including this section. *Not implemented at the start of Phase 7.7* — everything; implementation begins in the milestone following the Phase 7.7 review (`docs/ADMIN_PREVIEW_V2_DATABASE_SECURITY_REVIEW_PHASE_7_7.md`). *Requires future runtime testing* — §§14/20.9 cases 1–28 plus migration-replay verification.
 
