@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import type { PoolClient } from "pg";
 import { getClientIp } from "@/backend/rate-limit";
 import { getPool } from "@/backend/db";
 
@@ -20,6 +21,16 @@ const RATE_LIMIT_ATTEMPTS = 5;
 const MAX_RATE_LIMIT_BUCKETS = 2_000;
 
 type RateLimitBucket = { count: number; expiresAt: number };
+type DatabaseFailureCategory =
+  | "DATABASE_AUTHENTICATION_FAILED"
+  | "DATABASE_DNS_FAILED"
+  | "DATABASE_CONNECTION_REFUSED"
+  | "DATABASE_CONNECTION_TIMEOUT"
+  | "DATABASE_TLS_CERTIFICATE_FAILED"
+  | "DATABASE_PERMISSION_DENIED"
+  | "DATABASE_QUERY_FAILED"
+  | "UNKNOWN_DATABASE_ERROR";
+type DatabaseFailureStage = "connection_establishment" | "query_execution";
 type RuntimeIdentityRow = {
   role: string;
   system_identifier: string;
@@ -30,6 +41,43 @@ type RuntimeIdentityRow = {
   bypasses_rls: boolean;
 };
 const attemptsByIp = new Map<string, RateLimitBucket>();
+
+function classifyDatabaseError(error: unknown, stage: DatabaseFailureStage): DatabaseFailureCategory {
+  const code = error && typeof error === "object" && "code" in error && typeof error.code === "string"
+    ? error.code
+    : "";
+
+  if (code === "28P01" || code === "28000") return "DATABASE_AUTHENTICATION_FAILED";
+  if (["ENOTFOUND", "EAI_AGAIN", "EAI_FAIL", "ENODATA"].includes(code)) return "DATABASE_DNS_FAILED";
+  if (code === "ECONNREFUSED") return "DATABASE_CONNECTION_REFUSED";
+  if (["ETIMEDOUT", "ESOCKETTIMEDOUT", "CONNECT_TIMEOUT"].includes(code)) return "DATABASE_CONNECTION_TIMEOUT";
+  if ([
+    "CERT_HAS_EXPIRED",
+    "DEPTH_ZERO_SELF_SIGNED_CERT",
+    "ERR_TLS_CERT_ALTNAME_INVALID",
+    "ERR_TLS_CERT_SIGNATURE_ALGORITHM_UNSUPPORTED",
+    "UNABLE_TO_GET_ISSUER_CERT",
+    "UNABLE_TO_GET_ISSUER_CERT_LOCALLY",
+    "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+    "SELF_SIGNED_CERT_IN_CHAIN",
+  ].includes(code)) return "DATABASE_TLS_CERTIFICATE_FAILED";
+  if (code === "42501") return "DATABASE_PERMISSION_DENIED";
+  if (stage === "query_execution") return "DATABASE_QUERY_FAILED";
+  return "UNKNOWN_DATABASE_ERROR";
+}
+
+function databaseFailureExplanation(category: DatabaseFailureCategory): string {
+  switch (category) {
+    case "DATABASE_AUTHENTICATION_FAILED": return "The database rejected authentication.";
+    case "DATABASE_DNS_FAILED": return "The database host could not be resolved.";
+    case "DATABASE_CONNECTION_REFUSED": return "The database host refused the connection.";
+    case "DATABASE_CONNECTION_TIMEOUT": return "The database connection attempt timed out.";
+    case "DATABASE_TLS_CERTIFICATE_FAILED": return "The verified TLS certificate check failed.";
+    case "DATABASE_PERMISSION_DENIED": return "The database role lacks permission for the verification query.";
+    case "DATABASE_QUERY_FAILED": return "The database connection succeeded, but the verification query failed.";
+    case "UNKNOWN_DATABASE_ERROR": return "The database operation failed for an unclassified reason.";
+  }
+}
 
 function json(body: unknown, status = 200) {
   return Response.json(body, { status, headers: NO_STORE });
@@ -111,27 +159,63 @@ export async function POST(req: Request) {
 
   const environmentActual = process.env.VERCEL_ENV ?? "missing";
   const branchActual = process.env.VERCEL_GIT_COMMIT_REF ?? "missing";
-  let connectionSucceeded = false;
+  let connectionEstablished = false;
+  let querySucceeded = false;
+  let databaseFailure: { category: DatabaseFailureCategory; stage: DatabaseFailureStage } | null = null;
   let actualRole: string | null = null;
   let actualSystemIdentifier: string | null = null;
   let roleIsRestricted = false;
+  let client: PoolClient | undefined;
   try {
-    // This fixed, read-only SELECT runs through the same shared node-postgres
-    // pool used by Drizzle and the Admin routes. It returns no user records.
-    const result = await getPool().query<RuntimeIdentityRow>(
-      "SELECT current_user AS role, (SELECT system_identifier::text FROM pg_catalog.pg_control_system()) AS system_identifier, r.rolsuper AS is_superuser, r.rolcreatedb AS can_create_database, r.rolcreaterole AS can_create_roles, r.rolreplication AS can_replicate, r.rolbypassrls AS bypasses_rls FROM pg_catalog.pg_roles AS r WHERE r.rolname = current_user",
-    );
-    const row = result.rows[0];
-    if (row && typeof row.role === "string" && typeof row.system_identifier === "string") {
-      connectionSucceeded = true;
-      actualRole = row.role;
-      actualSystemIdentifier = row.system_identifier;
-      roleIsRestricted = !row.is_superuser && !row.can_create_database && !row.can_create_roles && !row.can_replicate && !row.bypasses_rls;
-    }
-  } catch {
-    // Deliberately return no driver error, SQL, host, or credential details.
+    // Acquire first so connection establishment and SQL execution failures are
+    // distinguishable. Both operations use the same shared application pool.
+    client = await getPool().connect();
+    connectionEstablished = true;
+  } catch (error) {
+    databaseFailure = {
+      category: classifyDatabaseError(error, "connection_establishment"),
+      stage: "connection_establishment",
+    };
   }
 
+  if (client) {
+    try {
+      // Fixed, read-only identity query; it returns no user records.
+      const result = await client.query<RuntimeIdentityRow>(
+        "SELECT current_user AS role, (SELECT system_identifier::text FROM pg_catalog.pg_control_system()) AS system_identifier, r.rolsuper AS is_superuser, r.rolcreatedb AS can_create_database, r.rolcreaterole AS can_create_roles, r.rolreplication AS can_replicate, r.rolbypassrls AS bypasses_rls FROM pg_catalog.pg_roles AS r WHERE r.rolname = current_user",
+      );
+      querySucceeded = true;
+      const row = result.rows[0];
+      if (row && typeof row.role === "string" && typeof row.system_identifier === "string") {
+        actualRole = row.role;
+        actualSystemIdentifier = row.system_identifier;
+        roleIsRestricted = !row.is_superuser && !row.can_create_database && !row.can_create_roles && !row.can_replicate && !row.bypasses_rls;
+      }
+    } catch (error) {
+      databaseFailure = {
+        category: classifyDatabaseError(error, "query_execution"),
+        stage: "query_execution",
+      };
+    } finally {
+      client.release();
+    }
+  }
+
+  const databaseConnection = {
+    status: connectionEstablished && querySucceeded && actualRole !== null && actualSystemIdentifier !== null ? "PASS" : "FAIL",
+    connectionEstablished,
+    querySucceeded,
+    stage: databaseFailure?.stage ?? (querySucceeded ? "identity_validation" : "connection_establishment"),
+    category: databaseFailure?.category ?? (querySucceeded && (!actualRole || !actualSystemIdentifier) ? "UNKNOWN_DATABASE_ERROR" : null),
+    explanation: databaseFailure
+      ? databaseFailureExplanation(databaseFailure.category)
+      : querySucceeded && (!actualRole || !actualSystemIdentifier)
+        ? "The query completed but returned no verifiable database identity."
+        : connectionEstablished && querySucceeded
+          ? "The read-only identity query completed successfully."
+          : "The database connection could not be established.",
+  } as const;
+  const databaseChecksPassed = databaseConnection.status === "PASS";
   const isPreviewProject = actualSystemIdentifier === PREVIEW_SYSTEM_IDENTIFIER;
   const isProductionProject = actualSystemIdentifier === PRODUCTION_SYSTEM_IDENTIFIER;
   const checks = {
@@ -145,9 +229,7 @@ export async function POST(req: Request) {
       expected: EXPECTED_BRANCH,
       actual: branchActual,
     },
-    databaseConnection: {
-      status: connectionSucceeded ? "PASS" : "FAIL",
-    },
+    databaseConnection,
     supabaseProject: {
       status: isPreviewProject ? "PASS" : "FAIL",
       expectedProject: "yaarlink-preview",
@@ -160,13 +242,13 @@ export async function POST(req: Request) {
       actual: actualRole,
     },
     applicationRolePrivileges: {
-      status: connectionSucceeded && roleIsRestricted ? "PASS" : "FAIL",
+      status: databaseChecksPassed && roleIsRestricted ? "PASS" : "FAIL",
       expected: "no superuser, create-database, create-role, replication, or RLS-bypass privileges",
-      actual: connectionSucceeded ? (roleIsRestricted ? "restricted" : "one or more elevated privileges") : "unavailable",
+      actual: databaseChecksPassed ? (roleIsRestricted ? "restricted" : "one or more elevated privileges") : "unavailable",
     },
     productionDatabase: {
-      status: connectionSucceeded && !isProductionProject ? "PASS" : "FAIL",
-      detected: connectionSucceeded ? isProductionProject : null,
+      status: databaseChecksPassed && !isProductionProject ? "PASS" : "FAIL",
+      detected: databaseChecksPassed ? isProductionProject : null,
     },
   } as const;
   const ok = Object.values(checks).every((check) => check.status === "PASS");
