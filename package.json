@@ -25,6 +25,7 @@
     "local:bootstrap": "node --env-file=.env.local scripts/database-bootstrap.mjs --verify-write"
   },
   "dependencies": {
+    "@supabase/supabase-js": "2.119.0",
     "bcryptjs": "3.0.3",
     "drizzle-orm": "0.45.4",
     "next": "16.4.3",

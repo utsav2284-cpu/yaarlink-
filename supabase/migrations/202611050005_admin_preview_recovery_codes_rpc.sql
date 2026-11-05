@@ -1,0 +1,4 @@
+-- Record of migration applied to Preview (qwngmsedyepghskoagaj) as `admin_preview_recovery_codes_rpc`.
+-- admin.generate_my_recovery_codes(): SECURITY DEFINER, search_path='', authenticated-only;
+-- requires active admin; invalidates prior unused codes; returns 8 codes once, stores SHA-256 hashes
+-- in admin.admin_recovery_codes; writes audit event. Recovery codes never grant AAL2/step-up.

@@ -1,0 +1,9 @@
+-- Record of migration applied to Preview (qwngmsedyepghskoagaj) as `admin_preview_review_workflows`.
+-- Full SQL was applied via the Supabase migration API on 2026-11-05; this file is the repo record.
+-- Contents: creators.review/creators.approve/campaigns.review/campaigns.publish permissions + role grants;
+-- extended creator/campaign status CHECKs; review profile columns; creator/campaign decision-history
+-- tables; preview.notifications (in-app, queued); SECURITY DEFINER preview.review_creator /
+-- preview.review_campaign (authenticated-only, permission + AAL2 via admin.has_permission, row-locked
+-- state machine, mandatory reasons, audit via audit.append_audit, notification insert);
+-- synthetic seed: 3 creators (2 pending_review, 1 changes_requested), 2 campaigns (pending_review).
+-- Verified: unauthenticated RPC call raises 'unauthenticated'; seed status counts confirmed by query.
