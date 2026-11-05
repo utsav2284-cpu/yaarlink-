@@ -69,7 +69,9 @@ export async function POST(req: Request) {
         session: {
           mfaRequired: session.mfaRequired,
           mfaEnrolled: session.mfaEnrolled,
-          mfaSatisfied: false,
+          // Stage 1 simple mode: the password session is complete. Stage 2:
+          // the browser still owes MFA verification, so this stays false.
+          mfaSatisfied: !session.mfaRequired,
         },
       },
       { headers: NO_STORE },

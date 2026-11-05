@@ -42,6 +42,14 @@ export default function AdminSetupPage() {
   const [kind] = useState<SetupKind>(() => (fragmentValue("kind") === "admin_invitation" ? "admin_invitation" : "owner_setup"));
   const [inspection, setInspection] = useState<Inspection | null>(null);
   const [checking, setChecking] = useState(true);
+  // Stage 1 first-time setup (no invitation token): offered only while the
+  // server reports zero administrator accounts.
+  const [firstSetup, setFirstSetup] = useState(false);
+  const [setupClosed, setSetupClosed] = useState(false);
+  const [createdFirstSetup, setCreatedFirstSetup] = useState(false);
+  const [email, setEmail] = useState("");
+  const [setupKeyRequired, setSetupKeyRequired] = useState(false);
+  const [setupKey, setSetupKey] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -57,7 +65,27 @@ export default function AdminSetupPage() {
     let cancelled = false;
     const inspect = async () => {
       if (!TOKEN_PATTERN.test(token)) {
-        setChecking(false);
+        // No invitation link: this may be the one-time Stage 1 first-account
+        // setup, which the server offers only while zero admins exist.
+        try {
+          const statusResponse = await fetch("/api/admin/identity/first-admin", {
+            credentials: "include",
+            cache: "no-store",
+          });
+          const statusData = (await statusResponse.json().catch(() => null)) as {
+            setupOpen?: boolean;
+            setupKeyRequired?: boolean;
+          } | null;
+          if (!cancelled && statusResponse.ok && statusData?.setupOpen) {
+            setFirstSetup(true);
+            setSetupKeyRequired(Boolean(statusData.setupKeyRequired));
+          } else if (!cancelled && statusResponse.ok) {
+            setSetupClosed(true);
+          }
+        } catch {
+          if (!cancelled) setFirstSetup(false);
+        }
+        if (!cancelled) setChecking(false);
         return;
       }
       try {
@@ -98,21 +126,35 @@ export default function AdminSetupPage() {
 
     setSaving(true);
     try {
-      const response = await fetch("/api/admin/identity/setup/complete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ token, kind, name, password }),
-      });
+      const response = firstSetup
+        ? await fetch("/api/admin/identity/first-admin", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ name, email, password, setupKey: setupKeyRequired ? setupKey : undefined }),
+          })
+        : await fetch("/api/admin/identity/setup/complete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ token, kind, name, password }),
+          });
       const data = (await response.json().catch(() => null)) as { code?: string } | null;
       if (!response.ok) {
+        if (data?.code === "admin_setup_closed") {
+          setFirstSetup(false);
+          setSetupClosed(true);
+          return;
+        }
         setError(apiError(response.status, data?.code, "adminIdentity.actionFailed"));
         return;
       }
+      if (firstSetup) setCreatedFirstSetup(true);
       setSuccess(true);
       setToken("");
       setPassword("");
       setConfirmPassword("");
+      setSetupKey("");
     } catch {
       setError(t("adminIdentity.actionFailed"));
     } finally {
@@ -120,8 +162,12 @@ export default function AdminSetupPage() {
     }
   };
 
-  const invalid = mounted && !checking && !inspection && !success;
-  const title = inspection?.purpose === "admin_invitation" ? t("adminIdentity.setupTitleInvite") : t("adminIdentity.setupTitleOwner");
+  const invalid = mounted && !checking && !inspection && !firstSetup && !setupClosed && !success;
+  const title = firstSetup
+    ? t("adminIdentity.firstSetupTitle")
+    : inspection?.purpose === "admin_invitation"
+      ? t("adminIdentity.setupTitleInvite")
+      : t("adminIdentity.setupTitleOwner");
 
   return (
     <div className="mx-auto max-w-md px-4 py-14">
@@ -133,10 +179,12 @@ export default function AdminSetupPage() {
           <div className="mt-5">
             <div className="rounded-2xl border border-[#bfe3c5] bg-[#f2fbf3] p-5">
               <h2 className="text-[19px] font-black text-[#17452e]">{t("adminIdentity.setupSuccessTitle")}</h2>
-              <p className="mt-2 text-[14.5px] leading-relaxed text-[#57534e]">{t("adminIdentity.setupSuccessBody")}</p>
+              <p className="mt-2 text-[14.5px] leading-relaxed text-[#57534e]">
+                {createdFirstSetup ? t("adminIdentity.firstSetupSuccessBody") : t("adminIdentity.setupSuccessBody")}
+              </p>
             </div>
-            <Link href="/admin/sign-in" className="mt-5 block rounded-2xl bg-[#1c1917] py-3.5 text-center text-[15.5px] font-extrabold text-white hover:bg-black">
-              {t("adminIdentity.goToSignIn")}
+            <Link href={createdFirstSetup ? "/admin" : "/admin/sign-in"} className="mt-5 block rounded-2xl bg-[#1c1917] py-3.5 text-center text-[15.5px] font-extrabold text-white hover:bg-black">
+              {createdFirstSetup ? t("adminIdentity.openDashboard") : t("adminIdentity.goToSignIn")}
             </Link>
           </div>
         ) : invalid ? (
@@ -144,30 +192,84 @@ export default function AdminSetupPage() {
             <h2 className="text-[18px] font-black text-red-800">{t("auth.linkInvalidTitle")}</h2>
             <p className="mt-2 text-[14px] leading-relaxed text-red-700">{t("auth.linkInvalidBody")}</p>
           </div>
+        ) : setupClosed ? (
+          <div className="mt-5">
+            <div className="rounded-2xl border border-[#e9ddc3] bg-[#fffbf1] p-5">
+              <h2 className="text-[18px] font-black">{t("adminIdentity.setupClosedTitle")}</h2>
+              <p className="mt-2 text-[14px] leading-relaxed text-[#57534e]">{t("adminIdentity.setupClosedBody")}</p>
+            </div>
+            <Link href="/admin/sign-in" className="mt-5 block rounded-2xl bg-[#1c1917] py-3.5 text-center text-[15.5px] font-extrabold text-white hover:bg-black">
+              {t("adminIdentity.goToSignIn")}
+            </Link>
+          </div>
         ) : (
           <>
-            <p className="mt-1 text-[14.5px] leading-relaxed text-[#6f6862]">{t("adminIdentity.setupSub")}</p>
-            {checking || !inspection ? (
+            <p className="mt-1 text-[14.5px] leading-relaxed text-[#6f6862]">
+              {firstSetup ? t("adminIdentity.firstSetupSub") : t("adminIdentity.setupSub")}
+            </p>
+            {checking || (!inspection && !firstSetup) ? (
               <p className="mt-6 rounded-2xl bg-[#fffbf1] px-4 py-3 text-[14px] font-bold text-[#6f6862]">{t("adminIdentity.linkChecking")}</p>
             ) : (
               <>
-                <div className="mt-5 rounded-2xl border border-[#e9ddc3] bg-[#fffbf1] p-4 text-[14px] leading-relaxed">
-                  <p>{t("adminIdentity.setupForEmail", { email: inspection.email })}</p>
-                  <p className="mt-1 font-bold">
-                    {t("adminIdentity.assignedRole")}: {t(ROLE_KEYS[inspection.role])}
-                  </p>
-                </div>
+                {inspection && (
+                  <div className="mt-5 rounded-2xl border border-[#e9ddc3] bg-[#fffbf1] p-4 text-[14px] leading-relaxed">
+                    <p>{t("adminIdentity.setupForEmail", { email: inspection.email })}</p>
+                    <p className="mt-1 font-bold">
+                      {t("adminIdentity.assignedRole")}: {t(ROLE_KEYS[inspection.role])}
+                    </p>
+                  </div>
+                )}
                 <form onSubmit={submit} className="mt-5 grid gap-3">
                   <label htmlFor="admin-setup-name" className="text-[13.5px] font-bold">{t("admin.name")} *</label>
                   <input id="admin-setup-name" name="name" value={name} onChange={(event) => setName(event.target.value)} required maxLength={120} autoComplete="name" className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]" />
-                  <label htmlFor="admin-setup-email" className="text-[13.5px] font-bold">{t("auth.email")}</label>
-                  <input id="admin-setup-email" name="email" value={inspection.email} readOnly autoComplete="username" className="rounded-xl border border-[#e9ddc3] bg-[#f7f1df] px-4 py-3 text-[#6f6862] outline-none" />
+                  <label htmlFor="admin-setup-email" className="text-[13.5px] font-bold">{t("auth.email")} {firstSetup ? "*" : ""}</label>
+                  <input
+                    id="admin-setup-email"
+                    name="email"
+                    type="email"
+                    value={firstSetup ? email : inspection?.email ?? ""}
+                    onChange={firstSetup ? (event) => setEmail(event.target.value) : undefined}
+                    readOnly={!firstSetup}
+                    required={firstSetup}
+                    autoComplete="username"
+                    className={
+                      firstSetup
+                        ? "rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]"
+                        : "rounded-xl border border-[#e9ddc3] bg-[#f7f1df] px-4 py-3 text-[#6f6862] outline-none"
+                    }
+                  />
+                  {firstSetup && setupKeyRequired && (
+                    <>
+                      <label htmlFor="admin-setup-key" className="text-[13.5px] font-bold">{t("adminIdentity.setupKeyLabel")} *</label>
+                      <input
+                        id="admin-setup-key"
+                        name="setupKey"
+                        type="password"
+                        value={setupKey}
+                        onChange={(event) => setSetupKey(event.target.value)}
+                        required
+                        autoComplete="off"
+                        className="rounded-xl border border-[#e9ddc3] bg-[#fffbf1] px-4 py-3 outline-none focus:border-[#1c1917]"
+                      />
+                      <p className="text-[12.5px] leading-relaxed text-[#6f6862]">{t("adminIdentity.setupKeyHelp")}</p>
+                    </>
+                  )}
                   <label htmlFor="admin-setup-password" className="text-[13.5px] font-bold">{t("auth.password")}</label>
                   <AdminPasswordField id="admin-setup-password" name="newPassword" value={password} onChange={setPassword} onSuggest={setConfirmPassword} placeholder={t("auth.password")} />
                   <label htmlFor="admin-setup-confirm-password" className="text-[13.5px] font-bold">{t("auth.confirmPassword")}</label>
                   <AdminPasswordField id="admin-setup-confirm-password" name="confirmPassword" value={confirmPassword} onChange={setConfirmPassword} placeholder={t("auth.confirmPassword")} showGuidance={false} />
                   {error && <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13.5px] font-bold text-red-700">{error}</p>}
-                  <button disabled={!mounted || saving || !name.trim() || !isAdminPasswordCompliant(password)} className="rounded-2xl bg-[#1c1917] py-3.5 text-[16px] font-extrabold text-white hover:bg-black disabled:opacity-60">
+                  <button
+                    disabled={
+                      !mounted ||
+                      saving ||
+                      !name.trim() ||
+                      (firstSetup && !email.trim()) ||
+                      (firstSetup && setupKeyRequired && !setupKey.trim()) ||
+                      !isAdminPasswordCompliant(password)
+                    }
+                    className="rounded-2xl bg-[#1c1917] py-3.5 text-[16px] font-extrabold text-white hover:bg-black disabled:opacity-60"
+                  >
                     {saving ? t("adminIdentity.creating") : t("adminIdentity.createButton")}
                   </button>
                 </form>

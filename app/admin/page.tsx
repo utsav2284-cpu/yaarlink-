@@ -433,6 +433,17 @@ export default function AdminPage() {
   const [adminDraft, setAdminDraft] = useState<AdminQuery>(() => emptyAdminQuery("campaigns"));
   const adminRequestRef = useRef<Record<string, number>>({});
   const [authed, setAuthed] = useState(false);
+  // Stage 1 shows a simple signed-in home at /admin. The full legacy console
+  // below stays available only via ?console=legacy for Stage 2 development.
+  const [showLegacyConsole] = useState(
+    () => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("console") === "legacy",
+  );
+  const [adminProfile, setAdminProfile] = useState<{
+    name?: string | null;
+    email?: string;
+    role?: string;
+    lastLoginAt?: string | null;
+  } | null>(null);
   const [errKey, setErrKey] = useState<TranslationKey | "">("");
   const [noticeKey, setNoticeKey] = useState<TranslationKey | "">("");
   const [loading, setLoading] = useState(false);
@@ -468,6 +479,10 @@ export default function AdminPage() {
         router.replace("/admin/sign-in");
         return;
       }
+      setAdminProfile(data.admin);
+      // Stage 1 simple mode reports the password session as satisfied, so a
+      // signed-in Super Admin simply stays on the dashboard.
+      if (data.session?.mfaSatisfied && data.admin.role === "super_admin") return;
       if (!data.session?.mfaSatisfied && data.admin.role === "super_admin") {
         window.sessionStorage.setItem("yl-admin-after-mfa", "/admin");
       }
@@ -493,6 +508,7 @@ export default function AdminPage() {
     setBusyKey("");
     setExporting(false);
     setAuthed(false);
+    setAdminProfile(null);
   };
 
   const load = async (
@@ -677,6 +693,25 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => { void Promise.resolve().then(() => loadRef.current("campaigns")); }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadProfile = async () => {
+      try {
+        const response = await fetch("/api/admin/identity/me", { credentials: "include", cache: "no-store" });
+        const data = (await response.json().catch(() => null)) as {
+          admin?: { name?: string | null; email?: string; role?: string; lastLoginAt?: string | null };
+        } | null;
+        if (!cancelled && response.ok && data?.admin) setAdminProfile(data.admin);
+      } catch {
+        // The data load above remains the authority for access redirects.
+      }
+    };
+    void loadProfile();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const savePlatformSettings = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -874,6 +909,64 @@ export default function AdminPage() {
           <a href="/admin/security" className="mt-3 block text-center text-[14px] font-bold text-[#c7431f]">
             {t("adminIdentity.securityTitle")}
           </a>
+        </section>
+      </div>
+    );
+  }
+
+  if (!showLegacyConsole) {
+    const profileRole =
+      adminProfile?.role === "super_admin" ? t("adminIdentity.role.super_admin") : (adminProfile?.role ?? "—");
+    return (
+      <div className="mx-auto max-w-4xl px-4 py-14">
+        <section className="rounded-[28px] border border-[#e9ddc3] bg-white p-8 card-shadow" aria-labelledby="simple-admin-home-title">
+          <p className="text-[12.5px] font-bold uppercase tracking-widest text-[#c7431f]">{t("adminIdentity.eyebrow")}</p>
+          <div className="mt-1 flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h1 id="simple-admin-home-title" className="font-display text-[30px] font-black">{t("adminIdentity.simpleHomeTitle")}</h1>
+              <p className="mt-1 max-w-xl text-[14.5px] leading-relaxed text-[#6f6862]">{t("adminIdentity.simpleHomeSub")}</p>
+            </div>
+            <button
+              type="button"
+              onClick={lockAdmin}
+              className="rounded-2xl bg-[#1c1917] px-5 py-3 text-[14.5px] font-extrabold text-white hover:bg-black"
+            >
+              {t("adminIdentity.signOut")}
+            </button>
+          </div>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <div className="rounded-2xl border border-[#e9ddc3] bg-[#fffbf1] p-5">
+              <h2 className="text-[16px] font-black">{t("adminIdentity.accountDetails")}</h2>
+              <dl className="mt-3 space-y-2 text-[14px] leading-relaxed">
+                <div>
+                  <dt className="font-bold text-[#6f6862]">{t("adminIdentity.signedInAs")}</dt>
+                  <dd className="font-semibold">{adminProfile?.name ?? "—"}</dd>
+                  <dd className="text-[#57534e]">{adminProfile?.email ?? "—"}</dd>
+                </div>
+                <div>
+                  <dt className="font-bold text-[#6f6862]">{t("adminIdentity.assignedRole")}</dt>
+                  <dd className="font-semibold">{profileRole}</dd>
+                </div>
+                <div>
+                  <dt className="font-bold text-[#6f6862]">{t("adminIdentity.lastLogin")}</dt>
+                  <dd className="font-semibold">
+                    {adminProfile?.lastLoginAt ? new Date(adminProfile.lastLoginAt).toLocaleString() : t("adminIdentity.never")}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+
+            <div className="rounded-2xl border border-[#bfe3c5] bg-[#f2fbf3] p-5">
+              <h2 className="text-[16px] font-black text-[#17452e]">{t("adminIdentity.simpleHomePhaseTitle")}</h2>
+              <p className="mt-3 text-[14px] leading-relaxed text-[#57534e]">{t("adminIdentity.simpleHomePhaseBody")}</p>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-[#e9ddc3] p-5">
+            <h2 className="text-[16px] font-black">{t("adminIdentity.simpleHomeNextTitle")}</h2>
+            <p className="mt-2 text-[14px] leading-relaxed text-[#57534e]">{t("adminIdentity.simpleHomeNextBody")}</p>
+          </div>
         </section>
       </div>
     );

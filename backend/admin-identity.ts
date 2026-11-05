@@ -52,6 +52,38 @@ const TOKEN_BYTES = 32;
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const enc = new TextEncoder();
+const FIRST_ADMIN_SETUP_LOCK_ID = 778_899;
+
+/**
+ * Stage 1 (Simple Admin Dashboard) deliberately runs with email + strong
+ * password sign-in only: set ADMIN_MFA_REQUIRED=false and a password session
+ * is complete on its own. The full Stage 2 policy stays the default — with
+ * the variable unset or "true", a session is only MFA-pending until TOTP,
+ * passkey, or recovery verification, exactly as before.
+ */
+export function isAdminMfaRequired(): boolean {
+  const raw = (process.env.ADMIN_MFA_REQUIRED ?? "true").trim().toLowerCase();
+  return !["false", "0", "no", "off"].includes(raw);
+}
+
+function firstAdminSetupKey(): string {
+  return process.env.ADMIN_FIRST_SETUP_KEY?.trim() ?? "";
+}
+
+export function isFirstAdminSetupKeyRequired(): boolean {
+  return firstAdminSetupKey().length > 0;
+}
+
+async function firstAdminSetupKeyMatches(provided: string | null | undefined): Promise<boolean> {
+  const configured = firstAdminSetupKey();
+  if (!configured) return true;
+  if (!provided) return false;
+  const [providedDigest, configuredDigest] = await Promise.all([
+    crypto.subtle.digest("SHA-256", enc.encode(provided)),
+    crypto.subtle.digest("SHA-256", enc.encode(configured)),
+  ]);
+  return safeEqual(new Uint8Array(providedDigest), new Uint8Array(configuredDigest));
+}
 
 export const ADMIN_AUTH_TOKEN_TTLS = {
   owner_setup: 20 * 60_000,
@@ -309,6 +341,89 @@ export function buildAdminSecurityUrl(req?: Request): string {
 
 export function buildAdminSignInUrl(req?: Request): string {
   return new URL("/admin/sign-in", appBase(req)).toString();
+}
+
+export type FirstAdminSetupState = {
+  setupOpen: boolean;
+  setupKeyRequired: boolean;
+};
+
+/**
+ * Stage 1 first-time setup state. Setup is open only while no administrator
+ * account exists at all; the moment the first account is created it closes
+ * permanently and /admin/setup returns to the token-based invitation flow.
+ */
+export async function getFirstAdminSetupState(): Promise<FirstAdminSetupState> {
+  const rows = await db.select({ value: sql<number>`count(*)::int` }).from(adminUsers);
+  return {
+    setupOpen: (rows[0]?.value ?? 0) === 0,
+    setupKeyRequired: isFirstAdminSetupKeyRequired(),
+  };
+}
+
+export type CreateFirstAdminResult =
+  | { kind: "created"; adminRow: AdminUser; admin: AdminAccountView }
+  | { kind: "setup_closed" }
+  | { kind: "invalid_setup_key" };
+
+/**
+ * Create the very first administrator account (the owner, role super_admin).
+ * A transaction-scoped advisory lock serializes concurrent attempts so two
+ * simultaneous requests can never both pass the zero-account check. When
+ * ADMIN_FIRST_SETUP_KEY is configured (production), the caller must also
+ * present that one-time key; in a private preview it may be left unset.
+ */
+export async function createFirstAdminAccount({
+  name,
+  email,
+  passwordHash,
+  setupKey,
+  req,
+}: {
+  name: string;
+  email: string;
+  passwordHash: string;
+  setupKey?: string | null;
+  req?: Request;
+}): Promise<CreateFirstAdminResult> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(${FIRST_ADMIN_SETUP_LOCK_ID})`);
+
+    const countRows = await tx.select({ value: sql<number>`count(*)::int` }).from(adminUsers);
+    if ((countRows[0]?.value ?? 0) > 0) return { kind: "setup_closed" } as const;
+
+    if (!(await firstAdminSetupKeyMatches(setupKey))) {
+      return { kind: "invalid_setup_key" } as const;
+    }
+
+    const now = new Date();
+    const [adminRow] = await tx
+      .insert(adminUsers)
+      .values({
+        email,
+        name,
+        passwordHash,
+        role: "super_admin",
+        status: "active",
+        emailVerifiedAt: now,
+        passwordChangedAt: now,
+        tokenVersion: 0,
+        createdByAdminId: null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+
+    await insertAdminSecurityEvent(tx, {
+      adminUserId: adminRow.id,
+      actorAdminId: adminRow.id,
+      eventType: "admin.first_setup",
+      req,
+      metadata: { role: "super_admin", setupKeyRequired: isFirstAdminSetupKeyRequired() },
+    });
+
+    return { kind: "created", adminRow, admin: toAdminAccountView(adminRow) } as const;
+  });
 }
 
 export function createAdminAuthToken(): string {
@@ -738,13 +853,19 @@ const ADMIN_ACCOUNT_COOKIE_OPTIONS = adminAccountCookieOptions(ADMIN_ACCOUNT_SES
 export async function createAdminAccountSession(
   admin: AdminUser,
   req?: Request,
-): Promise<{ mfaEnrolled: boolean; mfaRequired: true }> {
+): Promise<{ mfaEnrolled: boolean; mfaRequired: boolean }> {
   const createdAt = new Date();
   const sessionId = crypto.randomUUID();
   const mfaEnrolled = await adminHasVerifiedMfaMethod(admin.id);
-  // Password success creates only a short-lived pending browser session. The
-  // sensitive services unlock after MFA enrolment or verification extends it.
-  const expiresAt = new Date(createdAt.getTime() + ADMIN_ACCOUNT_MFA_PENDING_SESSION_MS);
+  const mfaRequired = isAdminMfaRequired();
+  // With MFA required (Stage 2 default), password success creates only a
+  // short-lived pending browser session; sensitive services unlock after MFA
+  // enrolment or verification extends it. In Stage 1 simple mode the
+  // password session is complete and gets the full session lifetime. The
+  // mfa_verified_at column still records only genuine MFA verification.
+  const expiresAt = new Date(
+    createdAt.getTime() + (mfaRequired ? ADMIN_ACCOUNT_MFA_PENDING_SESSION_MS : ADMIN_ACCOUNT_SESSION_MS),
+  );
   // Sign before inserting so bad secret configuration cannot leave an orphan
   // database session that no browser could use.
   const token = await createAdminAccountToken(admin.id, admin.tokenVersion, sessionId, createdAt.getTime());
@@ -776,13 +897,13 @@ export async function createAdminAccountSession(
       actorAdminId: admin.id,
       eventType: "admin.login",
       req,
-      metadata: { sessionCreated: true, mfaRequired: true, mfaEnrolled },
+      metadata: { sessionCreated: true, mfaRequired, mfaEnrolled },
     });
   });
 
   const jar = await cookies();
   jar.set(ADMIN_ACCOUNT_COOKIE, token, ADMIN_ACCOUNT_COOKIE_OPTIONS);
-  return { mfaEnrolled, mfaRequired: true };
+  return { mfaEnrolled, mfaRequired };
 }
 
 async function reissueAdminAccountSessionCookie(
@@ -888,7 +1009,9 @@ export async function getAdminAccountSession(): Promise<AdminAccountSessionConte
     sessionExpiresAt: row.sessionExpiresAt,
     mfaVerifiedAt: row.sessionMfaVerifiedAt,
     mfaEnrolled,
-    mfaSatisfied: Boolean(row.sessionMfaVerifiedAt),
+    // Stage 1 simple mode: a password session satisfies access on its own.
+    // Stage 2 (default): only genuine MFA verification satisfies it.
+    mfaSatisfied: !isAdminMfaRequired() || Boolean(row.sessionMfaVerifiedAt),
   };
 }
 
