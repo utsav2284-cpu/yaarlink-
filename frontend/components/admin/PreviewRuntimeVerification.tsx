@@ -11,10 +11,18 @@ type Check = {
   actualProjectRef?: string | null;
   detected?: boolean | null;
   connectionEstablished?: boolean;
-  querySucceeded?: boolean;
+  selectOneSucceeded?: boolean;
+  identityQuerySucceeded?: boolean;
   stage?: string;
   category?: string | null;
   explanation?: string;
+  configuration?: {
+    urlConfigured: boolean;
+    urlParseable: boolean;
+    configuredPreviewProject: boolean;
+    configuredApplicationRole: boolean;
+    caCertificateConfigured: boolean;
+  };
 };
 
 type VerificationResponse = {
@@ -146,7 +154,7 @@ export default function PreviewRuntimeVerification() {
                         : key === "productionDatabase"
                         ? check.detected === true ? "Production database detected" : check.detected === false ? "Current Production system identifier not detected" : "Production usage not verified"
                         : key === "databaseConnection"
-                          ? `Stage: ${check.stage ?? "unavailable"}. ${check.connectionEstablished ? "Connection established" : "Connection not established"}; ${check.querySucceeded ? "query succeeded" : "query did not succeed"}. ${check.category ?? ""}${check.explanation ? ` — ${check.explanation}` : ""}`
+                          ? `Stage: ${check.stage ?? "unavailable"}. ${check.connectionEstablished ? "Connection established" : "Connection not established"}; SELECT 1 ${check.selectOneSucceeded ? "succeeded" : "did not succeed"}; identity query ${check.identityQuerySucceeded ? "succeeded" : "did not succeed"}. Config: URL ${check.configuration?.urlConfigured ? "set" : "missing"}/${check.configuration?.urlParseable ? "valid" : "invalid"}; Preview target ${check.configuration?.configuredPreviewProject ? "matches" : "does not match"}; role ${check.configuration?.configuredApplicationRole ? "matches" : "does not match"}; CA PEM ${check.configuration?.caCertificateConfigured ? "present" : "missing/invalid"}. ${check.category ?? ""}${check.explanation ? ` — ${check.explanation}` : ""}`
                           : "Fixed read-only query through the application pool";
               return (
                 <li key={key} className="flex items-start justify-between gap-4 p-4 text-sm">
