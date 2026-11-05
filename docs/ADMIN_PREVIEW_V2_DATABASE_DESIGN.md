@@ -33,7 +33,10 @@ erDiagram
     admin_roles ||--o{ admin_role_assignments : assigned
     admin_roles ||--o{ role_permissions : grants
     admin_permissions ||--o{ role_permissions : mapped
-    admin_profiles ||--o{ admin_invitations : "invited_by / accepted"
+    admin_profiles ||--o{ admin_invitations : "invited_by (null = bootstrap)"
+    admin_invitations ||--o| admin_profiles : "acceptance creates (unique)"
+    admin_invitations ||--o{ admin_role_assignments : "initial grant (unique per acceptance)"
+    admin_session_registry ||--o{ admin_step_up_events : "bound to session"
     admin_bootstrap_state ||--o| admin_profiles : "claimed_by (owner)"
     admin_profiles ||--o| admin_mfa_status : "1:1 cached status"
     admin_profiles ||--o{ admin_recovery_codes : has
@@ -85,16 +88,17 @@ Purpose: one row per administrator, 1:1 with a Supabase Auth user. The single so
 | `display_name` | `text NOT NULL` | check length 1–120 |
 | `email_snapshot` | `citext NOT NULL UNIQUE` | display/contact snapshot only; Auth remains authority. Never used for authorization |
 | `status` | `admin.admin_status NOT NULL DEFAULT 'invited'` | `invited`, `active`, `suspended`, `deactivated` |
-| `is_owner` | `boolean NOT NULL DEFAULT false` | first-owner / owner flag; partial unique index guarantees at least the bootstrap invariant is checkable (multiple owners allowed only by owner grant, §6.4) |
-| `invited_by` | `uuid FK → admin.admin_profiles(auth_user_id)` null | null only for the first owner |
+| `is_owner` | `boolean NOT NULL DEFAULT false` | **Phase 7.3 ownership model:** exactly one row may have `is_owner=true` at any time, enforced by a partial unique index `UNIQUE (is_owner) WHERE is_owner` (one permanent owner; ownership is *transferable* only through the owner-transfer function §20.1, never by role grant). `is_owner` is an ownership marker, not a role |
+| `invited_by` | `uuid FK → admin.admin_profiles(auth_user_id)` **NULL** | null exactly when `invitation_id` references the bootstrap invitation (no prior admin exists); otherwise the inviting admin. This resolves the Phase 7 NULL/NOT NULL contradiction: the column is nullable by design, with a CHECK that `invited_by IS NULL` only for the bootstrap-originated profile |
+| `invitation_id` | `uuid FK → admin.admin_invitations(id)` null | the invitation that produced this profile; UNIQUE where present — one invitation creates at most one profile |
 | `last_login_at` | `timestamptz` null | updated by server on session establishment |
 | `suspended_at`, `suspended_reason` | `timestamptz`, `text` | set by suspension flow |
 | `deactivated_at` | `timestamptz` | terminal for normal flows |
 | `created_at`, `updated_at` | `timestamptz` | |
 
-Indexes: unique `email_snapshot`; index on `status`; partial index `WHERE is_owner`.
+Indexes: unique `email_snapshot`; index on `status`; **partial unique index `(is_owner) WHERE is_owner`** (database-enforced single owner); unique partial index `(invitation_id) WHERE invitation_id IS NOT NULL`.
 Retention: retained indefinitely while any audit row references the admin; deactivation, not deletion.
-Allowed ops: `SELECT` own row (any active admin) and rows visible to `admins.read`; `INSERT/UPDATE` server-only (service role or `SECURITY DEFINER` functions in §8.4). No direct client `INSERT/UPDATE/DELETE`.
+Allowed ops: `INSERT/UPDATE` server-only (service role or `SECURITY DEFINER` functions in §8.4); no client `DELETE`. **Column-level security (Phase 7.3):** direct table `SELECT` is revoked from `authenticated`; admins read profiles only through `admin.admin_profile_directory` view (columns: `auth_user_id`, `display_name`, `status`, `is_owner`, role keys — **never** `email_snapshot`, IPs, or security metadata) gated by `admins.read`, and their own full row through `admin.my_profile` view (`auth.uid() = auth_user_id`, excluding recovery/session internals). `email_snapshot` is visible only to `admins.read` holders via the directory view variant used by the server, never to AAL1.
 
 ### 4.2 `admin.admin_bootstrap_state` (singleton)
 Purpose: one-time first-owner bootstrap + permanent lockout.
@@ -109,7 +113,7 @@ Purpose: one-time first-owner bootstrap + permanent lockout.
 
 Rule (future `SECURITY DEFINER` function `admin.claim_first_owner()`, §8.4): succeeds only if `owner_claimed_at IS NULL`, caller is AAL2, caller has a verified TOTP factor, and caller's profile was created from the controlled invitation; it atomically sets the owner, inserts the `owner` role assignment, writes audit rows, and permanently disables bootstrap. There is no public setup route and no shared password (§6 of Phase 6 doc).
 
-**Phase 7.1 correction (mandatory, race-proofing):** the claim must be a single atomic conditional update — `UPDATE admin_bootstrap_state SET owner_claimed_at = now(), owner_auth_user_id = <caller>, bootstrap_disabled_at = now() WHERE id = true AND owner_claimed_at IS NULL RETURNING …` — executed after locking the singleton row (`SELECT … FOR UPDATE`) inside one transaction. If the update affects zero rows, the claim fails. Check-then-insert without this atomic guard is prohibited: two simultaneous claims must not both succeed. Additionally: (a) the caller's profile must trace to an invitation whose `intended_role_key` is `super_admin` and whose granter held owner authority — an ordinary invitation can never be upgraded into an owner claim; (b) the singleton conditional update is the sole race guard and must be concurrency-tested (§14); (c) if the first owner is ever created via the Supabase dashboard instead, an equivalent `admin_invitations` + audit record must be written in the same operator procedure, or the bootstrap state will falsely appear unclaimed.
+**Phase 7.1 correction (mandatory, race-proofing):** the claim must be a single atomic conditional update — `UPDATE admin_bootstrap_state SET owner_claimed_at = now(), owner_auth_user_id = <caller>, bootstrap_disabled_at = now() WHERE id = true AND owner_claimed_at IS NULL RETURNING …` — executed after locking the singleton row (`SELECT … FOR UPDATE`) inside one transaction. If the update affects zero rows, the claim fails. Check-then-insert without this atomic guard is prohibited: two simultaneous claims must not both succeed. Additionally: (a) the caller's profile must trace to the operator-authorized bootstrap invitation (`invitation_kind='bootstrap'`, `intended_role_key='super_admin'`) per §20.1 — an ordinary `admin_invite` can never be upgraded into an owner claim (Phase 7.3 supersedes the earlier 'granter held owner authority' wording, which was circular: no owner exists at bootstrap); (b) the singleton conditional update is the sole race guard and must be concurrency-tested (§14); (c) if the first owner is ever created via the Supabase dashboard instead, an equivalent `admin_invitations` + audit record must be written in the same operator procedure, or the bootstrap state will falsely appear unclaimed.
 RLS: no client access at all; only the definer function and server service role may read/write.
 
 ### 4.3 `admin.admin_invitations`
@@ -119,16 +123,18 @@ Purpose: invite-only lifecycle, expiry, and auditability.
 |---|---|---|
 | `id` | `uuid` PK | |
 | `email` | `citext NOT NULL` | invitee |
-| `invited_by` | `uuid NOT NULL FK → admin.admin_profiles` | existing owner/admin with `admins.invite` |
+| `invited_by` | `uuid FK → admin.admin_profiles` **NULL** | the inviting admin; **NULL only when `invitation_kind='bootstrap'`** (trusted-operator bootstrap, §20.1) with CHECK `(invitation_kind='bootstrap') = (invited_by IS NULL)` for pending operator invites |
+| `invitation_kind` | `text NOT NULL DEFAULT 'admin_invite' CHECK (invitation_kind IN ('admin_invite','bootstrap'))` | bootstrap invitations are created only by the Phase 7.3 operator procedure (§20.1), never by an API available to non-owners |
+| `operator_authorization_ref` | `text` null | non-secret reference to the out-of-band operator approval (ticket/change ID) — required for `bootstrap`, forbidden to contain tokens |
 | `intended_role_key` | `text` FK → `admin.admin_roles(key)` null | role proposed at invite; grant still happens server-side at acceptance |
 | `status` | `text NOT NULL DEFAULT 'pending'` | `pending`, `accepted`, `expired`, `revoked`, `superseded` (CHECK) |
-| `token_hash` | `bytea` null | **hash only** (SHA-256/argon2) of any app-level token; raw invite links are issued by Supabase Auth and never stored |
+| `token_hash` | `bytea` null | **hash only**: `SHA-256` over the high-entropy application token (tokens are ≥256-bit random, so a fast hash is appropriate; passwords/codes still use argon2id per §6.2). Raw Supabase Auth invite links are never stored. The accepted token is compared in constant time by the server and the row is consumed atomically (status `pending → accepted` conditional UPDATE) |
 | `expires_at` | `timestamptz NOT NULL` | ≤ 72h from issue (CHECK guidance) |
 | `accepted_at` | `timestamptz` null | |
 | `accepted_auth_user_id` | `uuid` FK → `auth.users(id)` null | set on acceptance |
 | `created_at`, `updated_at` | `timestamptz` | |
 
-Indexes: index on `email`, `status`, `expires_at`; unique partial index on `email WHERE status='pending'` (one live invite per email).
+Indexes: index on `email`, `status`, `expires_at`; unique partial index on `email WHERE status='pending'` (one live invite per email); **unique partial index `(accepted_auth_user_id) WHERE accepted_auth_user_id IS NOT NULL`** (one Auth user can accept at most one invitation); index on `accepted_auth_user_id`. Acceptance rules (Phase 7.3, §20.1): email must match the Auth account email (case-insensitive), expiry/revocation are re-checked inside the acceptance transaction, and retries are idempotent — replaying an accepted invitation returns the existing profile/grant instead of duplicating them.
 Retention: 24 months for accountability, then archival per §12.
 RLS: `admins.invite` holders (AAL2) may `SELECT/INSERT/UPDATE status`; no client delete. Acceptance is performed by server code that validates expiry/status before creating `admin_profiles`.
 
@@ -150,13 +156,13 @@ PK `(role_key, permission_key)`, FKs to roles/permissions, `granted_by uuid FK �
 
 **`admin.admin_role_assignments`**
 `id uuid PK`, `auth_user_id uuid NOT NULL FK → admin_profiles(auth_user_id)`, `role_key text NOT NULL FK → admin_roles`, `granted_by uuid FK → admin_profiles`, `granted_at timestamptz`, `expires_at timestamptz null` (time-boxed elevation), `revoked_at timestamptz null`, `revoked_by uuid`, `reason text`.
-Unique partial index: `(auth_user_id, role_key) WHERE revoked_at IS NULL`. Indexes on `auth_user_id`, `role_key`.
+**Role-assignment lifecycle (Phase 7.3 correction):** the earlier partial unique index `WHERE revoked_at IS NULL` was wrong — an *expired-but-unrevoked* row blocked reassignment, and a predicate using `now()` is not permitted in an index. Instead: a stored `is_current boolean NOT NULL DEFAULT true` is maintained **only** by the grant/revoke/expire functions; partial unique index `(auth_user_id, role_key) WHERE is_current`. Expiry is applied by a race-safe conditional transition (`UPDATE … SET is_current=false, revoked_at=COALESCE(revoked_at, now()), revoke_reason='expired' WHERE id=… AND is_current`), executed by the grant function (and a scheduled job) *inside the same transaction* before inserting the replacement row. Simultaneous grants serialize on the partial unique index: exactly one succeeds, the other receives a uniqueness conflict and must re-read state — never a duplicate live grant. `has_permission` checks `is_current AND (expires_at IS NULL OR expires_at > now())` at query time, so an expired assignment stops conferring permission immediately even before the transition job runs.
 
 All four tables: RLS on; `SELECT` only for active AAL2 admins with `roles.read`; writes server-only (service role / definer functions) with audit rows for every grant/revoke. Permission checks are performed server-side on every request (`admin.has_permission(key)` mirrors the same logic for RLS).
 
 ### 5.2 Proposed roles and permission matrix
 
-Permission keys (module.action): `dashboard.view`, `admins.read`, `admins.invite`, `admins.manage`, `roles.read`, `roles.manage`, `audit.read`, `security.read`, `security.manage`, `creators.read`, `creators.manage`, `campaigns.read`, `campaigns.manage`, `brands.read`, `brands.manage`, `users.read`, `users.manage`, `moderation.read`, `moderation.act`, `site_config.read`, `site_config.manage`, `analytics.read`, `notifications.manage`, `crm.read`, `crm.manage`, `privacy.read`, `privacy.manage`, `backups.read`, `backups.manage`, `settings.manage` (sensitive), `owner.bootstrap` (bootstrap function only, never assignable).
+Permission catalogue (**Phase 7.3 corrected count: 30 assignable permissions**, listed below, **plus 1 non-assignable catalogue entry** `owner.bootstrap` used only by the bootstrap function — 31 catalogue rows in total; the RBAC matrix in this section, the seed plan in §13, and the tests in §14/§20.9 must all use exactly this catalogue): `dashboard.view`, `admins.read`, `admins.invite`, `admins.manage`, `roles.read`, `roles.manage`, `audit.read`, `security.read`, `security.manage`, `creators.read`, `creators.manage`, `campaigns.read`, `campaigns.manage`, `brands.read`, `brands.manage`, `users.read`, `users.manage`, `moderation.read`, `moderation.act`, `site_config.read`, `site_config.manage`, `analytics.read`, `notifications.manage`, `crm.read`, `crm.manage`, `privacy.read`, `privacy.manage`, `backups.read`, `backups.manage`, `settings.manage` (sensitive), `owner.bootstrap` (bootstrap function only, never assignable).
 
 | Permission | Super Admin | Admin | Moderator | Support | Auditor (read-only) |
 |---|:---:|:---:|:---:|:---:|:---:|
@@ -209,7 +215,7 @@ Server registers sessions at login (from Auth session data), updates `last_seen_
 RLS: own sessions `SELECT` (and self-revoke request via server function); `security.manage` can read/revoke all (server-mediated).
 
 ### 6.4 `admin.admin_step_up_events`
-`id uuid PK`, `auth_user_id uuid NOT NULL FK`, `action_key text NOT NULL` (the sensitive permission/action), `method text` (`totp`, `recovery_code`), `verified_at timestamptz NOT NULL DEFAULT now()`, `expires_at timestamptz NOT NULL` (short window, e.g. 10 min), `consumed_at timestamptz null`, `ip inet`.
+`id uuid PK`, `auth_user_id uuid NOT NULL FK`, `session_id uuid NOT NULL` (Phase 7.3: bound to the exact Supabase Auth session — the JWT `session_id` claim; a step-up minted in one session is invalid in any other), `action_key text NOT NULL` (the sensitive permission/action), `resource_key text` null (resource/operation identifier where applicable; a step-up bound to a resource never authorizes a different resource), `method text NOT NULL CHECK (method = 'totp')` (**Phase 7.3: `recovery_code` is removed as a step-up method** — recovery codes never grant AAL2 or step-up, §6.2), `amr_totp_timestamp timestamptz` (timestamp of the `totp` entry in the JWT `amr` claim observed by the server at issuance, §20.3), `verified_at timestamptz NOT NULL DEFAULT now()`, `expires_at timestamptz NOT NULL` (CHECK `expires_at <= verified_at + interval '10 minutes'`), `consumed_at timestamptz null`, `ip inet`.
 Sensitive actions check for an unconsumed, unexpired step-up row for that action (or a fresh AAL2 challenge — §8.5). Server-only writes; own-row `SELECT` not required by client.
 
 **Phase 7.1 correction (mandatory):** consumption must be atomic (`UPDATE … SET consumed_at = now() WHERE id = … AND consumed_at IS NULL AND expires_at > now()`), step-up rows are bound to `auth_user_id` **and** the exact `action_key` (a step-up for one sensitive action never authorizes another), the default window is ≤ 10 minutes, and a step-up event can never be minted at AAL1 — issuing one requires a fresh successful TOTP verification at verification time, not merely an AAL2 session opened earlier.
@@ -227,7 +233,9 @@ Server-only writes; `security.read`/`audit.read` select via audit correlation. E
 ### 7.1 `audit.audit_log` (append-only)
 | Column | Type | Notes |
 |---|---|---|
-| `id` | `bigint GENERATED ALWAYS AS IDENTITY` PK | monotonic ordering |
+| `id` | `bigint GENERATED ALWAYS AS IDENTITY` PK | monotonic ordering; also the hash-chain sequence position |
+| `prev_hash` | `bytea NOT NULL` | SHA-256 of the previous row's canonical hash input (§20.4); genesis row uses 32 zero bytes |
+| `row_hash` | `bytea NOT NULL UNIQUE` | SHA-256 over the canonical encoding of this row including `prev_hash` (§20.4) |
 | `occurred_at` | `timestamptz NOT NULL DEFAULT now()` | |
 | `actor_auth_user_id` | `uuid` null | denormalized copy; FK-less by design so history survives deletion |
 | `actor_profile_id` | `uuid` FK → `admin_profiles` ON DELETE SET NULL | |
@@ -333,6 +341,8 @@ RLS for Module F: active AAL2 admin + module `*.read` to `SELECT`; `*.manage`/`m
 | `security_alerts` | — | — | — | `security.read` `SELECT`; `security.manage` status `UPDATE` | full |
 | Module F tables | — | — | — | `*.read` `SELECT`; `*.manage` write | full (audited) |
 
+**Phase 7.3 additions:** every privileged row above implicitly also requires `admin.session_is_current()` (Phase 7.1) and, for writes, a **live verified TOTP factor** (§20.7). Operations flagged sensitive (permissions with `is_sensitive`, §20.3 list) have **no direct client write path at all** — they are reachable only through server endpoints/definer functions that atomically consume a session-bound step-up; the matrix's `*.manage`/server column for those operations means that mediated path only. Self-service reads use the §20.6 views, not the tables.
+
 \* "Own row" for a non-admin authenticated user returns at most their own profile row; since profiles are only created for invited admins, ordinary Auth users (none expected in this project) see nothing. This is defence-in-depth; the Admin app also rejects non-admins server-side (§8.1 step 2).
 
 Unauthorized-user prevention, in one place: (1) public signup disabled (Phase 6) so attackers cannot mint Auth users; (2) no `anon` policies/grants; (3) profiles created only by invite/acceptance server flow; (4) RLS helpers require active profile + AAL2 + permission; (5) direct client writes revoked on identity/security tables; (6) service role confined to server code.
@@ -359,23 +369,27 @@ Unauthorized-user prevention, in one place: (1) public signup disabled (Phase 6)
 
 Recovery follows Phase 4 §5: restore to a separate recovery project, validate RLS/MFA/audit, rotate credentials, never restore into Production. Auth users/factors recovery is a separate concern (re-invitation + MFA re-enrollment if factors cannot be restored).
 
-## 13. Proposed migration execution order (future, approval-gated)
+## 13. Proposed migration execution order (future, approval-gated) — Phase 7.3 revised
 
-1. Schemas (`admin`, `audit`, `security`, `preview`, `ops`) + enum types + `updated_at` trigger helper.
-2. Identity tables (§4) incl. bootstrap singleton seed row.
-3. RBAC tables (§5.1) + seed permission catalogue and system roles + role-permission matrix (§5.2).
+**Atomicity rule (replaces the Phase 7 order):** no migration may commit a table that is queryable without RLS. Every table-creating migration is a single transaction that, in order: (1) creates the table and constraints; (2) `ALTER TABLE … ENABLE ROW LEVEL SECURITY` (and `FORCE ROW LEVEL SECURITY` where the table owner is ever used by application code — see role separation below); (3) `REVOKE ALL ON <table> FROM anon, authenticated` (and from `PUBLIC`); (4) creates the initial policies; (5) issues only the exact grants in §20.2. PostgreSQL DDL is transactional, so a failure anywhere rolls the table back entirely — there is no committed intermediate state. Where a step cannot run in a transaction (none is currently anticipated), the table must instead be created in a non-exposed schema and only exposed after policies exist.
+
+**Role separation:** a dedicated *migration-owner* role owns all objects and is used only by the migration runner; runtime roles never own tables. `anon`: no grants on `admin`/`audit`/`security`/`preview`/`ops` except explicitly public views (none in this design). `authenticated`: only the column-/view-level access and function `EXECUTE` grants listed in §10/§20.6. `service_role`: bypasses RLS by platform design — its use is restricted by §20.2 and is **not** protected by RLS; this design never claims otherwise. RLS also does not bind table owners, superusers, or `BYPASSRLS` roles; those identities are operationally restricted to the migration runner and platform operators, and their actions are covered by the off-project audit checkpoint (§20.4), not by RLS.
+
+Order (each step a separate reviewable migration; no step executed in Phase 7/7.1/7.3):
+1. Schemas (`admin`, `audit`, `security`, `preview`, `ops`) + enum types + `updated_at` trigger helper + audit hash-chain writer function skeleton.
+2. Identity tables (§4) incl. bootstrap singleton seed row — with RLS/grants/policies in the same transactions.
+3. RBAC tables (§5.1) + seed of the exact 31-entry permission catalogue (30 assignable + `owner.bootstrap`) and system roles + role-permission matrix (§5.2).
 4. Security metadata tables (§6) + audit (§7.1) + security events/alerts (§7.2–7.3), incl. append-only revokes/triggers.
-5. Helper functions (§8.4) and RLS enablement + policies (§10) — **in the same migration series as the tables they protect; a table must never exist without RLS enabled.**
-6. Module F tables (§9) + their policies.
+5. Helper functions (§8.4) with Phase 7.1/7.3 lockdown. A table must never exist without RLS enabled — policies land **with** their tables in steps 2–4 and 6, not in a later migration.
+6. Module F tables (§9) + their policies, same-transaction rule.
 7. Indexes/constraints not created inline (§11).
 8. Synthetic seed fixtures (clearly fictional, example domains) — separate seed step, never in Production.
-9. Verification suite (§14) run against the Preview project only.
-Each step is a separate, reviewable migration; no step is executed in Phase 7.
+9. Verification suite (§14 + §20.9) run against the Preview project only.
 
 ## 14. Testing strategy (future implementation phase)
 
 - **RLS tests:** anon denied everywhere; authenticated non-admin denied; AAL1 denied privileged reads; each role × permission cell of §5.2/§10 tested allow/deny; cross-admin record access denied; suspended/deactivated admin denied immediately.
-- **Bootstrap tests:** claim succeeds once (AAL2 + verified factor + invited profile), second claim fails, claim without MFA fails, no public route reaches the function.
+- **Bootstrap tests:** see the expanded Phase 7.3 test strategy in §20.9 (concurrent claims, no/invalid invitation, no MFA, duplicate acceptance, partial-failure retry).
 - **MFA/AAL2 tests:** login at AAL1 cannot read privileged tables; after TOTP challenge AAL2 succeeds; step-up required for `is_sensitive` actions and expires.
 - **Revocation tests:** suspend admin / revoke session ⇒ next privileged request denied despite unexpired token; recovery-code use revokes other sessions; codes single-use and hash-only at rest (inspect stored values in test).
 - **Audit tests:** UPDATE/DELETE on `audit_log` fail for every role incl. app role; sensitive action writes redacted before/after; audit-insert failure surfaces an alert.
@@ -430,3 +444,132 @@ An independent security review (`docs/ADMIN_PREVIEW_V2_DATABASE_SECURITY_REVIEW.
 
 
 This document is the only artefact of Phase 7. No database table, migration, SQL, Auth setting, Vercel variable, deployment, or Production resource was created, queried, or modified, and no secret was exposed. Implementation (§13) begins only after personal review and explicit approval of this design.
+
+## 20. Phase 7.3 normative corrections (supersede earlier text where they conflict)
+
+### 20.1 First-owner bootstrap and invitation-to-profile lifecycle (Correction A/E)
+
+Ownership model (final): there is **exactly one permanent owner** at any time. `admin_bootstrap_state.owner_auth_user_id` identifies the current owner of record; `admin_profiles.is_owner` mirrors it on that owner's profile and is protected by the partial unique index in §4.1. The owner also holds a normal `super_admin` role assignment — `super_admin` is a *role* (grantable to others by an owner), while `is_owner`/`owner_auth_user_id` denote the *single ownership seat*. An ordinary `super_admin` is not an owner and cannot grant ownership. Ownership may be **transferred** only by the current owner (or, if the owner is incapacitated, by the documented two-person operator recovery) through `admin.transfer_ownership(target)` which, in one transaction under the singleton row lock: verifies caller is the current owner at fresh step-up (§20.3), verifies the target is an active AAL2 `super_admin`, clears `is_owner` on the old owner, sets it on the target, updates `owner_auth_user_id`, and writes audit rows. `admin.grant_role`/`revoke_role` can never set `is_owner`, can never grant/revoke `super_admin` for a non-owner caller, and **refuse any operation that would leave zero active owners** (last-owner protection); concurrent owner changes serialize on the bootstrap singleton lock so the single-owner invariant cannot be violated.
+
+Bootstrap procedure (no existing admin required — resolves the circular dependency):
+1. **Out-of-band verification:** the organization owner verifies the first owner's identity through an independent channel (known email + live/video or in-person confirmation) and records a non-secret `operator_authorization_ref` (ticket/change ID).
+2. **Operator-created bootstrap invitation:** a Supabase **organization/project operator** (platform access, not an application admin — none exists yet) runs the controlled operator procedure: insert one `admin_invitations` row with `invitation_kind='bootstrap'`, `invited_by=NULL`, the verified email, `intended_role_key='super_admin'`, expiry ≤ 72h, and `token_hash` of a ≥256-bit random application token delivered to the verified email through the operator's trusted channel. Public signup remains disabled; there is **no public endpoint** — the invitation row is created by operator action, not by any unauthenticated or authenticated application route.
+3. **Auth account creation:** the invitee accepts via the future application endpoint, which validates (server-side, service role per §20.2) token hash, `pending` status, and expiry, then creates/confirms the Supabase Auth user for exactly that email (invite flow). Email mismatch (Auth account email ≠ invitation email) aborts.
+4. **Profile + claim transaction:** after the invitee sets their own password, verifies email, enrolls TOTP and reaches **fresh AAL2** (no MFA ⇒ no claim), the server calls `admin.claim_first_owner()`: it locks the singleton row, atomically consumes the invitation (`pending → accepted`, setting `accepted_auth_user_id`, guarded by the unique indexes in §4.3), creates `admin_profiles` (bound `invitation_id`, `invited_by=NULL`), inserts the initial `super_admin` assignment (idempotency key = invitation ID; unique live-assignment index prevents duplicates), performs the atomic conditional bootstrap `UPDATE … WHERE owner_claimed_at IS NULL`, and writes audit rows — all in **one database transaction**. Zero rows from the conditional update ⇒ whole transaction rolls back (no duplicate owner, profile, or grant).
+5. **Permanent lockout:** once `owner_claimed_at` is set, `claim_first_owner` always fails; no code path resets it except the audited owner-transfer function, which never re-opens bootstrap.
+6. **Partial-failure handling:** Auth-side success without the database transaction (crash between steps 3–4) leaves a retryable state: the Auth user exists, the invitation is still `pending` (consumption happens only inside step 4), and retrying acceptance re-validates and resumes — the server first looks up profile/assignment by `invitation_id`/`auth_user_id` and returns the existing records instead of duplicating (unique indexes make duplicates impossible). Database success without Auth confirmation cannot occur in the harmful direction: a profile referencing an unconfirmed Auth user is `status='invited'` and can never authenticate. All retries are idempotent; every attempt (success/failure) is audited.
+
+### 20.2 Migration atomicity, roles, and the exact service-role model (Correction B)
+
+Migration atomicity and role separation are specified in §13 (revised). Exact runtime grants:
+
+| Role | Grants (this design) |
+|---|---|
+| `anon` | **None** on `admin`/`audit`/`security`/`preview`/`ops` tables, views, or privileged functions. |
+| `authenticated` | `SELECT` only through the views in §20.6 and the policies in §10; `EXECUTE` only on the user-context helper functions listed in §8.4 (post-lockdown); no direct `INSERT/UPDATE/DELETE` on identity, RBAC, audit, or security tables. |
+| `service_role` | Platform role; **bypasses RLS**. Used only by reviewed server code (below). Never present in browser code, public env vars, or client bundles. |
+| migration owner | Owns objects; used only by the migration runner; never a runtime credential. RLS does not bind it (nor superusers/`BYPASSRLS`) — accepted and covered by §20.4 checkpoints. |
+
+**Operations that must use the user context** (RLS evaluates them): all dashboard reads, profile/session self-views, Module F reads and permission-scoped writes. **Operations that may use the service role** (each must first perform its own server-side authorization — decode and verify the caller's JWT, load the live profile/roles, check AAL2 + session currency + permission + step-up where required — and must write the audit row in the same transaction): invitation creation/acceptance, profile creation, role grant/revoke, session registration/revocation bookkeeping, audit inserts, security-event inserts, recovery-code operations, bootstrap claim invocation, synthetic seed management. **Misuse controls:** the service-role key exists only in the server secret store; server code exposes no generic query proxy (only named operations); every service-role mutation takes the acting admin's ID from the verified JWT (never from request body); denied/failed service-role operations still write `denied` audit rows; key rotation on suspicion; periodic review of service-role query logs against the named-operation list.
+
+### 20.3 Step-up authentication and Supabase MFA claims (Correction C; platform-verified)
+
+**Verified Supabase behaviour** (sources in the Phase 7.3 review report): access tokens carry `aal` (`aal1`/`aal2`), `session_id`, and `amr` — an array of `{method, timestamp}` entries whose `method` values include `password`, `totp`, `recovery`, `invite`, and `token_refresh`. Therefore:
+
+- `aal='aal2'` proves *some* second factor was verified for the session; it does **not** by itself prove the factor was TOTP rather than another factor type.
+- The newest `amr` entry with `method='totp'` and its `timestamp` is the reliable, token-visible evidence of **when TOTP was last verified**. This design distinguishes the three concepts operationally: **verified TOTP factor** = a live `auth.mfa_factors` row with `status='verified'` and `factor_type='totp'`, checked live by a definer helper (docs demonstrate RLS-side checks against `auth.mfa_factors`); **AAL2 session** = JWT `aal='aal2'`; **fresh TOTP verification** = an `amr` `totp` timestamp within the step-up window (≤ 10 min) *or* a successful MFA challenge/verify performed during the sensitive-action flow.
+- **Step-up issuance:** the server (a) validates the JWT, (b) requires `aal='aal2'`, (c) reads the JWT `amr` totp timestamp — if older than 10 minutes, the client performs a fresh MFA challenge/verify (Supabase upgrades the session/promotes assurance on verify) and the server re-reads the new token; (d) mints one `admin_step_up_events` row bound to admin + `session_id` + exact `action_key` (+ `resource_key` where applicable) with `expires_at ≤ verified_at + 10 min`. `recovery_code` is never a step-up method (§6.4).
+- **Sensitive operations execute only through server endpoints or definer functions** that atomically consume the matching step-up row (Phase 7.1 rule) and re-check session currency; because consumption and the protected mutation happen server-side/in-function, a direct PostgREST call to the underlying table cannot satisfy the requirement — sensitive tables grant the runtime roles no direct write path for sensitive operations (§10 update below). Defence in depth: the RLS policy for sensitive reads additionally requires a fresh `amr` totp timestamp where the data is exposed via PostgREST.
+- **Session revoked mid-window:** revocation marks the registry (§20.5), and every step-up consumption re-checks `session_is_current()`; unconsumed step-ups for a revoked session are invalidated in the same transaction as the revocation. A step-up never survives its session.
+- **Limitation (documented, not invented):** `amr` timestamps are only as fresh as the last issued/refreshed token; a client holding a pre-verification token cannot fabricate a newer timestamp (the claim is signed), but the server must read claims from a token issued *after* the fresh verify — hence step (c)'s re-read requirement. If a future Supabase version changed `amr` semantics, the fallback is server-side challenge/verify orchestration with the step-up row minted only after the Auth API confirms verification for that session.
+
+### 20.4 Audit hash chain — complete specification (Correction D)
+
+- **Columns:** `audit_log.chain_seq` is the `id` identity column; add `prev_hash bytea NOT NULL`, `row_hash bytea NOT NULL UNIQUE` (schema in §7.1 as corrected).
+- **Algorithm:** SHA-256. **Canonical input** (UTF-8, fields joined by U+001F, null = the literal `\N`, timestamps in UTC ISO-8601 with microsecond precision, `jsonb` via canonical `::text` after key-sorting by construction at write time, booleans as `t`/`f`): `id | occurred_at | actor_auth_user_id | actor_profile_id | actor_role_snapshot (comma-joined, sorted) | action | resource_type | resource_id | outcome | aal_at_action | ip | request_id | before_state | after_state | reason`. `row_hash = SHA256(prev_hash_bytes || canonical_input_bytes)`; `prev_hash` of a row = `row_hash` of the row with the greatest lower `id`; genesis `prev_hash` = 32 zero bytes.
+- **Concurrent-write serialization:** all audit inserts go through `audit.append_audit(...)` (definer function) which takes a transaction-scoped advisory lock (`pg_advisory_xact_lock(<audit-chain key>)`) before reading the current head and inserting. Simultaneous writers therefore serialize; two rows can never share a `prev_hash` or fork the chain. Rollback releases the lock and leaves no gap in the chain (a rolled-back row never existed; `id` sequence gaps from rollbacks are acceptable and are *not* treated as tampering — verification follows actual row order).
+- **Chain head & checkpoints:** a singleton `audit.audit_chain_head (last_id, last_row_hash, updated_at)` updated in the same transaction as each insert. **Checkpoint/export:** at least hourly and on every graceful deployment, the server exports all rows since the last checkpoint plus the new head as a signed JSONL bundle (one canonical JSON object per row including hashes) to encrypted, versioned/immutable off-project storage (Phase 4 §5), with the bundle hash recorded in a separate system (e.g. the deployment log/operator register) so a checkpoint cannot be silently replaced. Export failure alerts the operators (security event + external alert) and is treated as a release blocker if persistent; audit writes themselves never silently drop — an insert failure fails the protected operation.
+- **Verification:** recompute the chain from genesis (or from the last verified checkpoint) over the canonical encoding; confirm each `prev_hash` equals the previous `row_hash`, each `row_hash` recomputes, the head matches `audit_chain_head`, and the head matches the latest off-project checkpoint. **Tamper detection:** modifying/deleting any row breaks every subsequent hash; an attacker with owner-level access who rewrites *multiple* rows *and rebuilds the whole chain* is detected at the next checkpoint comparison because the rebuilt head will not match the already-exported off-project checkpoint — detection window is therefore bounded by the checkpoint frequency (≤ 1h), which is why checkpoints are stored immutably and independently. **Honesty clause:** hash chaining *detects* tampering after the fact; it does not *prevent* a sufficiently privileged attacker (table owner/superuser) from altering data between checkpoints. Prevention relies on role separation (§20.2), restricted operator access, and platform audit logs; detection relies on the chain + independent checkpoints.
+
+### 20.5 Session revocation — verified capabilities and exact design (Correction E)
+
+**Verified Supabase behaviour:** `signOut` supports scopes `local` (current session), `global` (all of the user's sessions — the JS default), and `others` (all but current); sign-out revokes the affected **refresh tokens**, while **already-issued access tokens remain valid until their `exp`** (official sign-out documentation). Server-side, a user's refresh tokens for a session can be revoked by calling the sign-out API with that user's JWT and a scope; there is **no documented Admin API to delete one arbitrary session of another user by session ID**, and directly modifying `auth.*` tables is prohibited by this design. Capability matrix:
+
+| Operation | Supported mechanism | Immediate effect on unexpired access JWT | Design barrier |
+|---|---|---|---|
+| Revoke current session | `signOut({scope:'local'})` + registry mark | None at Auth layer | Registry check in RLS/server denies next request |
+| Revoke all sessions of self | `signOut({scope:'global'})` (default) + registry mark-all | None at Auth layer | Same registry barrier for every session |
+| Revoke all sessions of *another* admin | Server-side sign-out using that user's JWT is not always obtainable; therefore: mark all registry rows revoked + set profile `suspended` (or revoke via operator-triggered global sign-out when a valid user JWT is available) | None at Auth layer | Registry + profile-status checks deny next request on all paths |
+| Revoke one *specific other* session | No supported per-session Admin API — **not assumed** | — | Registry row for that `session_id` is marked revoked; RLS `session_is_current()` rejects exactly that JWT while the admin's other sessions continue |
+| Invalidate an issued access token immediately | Not supported (stateless JWT) | Token remains cryptographically valid until `exp` | Short admin token lifetime (M-4) + live profile/session/permission checks make the token useless for privileged access |
+| Prevent refresh-token reuse | Refresh rotation + 10s reuse interval (Phase 6); sign-out deletes the Auth session/refresh token | Refresh after revocation fails | Registry remains the authorization barrier |
+
+The registry is therefore **not** a replacement for Auth session management — Auth sign-out stops token renewal; the registry stops token *use*. Exact privileged-request flow: PostgREST validates the JWT → RLS helpers check active profile → AAL2 → `session_is_current()` (JWT `session_id` present in registry, not revoked, belongs to `auth.uid()`) → live permission → (sensitive) consumed step-up per §20.3. Server-mediated requests perform the identical checks before any service-role use. Logout/revocation procedures always perform **both** halves (Auth sign-out *and* registry update) in one server operation and audit the event.
+
+### 20.6 Column-level security for self-service exceptions (Correction F/G)
+
+Direct `SELECT` on `admin_profiles` and `admin_session_registry` is revoked from `authenticated`. Access is only through:
+- `admin.my_profile` view — own row (`auth.uid() = auth_user_id`), columns: `display_name`, `status`, `is_owner`, timestamps. Excludes `email_snapshot`, `suspended_reason`, and all security internals.
+- `admin.admin_profile_directory` view — requires `admins.read` at AAL2 (policy on the view's security barrier / definer-backed function): `auth_user_id`, `display_name`, `status`, `is_owner`. `email_snapshot` is exposed **only** via a separate server-mediated endpoint to `admins.manage` holders, never via a client-queryable view.
+- `admin.my_sessions` view — own sessions: `session_id`, `created_at`, `last_seen_at`, `user_agent` (truncated), `revoked_at`. IP addresses are **not** exposed to the session owner or to `security.read` lists by default; full IP/UA is visible only through a server-mediated `security.manage` detail endpoint and is redacted in audit exports.
+- Recovery metadata (`admin_recovery_codes`, `admin_mfa_status` internals, `admin_step_up_events`) has **no** client view at all; the UI receives only derived booleans/counts from server endpoints.
+
+### 20.7 MFA factor lifecycle (Correction: Phase 7.3 §7A/B)
+
+**Verified Supabase behaviour:** unenrolling a *verified* factor requires an AAL2 session; verifying a factor logs out the user's other sessions and promotes the current session; the assurance API can report a stale token (current `aal2` with next level `aal1`) when the factor has been removed, and passing a JWT to the server-side assurance check fetches live factor state. What is **not** assumed: any guaranteed Auth webhook/event for factor removal — factor state is therefore re-checked live, not event-driven.
+
+| Event | Required behaviour in this design |
+|---|---|
+| Admin removes last verified TOTP factor | The application must interpose: factor management is performed through the server flow, which (1) requires fresh step-up, (2) warns and requires a replacement factor to be verified first *or* an owner-approved removal, (3) on removal of the last factor: revokes **all** sessions (registry + global sign-out), sets `enrollment_required=true`, writes security + audit events. Because client-side unenroll cannot be fully prevented at the Auth API level, defence in depth applies: `has_permission` also requires a **live verified TOTP factor** (definer check against `auth.mfa_factors`), so any post-removal token — including a stale AAL2 JWT — fails privileged checks immediately. |
+| Removal attempted during an active AAL2 session | Allowed by Auth only at AAL2; in this design it additionally requires fresh step-up and follows the row above; all *other* sessions are revoked at removal, the current session's privileged access ends at the next request (live-factor check). |
+| Lost authenticator | Recovery-code flow (§6.2 as corrected): code use ⇒ revoke all sessions, force password reset + new TOTP enrollment/verification; privileged access only after a verified factor exists again and a fresh AAL2 session is established. Owner-assisted recovery (two-person) for the owner account itself. |
+| Factor replaced | Enroll + verify the new factor first (session promotes/stays AAL2), then remove the old one; both events audited; other sessions revoked per Auth behaviour on verify. |
+| Suspicious removal (unusual IP, repeated attempts, removal outside a server flow) | Live-factor defence (above) contains the access impact; the next server contact detects factor-count change via `admin_mfa_status` sync, raises `security_events(mfa_failure/factor_removed)`, alerts, and may auto-suspend pending review. |
+
+**AAL2 vs TOTP requirements per operation:** dashboard read APIs — AAL2 + verified TOTP factor (live) + permission; ordinary privileged writes — same; sensitive actions — same **plus** fresh TOTP verification (§20.3); factor/recovery management — fresh TOTP verification or the recovery flow; bootstrap claim — fresh TOTP verification. AAL2 achieved via a non-TOTP factor cannot occur in this project (phone/WebAuthn MFA and passkeys are disabled, Phase 6), but the design still checks the factor/amr evidence explicitly so enabling another factor type later cannot silently satisfy the TOTP requirement.
+
+### 20.8 Service-role boundary summary
+RLS protects user-context (`anon`/`authenticated`) operations only. It does not protect, restrict, or audit service-role operations; §20.2's named-operation allowlist, per-operation server authorization from the verified caller JWT, same-transaction audit, and log review are the controls. Any future code that issues a service-role query not on the named-operation list is a security defect by definition in this design.
+
+### 20.9 Expanded future test strategy (future implementation phase only — not executed here)
+1. Two concurrent `claim_first_owner` calls → exactly one owner/profile/grant; loser rolls back cleanly.
+2. Bootstrap with no invitation, forged/expired/revoked invitation → denied + audited.
+3. Bootstrap at AAL1 / without a verified TOTP factor → denied.
+4. Duplicate invitation acceptance (sequential + concurrent, same and different sessions) → one profile, one initial grant; replays idempotent.
+5. Crash injection between Auth user creation and the profile transaction → safe retry completes once; no orphan profile can authenticate.
+6. AAL1 token direct PostgREST reads/writes on every privileged table → denied.
+7. AAL2 token after TOTP factor removal (stale JWT) → denied by live-factor check, via both app and direct API.
+8. Sensitive action without fresh TOTP (old `amr` timestamp), with fresh TOTP → denied/allowed respectively.
+9. Step-up replay: consuming the same step-up twice (sequential + concurrent) → second fails.
+10. Step-up minted in session A used in session B → denied; step-up bound to resource X used for resource Y → denied.
+11. Revoked-session JWT replayed against PostgREST (tables + views + functions) → denied everywhere.
+12. `local`/`global`/`others` sign-out semantics vs registry: current-session, all-session, and single-other-session revocation behave per §20.5; suspended admin's sessions all denied.
+13. Concurrent audit appends (parallel writers) → single un-forked chain, hashes verify.
+14. Audit UPDATE/DELETE attempts as `authenticated`, service role (application path), and via profile deletion cascades → blocked/detected; profile deletion cannot remove history.
+15. Full-chain rewrite simulation: modify + rebuild chain in a copy → next checkpoint comparison detects head mismatch; single-row edit detected by recompute.
+16. Expired role assignment reassignment (expired-unrevoked row present) → grant succeeds after in-transaction expiry transition; permission stops at expiry instant before transition.
+17. Concurrent grant/revoke of the same role → exactly one live assignment; no duplicate; audit complete.
+18. Last-owner protections: revoke/deactivate/transfer attempts that would leave zero owners → denied; concurrent transfers keep exactly one owner; `super_admin` grant by non-owner → denied; owner cannot be minted via role functions.
+19. Service-role misuse: named-operation allowlist test — a service-role request lacking a verified caller JWT / permission / step-up, or using an unlisted operation shape, is rejected by the server layer and audited; browser bundles contain no service-role key (build scan).
+20. Column-level exposure: self/directory/session views return exactly the §20.6 columns; `email_snapshot`, IPs, recovery metadata, and security internals are unreachable via any client-queryable path, including modified PostgREST `select` parameters and view probing.
+
+## 21. Phase 7.3 amendment register
+
+| # | Correction | Replaces/corrects | Status at design level |
+|---|---|---|---|
+| A | Operator-authorized bootstrap invitation (`invitation_kind='bootstrap'`, `invited_by=NULL`, `operator_authorization_ref`); exactly-one-owner model (`is_owner` vs `super_admin` role vs `owner_auth_user_id`); audited owner transfer; last-owner guard; idempotent partial-failure retry | §§4.1–4.3, 6 (Phase 6 doc flow clarified), Phase 7.1 §18.3 | Resolved in §§4.1, 4.3, 20.1 |
+| B | Transactional table+RLS+revoke+policy+grant per migration; migration-owner/runtime separation; exact role grants; service-role named-operation model with server-side authorization (RLS explicitly not claimed for service role) | §13; §10 notes; Phase 7.1 §18.1–18.2 context | Resolved in §§13, 20.2, 20.8 |
+| C | Step-up bound to session + resource, `method='totp'` only, ≤10 min, atomic one-time consumption, server/in-function enforcement so direct PostgREST cannot bypass; verified `aal`/`amr` semantics and freshness rule; recovery codes excluded | §§6.4, 8.5; Phase 7.1 §18.6 | Resolved in §§6.4, 20.3 |
+| D | Full hash-chain spec: SHA-256, canonical encoding, advisory-lock serialization, chain head, signed hourly off-project checkpoints, verification/tamper procedures, detect-vs-prevent honesty | §7.1 (columns + rules completed) | Resolved in §§7.1, 20.4 |
+| E | Verified sign-out scopes; no assumed per-session Admin API; registry as the immediate barrier for already-issued JWTs; capability matrix; both-halves revocation procedure | §§6.3, 8.2–8.3; Phase 7.1 §18.1 | Resolved in §20.5 |
+| F/G | Column-level views for self-profile/directory/sessions; email/IP/recovery data restrictions | §§4.1, 10 | Resolved in §20.6 |
+| H-A | MFA factor lifecycle incl. last-factor removal, lost authenticator, replacement, suspicious removal; live verified-factor requirement in `has_permission` | §§6.1, 8.4 notes | Resolved in §20.7 |
+| H-B | AAL2 / verified factor / fresh verification / step-up distinguished per operation | §8 | Resolved in §§20.3, 20.7 |
+| H-C | Role-assignment `is_current` lifecycle replacing the flawed partial index; race-safe expiry/reassignment | §5.1 | Resolved in §5.1 |
+| H-D | Ownership vs `super_admin`, owner-only owner-grants, last-owner protection, concurrent-transfer invariant | §§5, 8.4 | Resolved in §§20.1, 8.4(6) retained |
+| H-E | Invitation integrity: NULL semantics, accepted-user uniqueness, email match, expiry/revocation re-check, idempotent retry | §4.3 | Resolved in §§4.3, 20.1 |
+| H-G | Permission count corrected: 30 assignable + 1 non-assignable (`owner.bootstrap`) = 31 catalogue entries everywhere | §5.2 (and the Phase 7 report's "29") | Resolved in §5.2 |
+| H-H | Naming/FK consistency: schema prefix is documentation shorthand (`schema.table`); every FK carries an explicit `ON DELETE` (Phase 7.1 §18.8 retained); `analytics_daily_rollups.campaign_id` must be declared an FK or explicitly a non-FK aggregate key in migration drafts | §§3, 9 | Resolved/flagged for drafting in §§13, 21 |
+
+All Phase 7.1 requirements (session currency in RLS, definer lockdown, bootstrap atomicity, audit role separation + chaining, recovery-code hardening, step-up atomicity, typed report FKs, cascade rules, synthetic-data framing, telemetry blind spot, token-lifetime evaluation, factor-lifecycle and index/naming items) remain in force; Phase 7.3 strengthens several of them and removes the contradictions listed above. No previously approved security requirement has been dropped.
+
