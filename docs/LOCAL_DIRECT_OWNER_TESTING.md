@@ -1,6 +1,6 @@
 # Direct first-owner: Windows local test preparation (not ready)
 
-This describes an **isolated local Supabase**, not a third hosted project. It does not modify hosted Preview or Production. The local target and experimental Google start/callback/password UI are implemented but not integrated end-to-end: Preview migration history includes record-only files with missing SQL, and direct claim and recovery are unfinished. **Do not configure Google credentials yet**; the instructions below are preparatory until the integration is ready. Do not apply candidate SQL to hosted projects. Never link this scratch directory to a hosted project or copy real users, credentials, or data into it.
+This describes an **isolated local Supabase**, not a third hosted project. It does not modify hosted Preview or Production. The local target and experimental Google start/callback/password UI are implemented but not integrated end-to-end. The sanitized Preview migration history has been replayed against isolated PostgreSQL with synthetic Auth, but not yet against a genuine local Supabase stack; direct claim UI and recovery remain unfinished. **Do not configure Google credentials yet.** Do not apply candidate SQL to hosted projects. Never link this scratch directory to a hosted project or copy real users, credentials, or data into it.
 
 ## 1. Docker Desktop on Windows
 
@@ -11,46 +11,35 @@ We cannot inspect your actual computer from this sandbox. On your own Windows ma
 3. Install Docker Desktop, select the WSL 2 backend when prompted, open Docker Desktop and wait for it to report that the engine is running. Use Linux containers. In a new normal PowerShell window, run `docker version`; both Client and Server sections should appear. Do not publish local Supabase ports to the internet.
 4. Install Node.js 22 and npm 10 or newer from the official Node.js installer, then verify `node --version` and `npm --version` in a new PowerShell window. Git is needed to obtain the repository.
 
-## 2. Prepare an independent scratch stack
+## 2. Prepare and start an independent scratch stack (Google disabled)
 
-From a PowerShell window at the **repository root** on your machine, with this branch checked out, copy the local template out of the repository and work from that new directory:
+From PowerShell at the repository root on this branch, with Docker Desktop running and Node.js 22/npm installed:
 
 ```powershell
 $Scratch = Join-Path $env:USERPROFILE 'yaarlink-synthetic-supabase'
-if (Test-Path $Scratch) { throw 'Scratch directory already exists; inspect it instead of overwriting or resetting it.' }
-New-Item -ItemType Directory -Path $Scratch | Out-Null
-Copy-Item -Recurse 'test-infra/local-supabase/supabase' $Scratch
-Set-Location $Scratch
-```
-
-The supplied `supabase/config.toml` uses CLI 3.0.0, project ID `yaarlink-synthetic-local`, API port **54321**, DB port **54322**, and Studio port **54323**. It deliberately contains **no migrations**: it is a local Auth test bed, not a complete reconstruction of the existing Preview database. If these ports are occupied, stop and resolve the conflict; don't silently change them, since the exact Google callback below would change. Avoid `supabase link`, `db push`, `db reset`, or commands targeting either hosted project. The local test config enables signup only in the isolated sandbox for OAuth experiments; it is not safe as a hosted signup policy.
-
-Complete the Google steps below first. In the same PowerShell window set the values privately, without screenshots or chat. `Read-Host -AsSecureString` hides the secret while entering it, but it is subsequently held in this process environment for the CLI; do not enable shell transcript/logging. Use a dedicated test OAuth client, never a Production one.
-
-```powershell
-$env:SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID = Read-Host 'Local test Google client ID'
-$secure = Read-Host 'Local test Google client secret (hidden)' -AsSecureString
-$ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-try { $env:SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_SECRET = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr) }
-finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr); $secure.Dispose() }
+node scripts/prepare-local-supabase.mjs $Scratch
+if ($LASTEXITCODE -ne 0) { throw 'Preparation failed; inspect the scratch directory before retrying.' }
 npx --yes supabase@3.0.0 start --workdir $Scratch
+if ($LASTEXITCODE -ne 0) { throw 'Local stack startup failed; do not reset or link a hosted project.' }
 ```
 
-The first start downloads Docker images. CLI output includes local database credentials and keys: **do not paste it into chat**. Confirm only that the local API is `http://127.0.0.1:54321`, Studio is `http://127.0.0.1:54323`, and the DB is on `127.0.0.1:54322`. Local keys and DB passwords are still secrets. To stop without deleting data, from the scratch directory run `npx --yes supabase@3.0.0 stop --workdir $Scratch`; do not add `--no-backup`. Afterwards remove the two environment variables from the terminal (`Remove-Item Env:SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID, Env:SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_SECRET`) and close the terminal. Re-enter them privately before a subsequent start. Startup has **not been verified in this sandbox** because no Docker engine is available here.
+The preparation script requires a new, absolute directory outside the repository; it does not overwrite an existing path. It copies the sanitized Preview history, later repository migrations, an unapplied direct-claim candidate and a synthetic-only guard into a locally generated migration set. It records a manifest without credentials. The configuration exposes `admin` and `preview` locally, disables Google and seeds, and uses local API 54321, database 54322, Studio 54323. Startup is **not yet verified with Docker or real Supabase Auth**: the analogous replay passed with isolated PostgreSQL and synthetic Auth tables. If ports are occupied or startup fails, stop and report the error category without credentials or raw logs; do not reset a hosted database, use `supabase link`, `db push`, or create a hosted project.
+
+The CLI prints local keys and database credentials. **Do not share CLI output or screenshots containing them.** To stop the scratch stack without deliberately deleting its data, run `npx --yes supabase@3.0.0 stop --workdir $Scratch` (do not add `--no-backup`). This is infrastructure smoke testing only: do not register or claim an owner. Google is intentionally disabled; do not enter any Google credentials yet.
 
 ## 3. Separate Google OAuth test client
 
 1. In [Google Auth Platform](https://console.cloud.google.com/auth/overview), use a suitable Google Cloud project and configure Branding and Audience. A Google Cloud project is distinct from a Supabase project. Use a dedicated test Google account, not the intended real owner; if the audience is External and testing, add that account as a test user. Do not send credentials in chat.
 2. In Data Access configure only `openid`, `.../auth/userinfo.email`, and `.../auth/userinfo.profile` as needed. In Clients create a **Web application** OAuth client used only for this local test.
 3. Set the exact Google **Authorized JavaScript origin** to `http://127.0.0.1:3000` and the exact Google **Authorized redirect URI** to `http://127.0.0.1:54321/auth/v1/callback`. The second URL is Supabase Auth's callback to Google—not the application callback. Do not use wildcards. If Google Console rejects a loopback origin, consult its current instructions; do not substitute another origin without updating and revalidating the entire local flow.
-4. When integration is ready, enter the test client ID and client secret privately as in step 2 above. The local Supabase **Site URL** is `http://127.0.0.1:3000`; the exact local direct setup callback is `http://127.0.0.1:3000/admin/setup/direct/callback` (the existing invitation callback is also allowed separately). The application callback and Google URI are different and configured in different systems. These are local URLs only; no hosted callback is approved or implied. The template keeps Google nonce checking on and TOTP enrollment/verification enabled.
+4. When integration is ready, enter the test client ID and client secret privately as in step 2 above. The local Supabase **Site URL** is `http://127.0.0.1:3000`; the exact local direct setup callback is `http://127.0.0.1:3000/admin/setup/direct/callback` (the existing invitation callback is also allowed separately). The application callback and Google URI are different and configured in different systems. These are local URLs only; no hosted callback is approved or implied. The template keeps Google nonce checking on and TOTP enrollment/verification enabled, but its Google provider is currently disabled and requires an explicitly reviewed local-only configuration change later.
 5. The opt-in local target requires development mode, the exact local browser origin, and `NEXT_PUBLIC_YAARLINK_LOCAL_ADMIN=true`, with the local publishable key in `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. The CSP exception is restricted to the local development request. It has only unit-test coverage, not genuine OAuth or browser integration; do not change hosted pinning or CSP to bypass it.
 
 Reference: [Supabase Google OAuth local development](https://supabase.com/docs/guides/auth/social-sign-in/auth-google) and [Supabase local CLI](https://supabase.com/docs/guides/local-development/cli/getting-started).
 
 ## 4. Remaining implementation and integration work
 
-- Recover the complete actual Preview schema SQL from authoritative migration records, including record-only files, without applying any hosted changes; build a deterministic scratch baseline and verify constraints, triggers, ACLs, security-definer owners and exposed PostgREST schemas. A read-only inspection found all 19 Preview migration records contain SQL statements; four short historical records are now transcribed and checksum-checked in `test-infra/preview-history`, but the remainder has not yet been extracted and sanitized/replayed locally. Read-only inspection of the relevant Preview constraints confirms the profile and operation invitation references are nullable and the operation actor FK references `auth.users`; one non-internal trigger was listed on the six claim-related admin tables (the recovery-session update guard). This is partial compatibility evidence, not a complete schema audit or claim test. The existing synthetic PGlite test replays a production-derived baseline, **not** the full live Preview schema.
+- Recover the complete actual Preview schema SQL from authoritative migration records, including record-only files, without applying any hosted changes; build a deterministic scratch baseline and verify constraints, triggers, ACLs, security-definer owners and exposed PostgREST schemas. A read-only inspection found all 19 Preview migration records contain SQL statements; eight historical records are in `test-infra/preview-history` (business seeds sanitized) and later repository migrations were replayed in order on isolated PostgreSQL with synthetic Auth tables. Full Supabase Auth behavior and exact catalog/grant equivalence still require validation. Read-only inspection of the relevant Preview constraints confirms the profile and operation invitation references are nullable and the operation actor FK references `auth.users`; one non-internal trigger was listed on the six claim-related admin tables (the recovery-session update guard). This is partial compatibility evidence, not a complete schema audit or claim test. The existing synthetic PGlite test replays a production-derived baseline, **not** the full live Preview schema.
 - Integrate and independently review `supabase/candidates/preview_direct_google_owner.sql` against that baseline; validate the live Auth session/factor schema, old claim grants, atomic rollback and actual concurrent transactions. Prepare a hosted migration only after these checks; do not run it without explicit approval.
 - A default-deny pre-creation hook candidate and local-only OAuth initiation, callback/PKCE and password form are implemented but unverified against real Auth. The hook would currently block future invites and is intentionally not enabled. Integrate and test the full signup policy, TOTP and final claim UI without leaving public signup open or breaking future invitations. Future login must remain password + MFA, not Google.
 - Complete setup-time recovery generation/display and persistent, throttled, single-use redemption. Recovery must not grant AAL2 or bypass a fresh verified TOTP. Design and verify safe recovery completion and revocation, including races, crashes and multiple sessions. Existing recovery primitives are not wired or usable end-to-end.
