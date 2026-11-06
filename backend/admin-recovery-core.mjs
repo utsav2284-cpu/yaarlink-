@@ -16,8 +16,11 @@ export function normalizeRecoveryCode(raw) {
   return /^(0[1-8])-[0-9A-F]{32}$/.test(normalized) ? normalized : null;
 }
 function authorize(actor, requireMfa) {
-  if (!actor?.verified || !actor.userId || !actor.active) throw new Error('Not authorized');
-  if (requireMfa && (!actor.aal2 || !actor.liveTotp || !actor.currentSession)) throw new Error('Not authorized');
+  // These identity fields must come from a verified server-side JWT boundary.
+  // Live profile, TOTP, session and freshness are checked by the store inside
+  // the transaction, never inferred from client-provided booleans.
+  if (!actor?.verified || !actor.userId) throw new Error('Not authorized');
+  if (requireMfa && !actor.aal2) throw new Error('Not authorized');
 }
 
 // store.transaction(userId, fn) MUST serialize the user across workers and
@@ -34,6 +37,8 @@ export async function generateRecoveryCodes(store, actor, pepper, now = Date.now
       codes.push(code);
       rows.push({ index, hash: await bcrypt.hash(peppered(code, pepper), ROUNDS), expiresAt: now + LIFETIME_MS });
     }
+    // Hashing can take time. Recheck live state before making any change.
+    if (!await tx.authorizeGeneration() || await tx.recoveryPending()) return { status: 'denied' };
     await tx.invalidateAll();
     await tx.insertCodes(rows);
     await tx.event('recovery_codes_regenerated');
