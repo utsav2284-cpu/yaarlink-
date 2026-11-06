@@ -26,7 +26,7 @@ function authorize(actor, requireMfa) {
 export async function generateRecoveryCodes(store, actor, pepper, now = Date.now()) {
   authorize(actor, true); peppered('configuration-check', pepper);
   return store.transaction(actor.userId, async tx => {
-    if (await tx.recoveryPending()) return { status: 'denied' };
+    if (!await tx.authorizeGeneration() || await tx.recoveryPending()) return { status: 'denied' };
     const codes = [];
     const rows = [];
     for (let index = 1; index <= 8; index++) {
@@ -44,7 +44,7 @@ export async function generateRecoveryCodes(store, actor, pepper, now = Date.now
 export async function redeemRecoveryCode(store, actor, rawCode, pepper, now = Date.now()) {
   authorize(actor, false); peppered('configuration-check', pepper);
   return store.transaction(actor.userId, async tx => {
-    if (await tx.recoveryPending()) return { status: 'denied' };
+    if (!await tx.authorizeRedemption() || await tx.recoveryPending()) return { status: 'denied' };
     if (await tx.countFailuresSince(now - WINDOW_MS) >= MAX_FAILURES) { await tx.event('recovery_rate_limited'); return { status: 'rate_limited' }; }
     const code = normalizeRecoveryCode(rawCode);
     const index = code ? Number(code.slice(0, 2)) : 0;

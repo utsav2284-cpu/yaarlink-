@@ -79,3 +79,23 @@ Recovery-code generation was disabled: the prior SQL SHA-256 generator is not
 compatible with the approved server-side peppered bcrypt/Argon2 design. Redemption,
 rate limiting, security events and the approved assisted recovery process are not
 implemented. Do not rely on old codes or use them for authorization.
+
+## Recovery controls (Preview)
+
+`admin_recovery_controls` and `admin_recovery_attempts` are RLS-enabled with no
+runtime-role table grants. A pending recovery is part of the live
+`admin.is_active_admin()` predicate, so permission checks and session
+registration fail even for an existing AAL2 JWT. SQL tests exercised that
+boundary and a synthetic single-use conditional update in rolled-back
+transactions. `backend/admin-recovery-store.mjs` serializes work on the profile
+row, records failure/event/audit rows, and revokes registry sessions atomically;
+its automated tests use a mock connection, not a live Postgres integration.
+
+The store is deliberately **not wired to a public route**. Before exposing it,
+a trusted backend must verify the caller's Supabase Auth JWT, bind all claims to
+the verified subject, use a narrowly scoped Preview-only database credential and
+server-only pepper, and enforce an independently authorized assisted factor
+reset and re-enrollment. The current implementation has no safe audited method
+to clear the pending flag or prove replacement-factor enrollment. Do not treat
+mock tests, a DB flag, or a recovery code as AAL2. The legacy SHA generator stays
+disabled and no production recovery endpoint has been enabled.

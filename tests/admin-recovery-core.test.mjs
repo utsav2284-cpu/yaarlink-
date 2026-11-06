@@ -5,6 +5,7 @@ const pepper=Buffer.alloc(32,42), user={verified:true,userId:'synthetic',active:
 function store() {
  let tail=Promise.resolve(); const data={rows:[],failures:[],events:[],pending:false,revoked:false};
  return {data, transaction(_id, fn) { const next=tail.then(async()=>fn({
+   authorizeGeneration:async()=>true, authorizeRedemption:async()=>true,
    recoveryPending:async()=>data.pending,
    invalidateAll:async()=>{for(const row of data.rows) if(!row.usedAt) row.invalidatedAt=1;},
    insertCodes:async rows=>{for(const r of rows)data.rows.push({...r,id:data.rows.length+1});},
