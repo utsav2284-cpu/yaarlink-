@@ -26,6 +26,7 @@ export default function AdminControlCenter() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    try {
     const db = adminSupabase();
     const [c, k] = await Promise.all([
       db.from("preview_creators").select("*").order("created_at", { ascending: false }),
@@ -33,19 +34,27 @@ export default function AdminControlCenter() {
     ]);
     if (c.error || k.error) setErr("Could not load records. Your session may lack permission (AAL2 + role required), or the Preview API schema is not exposed yet.");
     else { setCreators((c.data ?? []) as Row[]); setCampaigns((k.data ?? []) as Row[]); setErr(""); }
-    setLoading(false);
+    } catch { setErr("Could not load the Preview review queues. Check the Preview configuration and try again."); }
+    finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { (async () => {
-    const { data: { session } } = await adminAuth().getSession();
-    if (!session) { router.replace("/admin/login"); return; }
-    const { data: aal } = await adminAuth().mfa.getAuthenticatorAssuranceLevel();
-    if (aal?.currentLevel !== "aal2") { router.replace("/admin/mfa"); return; }
-    const { error: registrationError } = await adminSupabase().schema("admin").rpc("register_my_session");
-    setReady(true);
-    if (registrationError) { setErr("Unable to register this admin session. Access remains denied; contact an administrator."); setLoading(false); return; }
-    load();
-  })(); }, [router, load]);
+  useEffect(() => { let cancelled = false; void (async () => {
+    try {
+      const { data: { session }, error: sessionError } = await adminAuth().getSession();
+      if (sessionError) throw sessionError;
+      if (!session) { if (!cancelled) router.replace("/admin/login"); return; }
+      const { data: aal, error: aalError } = await adminAuth().mfa.getAuthenticatorAssuranceLevel();
+      if (aalError) throw aalError;
+      if (aal?.currentLevel !== "aal2") { if (!cancelled) router.replace("/admin/mfa"); return; }
+      const { error: registrationError } = await adminSupabase().schema("admin").rpc("register_my_session");
+      if (cancelled) return;
+      setReady(true);
+      if (registrationError) { setErr("Unable to register this admin session. Access remains denied; contact an administrator."); setLoading(false); return; }
+      await load();
+    } catch {
+      if (!cancelled) { setReady(true); setLoading(false); setErr("Cannot connect to Preview admin authentication. Check the Preview configuration and try again."); }
+    }
+  })(); return () => { cancelled = true; }; }, [router, load]);
 
   const filteredCreators = useMemo(() => creators.filter(c => (tab==="all"||c.status===tab) && JSON.stringify(c).toLowerCase().includes(query.toLowerCase())), [creators, tab, query]);
   const filteredCampaigns = useMemo(() => campaigns.filter(c => (tab==="all"||c.status===tab) && JSON.stringify(c).toLowerCase().includes(query.toLowerCase())), [campaigns, tab, query]);
@@ -57,35 +66,47 @@ export default function AdminControlCenter() {
     setErr(""); setMsg("");
     const fn = kind === "creator" ? "review_creator" : "review_campaign";
     const id = String(selected.id);
-    const { error } = await adminSupabase().rpc(fn, kind === "creator" ? { p_creator_id: id, p_action: action, p_reason: reason || null } : { p_campaign_id: id, p_action: action, p_reason: reason || null });
-    if (error) { setErr(`Action failed: ${error.message}`); return; }
-    setMsg(`Action completed: ${action}. Decision, audit event and in-app notification recorded.`);
-    setReason(""); setSelected(null); load();
+    try {
+      const { error } = await adminSupabase().rpc(fn, kind === "creator" ? { p_creator_id: id, p_action: action, p_reason: reason || null } : { p_campaign_id: id, p_action: action, p_reason: reason || null });
+      if (error) { setErr("Review could not be completed. Check the record state and your permissions, then try again."); return; }
+      setMsg("Preview review saved. This does not publish to the public marketplace.");
+      setReason(""); setSelected(null); await load();
+    } catch { setErr("Review could not be completed. Check your connection and try again."); }
   }
 
   if (!ready) return <main style={{ padding: 40, fontFamily: "system-ui" }}>Checking secure session (AAL2 required)…</main>;
 
   return (
-    <main style={{ display:"flex", minHeight:"100vh", background:"#f6f7fb", color:"#111827", fontFamily:"system-ui,sans-serif" }}>
+    <main className="admin-layout" style={{ display:"flex", minHeight:"100vh", background:"#f6f7fb", color:"#111827", fontFamily:"system-ui,sans-serif" }}>
       <aside style={{ width:260, background:"#0f172a", color:"#e2e8f0", padding:20, flexShrink:0 }} className="admin-sidebar">
         <div style={{ fontWeight:800, fontSize:20, color:"#fff" }}>YaarLink <span style={{ color:"#38bdf8" }}>Admin</span></div>
         <div style={{ fontSize:12, margin:"6px 0 20px", color:"#94a3b8" }}>Control Center · Preview · AAL2 verified</div>
         <nav style={{ display:"grid", gap:6 }}>
-          {SECTIONS.map(s => <button key={s} onClick={() => { setSection(s); setTab("all"); setSelected(null); }} style={{ textAlign:"left", padding:"10px 12px", borderRadius:10, border:0, cursor:"pointer", background: section===s ? "#1d4ed8" : "transparent", color: section===s ? "#fff" : "#cbd5e1", fontWeight: section===s ? 700 : 500 }}>{s}</button>)}
+          {SECTIONS.slice(0, 3).map(s => <button key={s} onClick={() => { setSection(s); setTab("all"); setSelected(null); }} style={{ textAlign:"left", padding:"10px 12px", borderRadius:10, border:0, cursor:"pointer", background: section===s ? "#1d4ed8" : "transparent", color: section===s ? "#fff" : "#cbd5e1", fontWeight: section===s ? 700 : 500 }}>{s}</button>)}
         </nav>
+        <details style={{ marginTop: 12 }}>
+          <summary style={{ cursor: "pointer", color: "#cbd5e1", padding: "8px 12px" }}>More sections</summary>
+          <div style={{ display: "grid", gap: 6 }}>
+            {SECTIONS.slice(3).map(s => <button key={s} onClick={() => { setSection(s); setTab("all"); setSelected(null); }} style={{ textAlign:"left", padding:"10px 12px", borderRadius:10, border:0, cursor:"pointer", background: section===s ? "#1d4ed8" : "transparent", color: section===s ? "#fff" : "#cbd5e1", fontWeight: section===s ? 700 : 500 }}>{s}</button>)}
+          </div>
+        </details>
         <button onClick={async () => { await adminAuth().signOut({ scope: "global" }); router.replace("/admin/login"); }} style={{ marginTop:24, padding:"10px 12px", borderRadius:10, border:0, background:"#334155", color:"#fff", cursor:"pointer" }}>Secure logout</button>
       </aside>
 
       <section style={{ flex:1, padding:24, minWidth:0 }}>
         <h1 style={{ fontSize:28, margin:"0 0 4px" }}>{section}</h1>
-        <p style={{ color:"#6b7280", marginTop:0 }}>Authenticated Admin Control Center (Preview data; synthetic records are labelled in the database).</p>
+        <p style={{ color:"#6b7280", marginTop:0 }}>Review creators and campaigns in Preview.</p>
+        <p role="status" style={{ ...card, background:"#fffbeb", borderColor:"#fcd34d", color:"#78350f" }}><strong>Preview only:</strong> these review queues are separate from the public marketplace. Approving here does not publish a campaign to users or enable applications.</p>
         {loading && <p>Loading…</p>}
         {err && <p role="alert" style={{ ...card, background:"#fef2f2", borderColor:"#fca5a5" }}>{err} <a href="/admin/setup">First administrator setup</a></p>}
         {msg && <p style={{ ...card, background:"#f0fdf4", borderColor:"#86efac" }}>{msg}</p>}
 
-        {section==="Overview" && <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))", gap:14 }}>
+        {section==="Overview" && <><div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:16 }}>
+          <button onClick={() => { setSection("Creators"); setTab("pending_review"); }}>Review pending creators</button>
+          <button onClick={() => { setSection("Campaigns"); setTab("pending_review"); }}>Review pending campaigns</button>
+        </div><div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))", gap:14 }}>
           {[["Creators", creators.length],["Pending review", creators.filter(c=>c.status==="pending_review").length],["Campaigns", campaigns.length],["Campaigns pending", campaigns.filter(c=>c.status==="pending_review").length],["Live campaigns", campaigns.filter(c=>c.status==="live").length]].map(([k,v]) => <div key={k} style={card}><div style={{ fontSize:30, fontWeight:800 }}>{v}</div><div style={{ color:"#6b7280" }}>{k}</div></div>)}
-        </div>}
+        </div></>}
 
         {(section==="Creators"||section==="Campaigns") && <>
           <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:12 }}>
@@ -130,7 +151,7 @@ export default function AdminControlCenter() {
 
         {!["Overview","Creators","Campaigns"].includes(section) && <div style={card}><p><strong>{section}</strong> — live module shell connected to the same AAL2 session. Detailed operations for this module run through the same permission-checked database policies; no synthetic action is faked here.</p></div>}
       </section>
-      <style>{`@media (max-width: 760px){ .admin-sidebar{display:none} }`}</style>
+      <style>{`@media (max-width: 760px){ .admin-layout{flex-direction:column} .admin-sidebar{width:auto !important} .admin-sidebar nav{display:flex !important; overflow-x:auto; padding-bottom:4px} .admin-sidebar nav button{white-space:nowrap} }`}</style>
     </main>
   );
 }

@@ -2,8 +2,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { adminAuth } from "@/lib/admin-supabase";
+import { adminAuth, adminSupabase } from "@/lib/admin-supabase";
 import { totpQrImageSource } from "@/lib/admin-totp-qr";
+import { destinationAfterMfa } from "@/lib/admin-navigation";
 
 const card: React.CSSProperties = { background: "#fff", border: "1px solid #e5e7eb", borderRadius: 14, padding: 24, maxWidth: 480, margin: "6vh auto" };
 const input: React.CSSProperties = { width: "100%", padding: 11, border: "1px solid #d1d5db", borderRadius: 10, margin: "6px 0 14px", boxSizing: "border-box" };
@@ -15,6 +16,7 @@ export default function AdminMfa() {
   const [code, setCode] = useState(""); const [error, setError] = useState("");
   const [ready, setReady] = useState(false); const [busy, setBusy] = useState(false);
 
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -25,7 +27,7 @@ export default function AdminMfa() {
         if (!session) { if (!cancelled) router.replace("/admin/login"); return; }
         const assurance = await auth.mfa.getAuthenticatorAssuranceLevel();
         if (assurance.error) throw assurance.error;
-        if (assurance.data?.currentLevel === "aal2") { if (!cancelled) router.replace("/admin"); return; }
+        if (assurance.data?.currentLevel === "aal2") { const destination = await destinationAfterMfa(async () => await adminSupabase().schema("public").rpc("first_admin_setup_available")); if (!cancelled) router.replace(destination); return; }
         const factors = await auth.mfa.listFactors();
         if (factors.error || !factors.data) throw new Error("factor lookup failed");
         if (!cancelled) {
@@ -66,7 +68,7 @@ export default function AdminMfa() {
       const { data: aal, error: aalError } = await auth.mfa.getAuthenticatorAssuranceLevel();
       if (aalError || aal?.currentLevel !== "aal2") { setError("MFA did not reach AAL2. Try verifying again."); return; }
       setSecret(""); setQr("");
-      router.replace("/admin");
+      router.replace(await destinationAfterMfa(async () => await adminSupabase().schema("public").rpc("first_admin_setup_available")));
     } catch { setError("Authenticator verification failed. Check the connection and try again."); }
     finally { setBusy(false); }
   }

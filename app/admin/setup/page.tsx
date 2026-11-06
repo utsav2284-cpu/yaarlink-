@@ -73,7 +73,8 @@ export default function BootstrapSetup() {
   return <main style={{ minHeight: "100vh", background: "#f6f7fb", padding: 20, fontFamily: "system-ui,sans-serif" }}><div style={box}>
     <h1>First administrator setup</h1>
     <p>First Administrator Setup requires a trusted invitation. Please open the secure setup link sent to your registered email address.</p>
-    <p>Your trusted operator separately delivers the protected setup token. This page does not create an account or invitation.</p>
+    <p>To get started: (1) accept your invitation and choose your own password, (2) set up your authenticator, and (3) enter the separate setup token to finish.</p>
+    <p>Your trusted operator delivers the protected setup token separately. This page does not create an account or invitation.</p>
     {!email ? <p>Accept your Auth invitation, set your own password and confirm your email, then <Link href="/admin/login">sign in</Link> before entering the token. Never share your password or authenticator code.</p> : <>
       {!showToken && <button type="button" onClick={() => setShowToken(true)}>I have a trusted setup token</button>}
       {showToken && !validated && <form onSubmit={validate}>
