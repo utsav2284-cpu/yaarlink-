@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SITE } from "@/config/site";
+import { adminAuthCspOrigin } from "@/lib/admin-csp";
 import { isAllowedMutationOrigin } from "@/shared/csrf";
 import { REQUEST_ID_HEADER, requestIdFromHeaders } from "@/shared/observability";
 
@@ -51,7 +52,7 @@ function buildContentSecurityPolicy(request: NextRequest, nonce: string): string
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
-    `connect-src 'self' https://qwngmsedyepghskoagaj.supabase.co${isDevelopment ? " ws: wss:" : ""}`,
+    `connect-src 'self' ${adminAuthCspOrigin(process.env.VERCEL_ENV)}${isDevelopment ? " ws: wss:" : ""}`,
     "media-src 'none'",
     "object-src 'none'",
     "frame-src 'none'",
