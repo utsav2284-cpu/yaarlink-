@@ -1,0 +1,5 @@
+# Partial Preview migration history: offline records only
+
+These four files were transcribed from a **read-only** query of the Preview `supabase_migrations.schema_migrations` table. Each file has a local explanatory header; its remaining SQL, trimmed, matches the migration record's MD5 checked by `tests/preview-history-records.test.mjs`. MD5 here checks transcription fidelity only, not authenticity or tamper resistance. No user rows, keys or credentials were extracted. These files are not active migrations.
+
+They are historical: some define a broken or weaker recovery generator which was superseded later. Never apply them independently, to either hosted project, or as the final local schema. The repository is still missing complete authoritative records for the original security/audit helpers, views/bootstrap/module seed, review workflows and others. Do not claim that this directory reconstructs Preview. Any eventual local replay must sanitize seed data, preserve migration ordering, verify every subsequent security hardening change and compare the resulting schema, functions, grants and policies with Preview before testing a claim.
