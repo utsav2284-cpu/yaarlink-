@@ -35,8 +35,27 @@ begin
  if v_session is null or not exists(select 1 from auth.sessions s where s.id=v_session and s.user_id=v_uid) then raise exception 'invalid_session'; end if;
  select owner_claimed_at,owner_auth_user_id,bootstrap_disabled_at into v_state from admin.admin_bootstrap_state where id=true for update;
  if not found or v_state.owner_claimed_at is not null or v_state.owner_auth_user_id is not null or v_state.bootstrap_disabled_at is not null then raise exception 'bootstrap_locked'; end if;
+ -- Time may have passed while waiting on the bootstrap row; transaction-time
+ -- now() is frozen, so do not use it to validate expiry after the wait.
+ v_now := clock_timestamp();
+ if v_totp_time<extract(epoch from v_now-interval '10 minutes') or v_totp_time>extract(epoch from v_now+interval '30 seconds') then raise exception 'fresh_totp_required'; end if;
  perform 1 from admin.first_owner_setup_authorizations a where a.id=true and a.consumed_at is null and a.expires_at>v_now and a.email=v_email and a.token_hash=extensions.digest(decode(p_setup_token,'hex'),'sha256') for update;
  if not found then raise exception 'invalid_setup_authorization'; end if;
+ -- Recheck and lock the live Auth rows after the wait so revocation or changes
+ -- cannot race between the checks and commit. The database remains decisive.
+ perform 1 from auth.users u where u.id=v_uid and u.email_confirmed_at is not null and lower(u.email)=v_email and coalesce(u.encrypted_password,'')<>'' for share;
+ if not found then raise exception 'verified_google_identity_and_password_required'; end if;
+ perform 1 from auth.identities i where i.user_id=v_uid and i.provider='google' and lower(coalesce(i.identity_data->>'email',''))=v_email and i.identity_data->>'email_verified'='true' for share;
+ if not found then raise exception 'verified_google_identity_and_password_required'; end if;
+ perform 1 from auth.mfa_factors f where f.user_id=v_uid and f.factor_type='totp' and f.status='verified' for share;
+ if not found then raise exception 'verified_totp_required'; end if;
+ perform 1 from auth.sessions s where s.id=v_session and s.user_id=v_uid for share;
+ if not found then raise exception 'invalid_session'; end if;
+ -- Auth row locks can also block. Re-evaluate time-bound gates immediately
+ -- before writing, while all relevant rows remain locked.
+ v_now := clock_timestamp();
+ if v_totp_time<extract(epoch from v_now-interval '10 minutes') or v_totp_time>extract(epoch from v_now+interval '30 seconds') then raise exception 'fresh_totp_required'; end if;
+ if not exists(select 1 from admin.first_owner_setup_authorizations a where a.id=true and a.consumed_at is null and a.expires_at>v_now and a.email=v_email and a.token_hash=extensions.digest(decode(p_setup_token,'hex'),'sha256')) then raise exception 'invalid_setup_authorization'; end if;
  if exists(select 1 from admin.admin_profiles) then raise exception 'operator_review_required'; end if;
  insert into admin.identity_operations(operation_type,idempotency_key,auth_user_id,actor_auth_user_id,state,payload_summary)
  values('bootstrap_claim','direct-first-owner',v_uid,v_uid,'db_done',jsonb_build_object('auth_identity_validated_at',v_now,'mfa_validated_at',v_now));
