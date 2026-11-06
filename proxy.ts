@@ -51,7 +51,7 @@ function buildContentSecurityPolicy(request: NextRequest, nonce: string): string
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
-    `connect-src 'self'${isDevelopment ? " ws: wss:" : ""}`,
+    `connect-src 'self' https://qwngmsedyepghskoagaj.supabase.co${isDevelopment ? " ws: wss:" : ""}`,
     "media-src 'none'",
     "object-src 'none'",
     "frame-src 'none'",

@@ -21,3 +21,46 @@ Results (all PASS, rolled back):
 True parallel-session concurrency and live HTTP Supabase Auth flows (login/TOTP over REST)
 remain NOT TESTED from the sandbox (no egress to *.supabase.co); row-lock + state-machine
 guards are the verified mechanism.
+
+## Current application API dependency inventory
+
+- Browser `adminSupabase()` defaults to `preview`. The Control Center selects all
+  columns of `preview.preview_creators` and `preview.preview_campaigns`, ordered
+  by `created_at`. It calls `preview.review_creator(uuid,text,text)` and
+  `preview.review_campaign(uuid,text,text)`. There are no direct PostgREST URL
+  constructions or other table/view calls in the application.
+- The Control Center calls `admin.register_my_session()` after AAL2. MFA calls
+  `admin.generate_my_recovery_codes()`. Bootstrap requires the separately
+  granted `admin.claim_first_owner(text)` RPC, although no bootstrap claim UI
+  exists. The preview RLS policies call `admin.has_permission(text)` internally.
+- Supabase Auth calls for login, sign-out, reset and MFA use the Auth API, not
+  PostgREST. Email callback uses Supabase Auth session/OTP/code verification.
+- No application PostgREST dependency on `audit`, `security`, or `ops` was found.
+  Security-definer functions use internal schemas on the server.
+
+## Manual Preview verification (no real first owner required)
+
+Live REST/Auth tests from the sandbox fail to connect and are NOT TESTED. Use a
+separate synthetic Preview admin provisioned by an authorized operator; never a
+production user or real first-owner invitation. First confirm the intended HTTPS
+browser origin. Set the Preview Auth Site URL and exact redirect allowlist to
+that origin and `/admin/auth/callback` (no wildcard); invite emails must specify
+that callback explicitly. Confirm platform API settings expose the intended
+schemas. Do not enter tokens, keys or passwords in chat.
+
+In the browser's network inspector, check that anon requests to Preview queue
+and review RPC are denied; a synthetic AAL1 admin cannot read/act; after TOTP,
+registration plus queue reads and permitted RPCs succeed; a moderator cannot
+approve/publish; after revocation or TOTP removal requests fail. Check that a
+queued approval makes its decision, notification and audit entry atomically.
+Check schema rejection for audit/security/ops, and that direct PATCH of creator
+or campaign rows is denied. Test from the actual external origin, including
+reloading after a configuration change to check persistence.
+
+For Auth, send test invite, verification, and recovery links to the synthetic
+inbox using the exact callback. Verify session establishment and password setup
+for invite/recovery, MFA after confirmation, and that expired/reused/tampered
+links show an error. Check no external `next` parameter redirects off site. Test
+with the browser that initiated PKCE, since its verifier is stored there.
+Recovery-code redemption is not implemented; generated codes must not be relied
+on for recovery. A local HTTP 200 or mocked test is not an email-flow test.

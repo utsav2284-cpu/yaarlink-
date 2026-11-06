@@ -41,7 +41,10 @@ export default function AdminControlCenter() {
     if (!session) { router.replace("/admin/login"); return; }
     const { data: aal } = await adminAuth().mfa.getAuthenticatorAssuranceLevel();
     if (aal?.currentLevel !== "aal2") { router.replace("/admin/mfa"); return; }
-    setReady(true); load();
+    const { error: registrationError } = await adminSupabase().schema("admin").rpc("register_my_session");
+    setReady(true);
+    if (registrationError) { setErr("Unable to register this admin session. Access remains denied; contact an administrator."); setLoading(false); return; }
+    load();
   })(); }, [router, load]);
 
   const filteredCreators = useMemo(() => creators.filter(c => (tab==="all"||c.status===tab) && JSON.stringify(c).toLowerCase().includes(query.toLowerCase())), [creators, tab, query]);

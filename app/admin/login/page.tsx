@@ -26,7 +26,7 @@ export default function AdminLogin() {
   async function reset() {
     setError(""); setInfo("");
     if (!email.trim()) { setError("Enter your email first, then request a password reset."); return; }
-    const { error } = await adminAuth().resetPasswordForEmail(email.trim(), { redirectTo: `${window.location.origin}/admin/reset-password` });
+    const { error } = await adminAuth().resetPasswordForEmail(email.trim(), { redirectTo: `${window.location.origin}/admin/auth/callback` });
     if (error) setError("Could not send the reset email. Check the address and try again.");
     else setInfo("If this email belongs to an invited administrator, a reset link has been sent.");
   }

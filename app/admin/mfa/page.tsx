@@ -42,7 +42,7 @@ export default function AdminMfa() {
   async function genCodes() {
     const { data, error } = await adminSupabase().schema("admin").rpc("generate_my_recovery_codes");
     if (error) { setError("Recovery codes require an active admin profile (available after bootstrap/invite acceptance)."); return; }
-    setCodes((data as string[]) ?? []); setInfo("Save these recovery codes now — they are shown once, stored hashed, and each can be used only once. They never grant AAL2 by themselves.");
+    setCodes((data as string[]) ?? []); setInfo("These codes are shown once and stored hashed. Recovery-code redemption is not yet implemented; do not rely on them to regain access. They do not grant AAL2.");
   }
 
   return (

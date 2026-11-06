@@ -9,7 +9,7 @@ export default function AdminResetPassword() {
   const [error, setError] = useState("");
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (password.length < 12) { setError("Use at least 12 characters (the Preview Auth minimum is currently 6 — a known gap pending dashboard configuration)."); return; }
+    if (password.length < 12) { setError("Use at least 12 characters (the Preview Auth minimum must also be configured server-side)."); return; }
     const { error } = await adminAuth().updateUser({ password });
     if (error) setError("This reset link is invalid or expired. Request a new one from the sign-in page.");
     else router.replace("/admin/mfa");

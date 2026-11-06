@@ -10,7 +10,7 @@ const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "";
 let client: SupabaseClient<any, any, any> | null = null;
 export function adminSupabase(): SupabaseClient<any, any, any> {
   if (!publishableKey) throw new Error("Admin Preview is not configured (missing publishable key).");
-  client ??= createClient(url, publishableKey, { db: { schema: "preview" } });
+  client ??= createClient(url, publishableKey, { db: { schema: "preview" }, auth: { detectSessionInUrl: false } });
   return client;
 }
 export function adminAuth() {
