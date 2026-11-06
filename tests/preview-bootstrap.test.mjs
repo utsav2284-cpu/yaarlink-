@@ -50,7 +50,9 @@ test('token file is encrypted to an operator-provided RSA public key', async () 
     const keyFile=join(dir,'public.pem'), out=join(dir,'token.enc');
     await writeFile(keyFile,publicKey.export({type:'spki',format:'pem'}));
     const c=fakeClient();
-    await provision(c,{email:'test@example.invalid',reference:'ticket',tokenFile:out,publicKeyFile:keyFile,dryRun:false});
+    const fingerprint=createHash('sha256').update(publicKey.export({type:'spki',format:'der'})).digest('hex');
+    await assert.rejects(provision(fakeClient(),{email:'test@example.invalid',reference:'ticket',tokenFile:out,publicKeyFile:keyFile,expectedFingerprint:'0'.repeat(64),dryRun:false}));
+    await provision(c,{email:'test@example.invalid',reference:'ticket',tokenFile:out,publicKeyFile:keyFile,expectedFingerprint:fingerprint,dryRun:false});
     const encrypted=await readFile(out);
     assert.equal((await stat(out)).mode & 0o777,0o600);
     const plain=privateDecrypt({key:privateKey,padding:constants.RSA_PKCS1_OAEP_PADDING,oaepHash:'sha256'},encrypted).toString();

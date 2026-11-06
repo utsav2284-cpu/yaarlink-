@@ -24,8 +24,10 @@ history, Git, application logs or issue trackers.
    `node scripts/provision-preview-owner.mjs --dry-run --email 'operator-verified@example.invalid' --authorization-ref 'CHANGE-123'`
 
 4. Only after explicit approval, rerun with `--execute` instead of `--dry-run`
-   and add `--recipient-public-key /absolute/path/operator-public.pem` and
-   `--token-file /absolute/private/path/encrypted-bootstrap-token`. Use the
+   and add `--recipient-public-key /absolute/path/owner-public.pem`,
+   `--recipient-key-sha256 <independently-verified-64-lowercase-hex-fingerprint>`, and
+   `--token-file /absolute/private/path/encrypted-bootstrap-token`. The CLI checks the
+   SHA-256 of the public key SPKI DER against the verified fingerprint before creating the invitation. Use the
    trusted recipient’s RSA public key (at least 2048 bits); verify the key
    fingerprint out-of-band. The output must not exist; it is created with mode
    0600 and contains RSA-OAEP-SHA256 ciphertext, never plaintext. The token is
@@ -79,3 +81,45 @@ project. Configure the deployment's public URL and publishable key for the
 dedicated Preview project; do not copy Production configuration into Preview.
 This does not establish the browser's own external origin or configure Auth
 redirects and email delivery.
+
+## Windows owner key and separate email steps
+
+Run `pwsh -File scripts/create-preview-owner-rsa.ps1` on the owner's Windows
+computer (PowerShell 7.2+). It creates a new ACL-restricted directory in
+Documents, an RSA-3072 private key that never leaves the device, and an SPKI
+public key. Transfer **only** `owner-public.pem` to the trusted operator.
+Verify the displayed SHA-256 fingerprint independently through a separate
+trusted channel; the operator must pass that exact lowercase fingerprint to
+the provisioning CLI. Never send the private key, database credentials or
+passwords through chat. The owner must maintain a secure backup of the private
+key; losing it makes the encrypted token unreadable.
+
+On the trusted operator machine, supply `ADMIN_PREVIEW_OPERATOR_DATABASE_URL`
+from an approved secret manager in the process environment, not command line or
+chat. Set the public key path and fingerprint flags above. Run dry-run first;
+if it passes, execute once. Optionally add `--send-encrypted-email` on the
+execution command after setting **Preview-only** `PREVIEW_BOOTSTRAP_RESEND_API_KEY`
+and `PREVIEW_BOOTSTRAP_EMAIL_FROM` in the environment. This sends only the
+newly generated ciphertext attachment to the authorized owner. Provider
+acceptance is not proof of delivery: verify delivery through the provider or
+with the recipient. On an uncertain result, do not retry blindly. Alternatively
+deliver the ciphertext using an independently approved secure channel.
+
+The Auth invitation is separate. Configure custom SMTP in the dedicated
+Preview Supabase project's Auth SMTP settings: provider SMTP host, port,
+username, password, and a verified sender address/domain. Supply the password
+through the Supabase dashboard or approved secret manager, never chat. Verify
+actual delivery with a synthetic recipient before the owner's invitation.
+Independently verify the browser origin and configure Auth Site URL and the
+exact `/admin/auth/callback` allowlist (no wildcard); this project currently
+only has localhost callbacks. Then, on the trusted operator machine, set
+`SUPABASE_PREVIEW_MANAGEMENT_TOKEN`, `SUPABASE_PREVIEW_SERVICE_ROLE_KEY`
+(a legacy Preview-only service-role JWT), `PREVIEW_VERIFIED_AUTH_CALLBACK`,
+and `ADMIN_PREVIEW_OPERATOR_DATABASE_URL` via the secret manager. Run
+`node scripts/invite-preview-owner-auth.mjs --dry-run` followed by
+`--execute` only after a protected bootstrap invitation exists and all
+prerequisites have been independently verified. The script checks Preview
+TLS, state, exact callback and custom SMTP and uses `inviteUserByEmail` for
+the authorized address. It reports API acceptance only, not delivery. If a
+request outcome is uncertain, inspect Auth and provider state before retrying.
+This workflow has not been tested against live Auth or a real mail provider.
