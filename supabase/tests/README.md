@@ -99,3 +99,9 @@ reset and re-enrollment. The current implementation has no safe audited method
 to clear the pending flag or prove replacement-factor enrollment. Do not treat
 mock tests, a DB flag, or a recovery code as AAL2. The legacy SHA generator stays
 disabled and no production recovery endpoint has been enabled.
+
+### Restricted recovery runtime (not yet exposed)
+
+Preview migrations `admin_preview_recovery_runtime` and `admin_preview_recovery_runtime_monotonic` add a NOLOGIN, non-BYPASSRLS role. Rolled-back synthetic SQL exercised cross-user isolation, rejection of recovery-state reversal, pending-state clearance, session un-revocation and invalid event names. The adapter now assumes this role and takes a per-user transaction advisory lock; its JavaScript tests are mocked, not a live concurrency test.
+
+There is deliberately no provisioned runtime login, verified-JWT request boundary, recovery route, or factor-reset/re-enrollment workflow. A future trusted Preview-only server login must be granted SET capability for this role and kept in a secret store. The role's RLS uses transaction JWT claims supplied by that trusted server: it is **not** a defense against a compromised runtime credential or a caller allowed to set arbitrary claims. Verify tokens against Preview Auth and bind claims to the verified identity before calling the adapter; never expose this database credential or accept client-supplied actor flags. Do not enable redemption until an audited assisted factor-recovery process can safely resolve the pending state.

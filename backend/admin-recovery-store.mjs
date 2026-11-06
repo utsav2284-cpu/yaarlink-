@@ -12,10 +12,12 @@ export function createRecoveryStore(pool, claims) {
       const client = await pool.connect();
       try {
         await client.query('begin');
+        await client.query('set local role preview_recovery_runtime');
         await client.query("select set_config('request.jwt.claims',$1,true)", [JSON.stringify(claims)]);
-        // The profile row serializes redemption and regeneration across all
-        // workers, including the first transaction before a controls row exists.
-        const locked = await client.query("select auth_user_id from admin.admin_profiles where auth_user_id=$1 and status='active' for update", [uid]);
+        // A transaction-scoped advisory lock serializes recovery for this user
+        // without granting UPDATE on admin profiles. All recovery paths use it.
+        await client.query('select pg_advisory_xact_lock(hashtextextended($1::text, 762014))', [uid]);
+        const locked = await client.query("select auth_user_id from admin.admin_profiles where auth_user_id=$1 and status='active'", [uid]);
         if (locked.rowCount !== 1) throw new Error('Not authorized');
         const tx = {
           async authorizeGeneration() {
@@ -37,7 +39,7 @@ export function createRecoveryStore(pool, claims) {
             for (const row of rows) await client.query('insert into admin.admin_recovery_codes(auth_user_id,code_index,code_hash,expires_at) values ($1,$2,$3,$4)', [uid,row.index,row.hash,new Date(row.expiresAt)]);
           },
           async getCode(index) {
-            const r = await client.query('select id,code_hash,used_at,invalidated_at,expires_at from admin.admin_recovery_codes where auth_user_id=$1 and code_index=$2 order by created_at desc,id desc limit 1', [uid,index]);
+            const r = await client.query('select id,code_hash,used_at,invalidated_at,expires_at from admin.admin_recovery_codes where auth_user_id=$1 and code_index=$2 order by (used_at is null and invalidated_at is null) desc,created_at desc,id desc limit 1', [uid,index]);
             const x = r.rows[0];
             if (!x || !/^\$2[aby]\$12\$/.test(x.code_hash) || !x.expires_at) return null;
             return { id:x.id, hash:x.code_hash, usedAt:x.used_at, invalidatedAt:x.invalidated_at, expiresAt:new Date(x.expires_at).getTime() };
@@ -57,10 +59,7 @@ export function createRecoveryStore(pool, claims) {
           async revokeSessions(now) { await client.query('update admin.admin_session_registry set revoked_at=$2,revoke_reason=$3 where auth_user_id=$1 and revoked_at is null', [uid,new Date(now),'assisted_recovery']); },
           async event(event) {
             if (!['recovery_codes_regenerated','recovery_code_failed','recovery_rate_limited','recovery_code_used'].includes(event)) throw new Error('Invalid event');
-            const failed = event === 'recovery_code_failed' || event === 'recovery_rate_limited';
-            await client.query('insert into security.security_events(event_type,severity,auth_user_id,actor_auth_user_id,detail) values ($1,$2,$3,$3,jsonb_build_object(\'action\',$4))', [failed?'recovery_code_misuse':'other',failed?'medium':'info',uid,event]);
-            if (!failed) await client.query('insert into admin.account_recovery_events(auth_user_id,event_type,requested_by) values ($1,$2,$1)', [uid,event]);
-            await client.query("select audit.append_audit($1,$2,'admin_profile',$1::text,$3,'{}'::jsonb)", [uid,event,failed?'denied':'success']);
+            await client.query('select admin.log_recovery_event($1)', [event]);
           }
         };
         const result = await fn(tx);

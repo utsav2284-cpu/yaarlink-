@@ -29,8 +29,9 @@ test('store locks the profile and commits non-secret recovery events', async()=>
   return 'ok';
  });
  assert.equal(result,'ok'); assert.equal(calls.at(-1)[0],'commit');
- assert.ok(calls.some(([q])=>q.includes('for update')));
- assert.ok(calls.some(([q])=>q.includes('security.security_events'))); assert.equal(wasReleased(),true);
+ assert.ok(calls.some(([q])=>q.includes('pg_advisory_xact_lock')));
+ assert.ok(calls.some(([q])=>q==='set local role preview_recovery_runtime'));
+ assert.ok(calls.some(([q])=>q.includes('admin.log_recovery_event'))); assert.equal(wasReleased(),true);
 });
 test('inactive profile or database failure rolls back and releases', async()=>{
  for(const opts of [{active:false},{fail:true}]){
