@@ -14,6 +14,7 @@ export default function AdminControlCenter() {
   const router = useRouter();
   const production = process.env.NEXT_PUBLIC_VERCEL_ENV === "production";
   const [ready, setReady] = useState(false);
+  const [assuranceVerified, setAssuranceVerified] = useState(false);
   const [section, setSection] = useState<(typeof SECTIONS)[number]>("Overview");
   const [creators, setCreators] = useState<Row[]>([]);
   const [campaigns, setCampaigns] = useState<Row[]>([]);
@@ -46,6 +47,7 @@ export default function AdminControlCenter() {
       const { data: aal, error: aalError } = await adminAuth().mfa.getAuthenticatorAssuranceLevel();
       if (aalError) throw aalError;
       if (aal?.currentLevel !== "aal2") { if (!cancelled) router.replace("/admin/mfa"); return; }
+      if (!cancelled) setAssuranceVerified(true);
       const { error: registrationError } = await adminRpc("register_my_session");
       if (cancelled) return;
       setReady(true);
@@ -79,7 +81,7 @@ export default function AdminControlCenter() {
     <main className="admin-layout" style={{ display:"flex", minHeight:"100vh", background:"#f6f7fb", color:"#111827", fontFamily:"system-ui,sans-serif" }}>
       <aside style={{ width:260, background:"#0f172a", color:"#e2e8f0", padding:20, flexShrink:0 }} className="admin-sidebar">
         <div style={{ fontWeight:800, fontSize:20, color:"#fff" }}>YaarLink <span style={{ color:"#38bdf8" }}>Admin</span></div>
-        <div style={{ fontSize:12, margin:"6px 0 20px", color:"#94a3b8" }}>Control Center · {production ? "Production" : "Preview"} · AAL2 verified</div>
+        <div style={{ fontSize:12, margin:"6px 0 20px", color:"#94a3b8" }}>Control Center · {production ? "Production" : "Preview"} · {assuranceVerified ? "AAL2 session" : "Authentication unavailable"}</div>
         <nav style={{ display:"grid", gap:6 }}>
           {SECTIONS.slice(0, 3).map(s => <button key={s} onClick={() => { setSection(s); setTab("all"); setSelected(null); }} style={{ textAlign:"left", padding:"10px 12px", borderRadius:10, border:0, cursor:"pointer", background: section===s ? "#1d4ed8" : "transparent", color: section===s ? "#fff" : "#cbd5e1", fontWeight: section===s ? 700 : 500 }}>{s}</button>)}
         </nav>
