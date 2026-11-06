@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto';
 const root=resolve(fileURLToPath(new URL('..',import.meta.url)));
 const history=['20261105193208','20261105193227','20261105193246','20261105195049','20261105195123','20261105195921','20261105195948','20261105200100'];
 const later=['202611060001_admin_preview_least_privilege','202611060002_admin_preview_register_session','202611060003_admin_preview_bootstrap_hardening','202611060004_admin_preview_creator_pending_by_default','202611060005_admin_preview_recovery_controls','202611060006_admin_preview_recovery_runtime','202611060007_admin_preview_recovery_runtime_monotonic','202611060008_admin_preview_recovery_fresh_totp','202611060009_admin_preview_bootstrap_preflight','202611060010_admin_preview_bootstrap_public_status','202611060011_admin_preview_marketplace_review'];
-const files=['backend/db/drizzle/0000_initial_schema.sql',...history.map(n=>`test-infra/preview-history/${n}.sql`),...later.map(n=>`supabase/migrations/${n}.sql`),'supabase/candidates/preview_direct_google_owner.sql','supabase/candidates/local_synthetic_guard.sql'];
+const files=['backend/db/drizzle/0000_initial_schema.sql',...history.map(n=>`test-infra/preview-history/${n}.sql`),...later.map(n=>n.startsWith('202611060005_') ? 'test-infra/preview-history/20261106043409.sql' : `supabase/migrations/${n}.sql`),'supabase/candidates/preview_direct_google_owner.sql','supabase/candidates/local_synthetic_guard.sql'];
 
 async function main() {
  const target=process.argv[2];
