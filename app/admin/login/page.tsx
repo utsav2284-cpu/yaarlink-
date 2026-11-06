@@ -46,7 +46,12 @@ export default function AdminLogin() {
         {info && <p style={{ color: "#15803d" }}>{info}</p>}
         <button disabled={busy} style={{ width: "100%", padding: 12, borderRadius: 10, border: 0, background: "#1d4ed8", color: "#fff", fontWeight: 700, cursor: "pointer" }}>{busy ? "Signing in…" : "Sign in"}</button>
         <button type="button" disabled={busy} onClick={reset} style={{ width: "100%", padding: 10, marginTop: 10, background: "transparent", border: 0, color: "#2563eb", cursor: "pointer" }}>Forgot password?</button>
-        <p style={{ fontSize: 12, color: "#6b7280" }}>MFA (authenticator app) is mandatory after sign-in. <a href="/admin/setup">First administrator setup</a> (trusted invitation required). Demo visual preview: <a href="/admin-preview">/admin-preview</a> (synthetic, no admin powers).</p>
+        <section aria-labelledby="first-admin-heading" style={{ marginTop: 20, padding: 16, background: "#f8faff", border: "1px solid #dbeafe", borderRadius: 10 }}>
+          <h2 id="first-admin-heading" style={{ fontSize: 16, margin: "0 0 8px" }}>First time setting up YaarLink Admin?</h2>
+          <p style={{ fontSize: 13, color: "#6b7280", margin: "0 0 12px" }}>A trusted invitation is required. This does not create an account or grant access.</p>
+          <a href="/admin/setup" style={{ display: "block", textAlign: "center", border: "1px solid #1d4ed8", borderRadius: 10, padding: 10, color: "#1d4ed8", fontWeight: 700, textDecoration: "none" }}>Set Up First Administrator</a>
+        </section>
+        <p style={{ fontSize: 12, color: "#6b7280" }}>MFA (authenticator app) is mandatory after sign-in. Demo visual preview: <a href="/admin-preview">/admin-preview</a> (synthetic, no admin powers).</p>
       </form>
     </main>
   );

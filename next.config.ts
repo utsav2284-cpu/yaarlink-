@@ -18,6 +18,9 @@ const STATIC_SECURITY_HEADERS = [
 ];
 
 const nextConfig: NextConfig = {
+  // Arena's authenticated Preview proxy uses an e2b.app hostname; this affects
+  // Next development resources only and does not configure Auth redirects.
+  allowedDevOrigins: ["*.e2b.app"],
   // Document CSP is generated per request in proxy.ts because it contains a
   // nonce. The headers below do not vary by request, so they stay static.
   async headers() {
