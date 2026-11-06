@@ -4,9 +4,11 @@ import { requireAdminSupabaseTarget } from "./admin-target-config";
 // Production and Preview use their own pinned identity projects. The public
 // key is not authorization: privileged operations still require database RPC
 // checks. Missing Production setup fails closed.
-const configuredUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const deployment = process.env.NEXT_PUBLIC_VERCEL_ENV;
-const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "";
+// Production uses separately named, non-secret public identifiers so a
+// different integration cannot silently point the admin client at another DB.
+const configuredUrl = deployment === "production" ? process.env.NEXT_PUBLIC_YAARLINK_ADMIN_SUPABASE_URL : process.env.NEXT_PUBLIC_SUPABASE_URL;
+const publishableKey = (deployment === "production" ? process.env.NEXT_PUBLIC_YAARLINK_ADMIN_PUBLISHABLE_KEY : process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) ?? "";
 
 let client: SupabaseClient<any, any, any> | null = null;
 export function adminSupabase(): SupabaseClient<any, any, any> {
