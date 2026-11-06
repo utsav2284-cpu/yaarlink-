@@ -111,3 +111,9 @@ A rolled-back synthetic Preview SQL sequence also exercised the runtime role’s
 Recovery generation and rotation now require a verified JWT TOTP AMR timestamp within ten minutes, in addition to an active profile, AAL2, current registered session and live verified TOTP factor. `recovery_fresh_totp.sql` is a rolled-back synthetic database test; malformed, stale and future evidence was also checked in Preview. The identity verifier preserves only validated token TOTP AMR entries for this database check. These checks do not by themselves establish a factor-recovery completion process, and the service remains unexposed.
 
 The server-side generation composition now connects the fixed Preview Auth verifier, pinned connection configuration, and transaction store. It is not an HTTP route and is not connected to a UI. Tests use isolated verifier/store substitutes; no live database login exists. Generation checks live authorization before and after bcrypt hashing, before invalidating or writing codes. The second check narrows, but does not eliminate, races with independent Auth or session changes. Redemption remains unexposed until an audited password-reset and replacement-factor process can safely resolve recovery pending.
+
+Two parallel, rolled-back Preview database transactions tested the adapter's
+advisory-lock key: a second transaction could not take the same user's lock
+while the first held it, and could take a different user's lock. This verifies
+lock isolation across connections only; it is not a concurrent redemption test
+or a live test of the Node adapter.

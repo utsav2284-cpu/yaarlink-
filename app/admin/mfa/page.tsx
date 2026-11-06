@@ -1,7 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { adminAuth } from "@/lib/admin-supabase";
+import { totpQrImageSource } from "@/lib/admin-totp-qr";
 
 const card: React.CSSProperties = { background: "#fff", border: "1px solid #e5e7eb", borderRadius: 14, padding: 24, maxWidth: 480, margin: "6vh auto" };
 const input: React.CSSProperties = { width: "100%", padding: 11, border: "1px solid #d1d5db", borderRadius: 10, margin: "6px 0 14px", boxSizing: "border-box" };
@@ -26,7 +28,10 @@ export default function AdminMfa() {
     setError("");
     const { data, error } = await adminAuth().mfa.enroll({ factorType: "totp", friendlyName: "YaarLink Admin" });
     if (error || !data) { setError("Enrollment failed. You may already have an authenticator — enter its code below."); return; }
-    setFactorId(data.id); setQr(data.totp.qr_code); setSecret(data.totp.secret);
+    try {
+      const image = totpQrImageSource(data.totp.qr_code);
+      setFactorId(data.id); setQr(image); setSecret(data.totp.secret);
+    } catch { setError("Authenticator QR image could not be displayed. Try again."); }
   }
   async function verify(e: React.FormEvent) {
     e.preventDefault(); setError("");
@@ -46,7 +51,7 @@ export default function AdminMfa() {
         <h1 style={{ marginTop: 0 }}>Two-factor authentication</h1>
         <p style={{ color: "#6b7280" }}>The Admin Control Center requires AAL2: a live, verified authenticator (TOTP) factor. Frontend state alone is never trusted — the database re-checks AAL2, session and factor on every protected operation.</p>
         {!qr && <button style={btn} onClick={enroll}>Enroll authenticator</button>}
-        {qr && <><div dangerouslySetInnerHTML={{ __html: qr }} style={{ width: 200, margin: "12px auto" }} /><p>Manual key: <code>{secret}</code></p></>}
+        {qr && <><Image unoptimized src={qr} alt="Scan this QR code with your authenticator app" width={200} height={200} style={{ display: "block", margin: "12px auto" }} /><p>Manual key: <code>{secret}</code></p></>}
         <form onSubmit={verify}>
           <label>6-digit code<input style={input} inputMode="numeric" autoComplete="one-time-code" value={code} onChange={e => setCode(e.target.value)} required /></label>
           {error && <p role="alert" style={{ color: "#dc2626" }}>{error}</p>}
