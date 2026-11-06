@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SITE } from "@/config/site";
 import { adminAuthCspOrigin } from "@/lib/admin-csp";
+import { localAdminCspAllowed } from "@/lib/admin-local-config";
 import { isAllowedMutationOrigin } from "@/shared/csrf";
 import { REQUEST_ID_HEADER, requestIdFromHeaders } from "@/shared/observability";
 
@@ -42,6 +43,7 @@ function reportEndpointUrl(request: NextRequest): string {
 
 function buildContentSecurityPolicy(request: NextRequest, nonce: string): string {
   const isDevelopment = process.env.NODE_ENV === "development";
+  const localAuth = localAdminCspAllowed(process.env.NEXT_PUBLIC_YAARLINK_LOCAL_ADMIN, process.env.NODE_ENV, process.env.VERCEL, request.headers.get("host") ?? undefined, request.headers.get("x-forwarded-host"));
 
   const directives = [
     "default-src 'self'",
@@ -52,7 +54,7 @@ function buildContentSecurityPolicy(request: NextRequest, nonce: string): string
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
-    `connect-src 'self' ${adminAuthCspOrigin(process.env.VERCEL_ENV)}${isDevelopment ? " ws: wss:" : ""}`,
+    `connect-src 'self' ${adminAuthCspOrigin(process.env.VERCEL_ENV)}${localAuth ? " http://127.0.0.1:54321" : ""}${isDevelopment ? " ws: wss:" : ""}`,
     "media-src 'none'",
     "object-src 'none'",
     "frame-src 'none'",

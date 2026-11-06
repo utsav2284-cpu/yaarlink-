@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { requireAdminSupabaseTarget } from "./admin-target-config";
+import { isLocalAdminTarget } from "./admin-local-config";
 
 // Production and Preview use their own pinned identity projects. The public
 // key is not authorization: privileged operations still require database RPC
@@ -12,9 +13,10 @@ const publishableKey = (deployment === "production" ? process.env.NEXT_PUBLIC_YA
 
 let client: SupabaseClient<any, any, any> | null = null;
 export function adminSupabase(): SupabaseClient<any, any, any> {
-  const { url, production } = requireAdminSupabaseTarget(deployment, configuredUrl);
+  const local = isLocalAdminTarget(process.env.NEXT_PUBLIC_YAARLINK_LOCAL_ADMIN, process.env.NODE_ENV, deployment, typeof window === "undefined" ? undefined : window.location.origin);
+  const { url, production } = local ? { url: "http://127.0.0.1:54321", production: false } : requireAdminSupabaseTarget(deployment, configuredUrl);
   if (!publishableKey) throw new Error("Admin authentication is not configured (missing publishable key).");
-  client ??= createClient(url, publishableKey, { db: { schema: production ? "public" : "preview" }, auth: { detectSessionInUrl: false } });
+  client ??= createClient(url, publishableKey, { db: { schema: production ? "public" : "preview" }, auth: { detectSessionInUrl: false, ...(local ? { flowType: "pkce" as const } : {}) } });
   return client;
 }
 export function adminAuth() {

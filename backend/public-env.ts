@@ -24,6 +24,8 @@ const APPROVED_PUBLIC_ENV_NAMES = new Set([
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
   "NEXT_PUBLIC_SUPABASE_URL",
+  // Non-secret opt-in; runtime additionally requires a local development origin.
+  "NEXT_PUBLIC_YAARLINK_LOCAL_ADMIN",
   // Public identifiers for the isolated Production admin browser client.
   "NEXT_PUBLIC_YAARLINK_ADMIN_SUPABASE_URL",
   "NEXT_PUBLIC_YAARLINK_ADMIN_PUBLISHABLE_KEY",
