@@ -13,3 +13,12 @@ test('authenticator SVG is encoded as a non-inline image source', () => {
 test('malformed or excessive QR data is rejected', () => {
  for (const input of ['', '<img src=x>', '<svg'+'a'.repeat(100001), null]) assert.throws(()=>totpQrImageSource(input));
 });
+
+test('supports the XML prolog used by Supabase SVG QR responses', () => {
+ const svg='<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0"/></svg>';
+ const full=`<?xml version="1.0" encoding="UTF-8"?>\n${svg}`;
+ const expected=totpQrImageSource(svg);
+ assert.equal(totpQrImageSource(`data:image/svg+xml;utf-8,${full}`),expected);
+ assert.equal(totpQrImageSource(`data:image/svg+xml;utf-8,${encodeURIComponent(full)}`),expected);
+ assert.throws(()=>totpQrImageSource(`<!DOCTYPE svg>${svg}`));
+});
