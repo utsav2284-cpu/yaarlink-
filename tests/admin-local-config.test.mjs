@@ -11,6 +11,7 @@ test('local auth needs explicit opt-in, development and exact browser origin',()
 });
 test('local CSP exception cannot be selected for hosted or forwarded requests',()=>{
  assert.equal(localAdminCspAllowed('true','development',undefined,'127.0.0.1:3000',null),true);
+ assert.equal(localAdminCspAllowed('true','development',undefined,'127.0.0.1:3000','127.0.0.1:3000'),true);
  for (const args of [
   [undefined,'development',undefined,'127.0.0.1:3000',null],
   ['true','production',undefined,'127.0.0.1:3000',null],

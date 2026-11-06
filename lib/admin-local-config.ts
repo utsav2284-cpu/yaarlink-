@@ -8,5 +8,7 @@ export function isLocalAdminTarget(flag: string | undefined, nodeEnv: string | u
 }
 
 export function localAdminCspAllowed(flag: string | undefined, nodeEnv: string | undefined, vercel: string | undefined, host: string | undefined, forwardedHost: string | null): boolean {
-  return flag === "true" && nodeEnv === "development" && !vercel && host === "127.0.0.1:3000" && !forwardedHost;
+  // Next's development server can add x-forwarded-host itself; accept only
+  // its exact loopback value, never an external or multi-value forwarded host.
+  return flag === "true" && nodeEnv === "development" && !vercel && host === "127.0.0.1:3000" && (!forwardedHost || forwardedHost === host);
 }
