@@ -61,3 +61,12 @@ test('token file is encrypted to an operator-provided RSA public key', async () 
     assert.deepEqual(c.calls.find(([q])=>q.startsWith('insert'))[1][2],createHash('sha256').update(Buffer.from(plain,'hex')).digest());
   } finally { await rm(dir,{recursive:true,force:true}); }
 });
+
+test('ambiguous COMMIT preserves ciphertext for operator reconciliation', async () => {
+  const c=fakeClient();
+  const query=c.query.bind(c);
+  c.query=async (sql,params) => { if(sql==='commit') throw new Error('synthetic connection loss'); return query(sql,params); };
+  let written=false,removed=false;
+  await assert.rejects(provision(c,{email:'test@example.invalid',reference:'ticket',tokenFile:'/tmp/test',dryRun:false},{writeToken:async()=>{written=true;},removeToken:async()=>{removed=true;}}));
+  assert.equal(written,true); assert.equal(removed,false);
+});

@@ -20,6 +20,7 @@ export function validateInput(email, reference, tokenFile, dryRun, publicKeyFile
 // been validated. No token or hash is printed, returned, or sent to Auth.
 export async function provision(client, input, { writeToken = writeTokenFile, removeToken = unlink } = {}) {
   let fileCreated = false;
+  let commitAttempted = false;
   await client.query('begin');
   try {
     const identity = await client.query("select current_user as role, current_database() as db, coalesce((select ssl from pg_stat_ssl where pid=pg_backend_pid()),false) as tls");
@@ -35,11 +36,14 @@ export async function provision(client, input, { writeToken = writeTokenFile, re
     fileCreated = true;
     const created = await client.query("insert into admin.admin_invitations(email, invitation_kind, invited_by, operator_authorization_ref, intended_role_key, expires_at, token_hash) values ($1,'bootstrap',null,$2,'super_admin',now()+interval '24 hours',$3) returning id", [input.email, input.reference, hash]);
     await client.query("select audit.append_audit(null, 'bootstrap.invitation_created', 'admin_invitation', $1, 'success', '{}'::jsonb)", [String(created.rows[0].id)]);
+    // Once COMMIT is sent, a network failure cannot prove whether it committed.
+    // Preserve the ciphertext for operator reconciliation instead of losing it.
+    commitAttempted = true;
     await client.query('commit');
     return { dryRun: false };
   } catch (err) {
     await client.query('rollback').catch(() => {});
-    if (fileCreated) await removeToken(input.tokenFile).catch(() => {});
+    if (fileCreated && !commitAttempted) await removeToken(input.tokenFile).catch(() => {});
     throw err;
   }
 }
