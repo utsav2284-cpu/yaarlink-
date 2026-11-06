@@ -1,10 +1,10 @@
 // Server-only authorization primitive for a future marketplace adapter.
-// Authorization is checked against the dedicated admin identity project; it
+// Authorization is checked against the Production admin identity project; it
 // does not connect to, or grant access to, the marketplace database.
 import { createClient } from '@supabase/supabase-js';
-import { verifyPreviewIdentity } from './admin-preview-verified-identity.mjs';
+import { verifyProductionIdentity } from './admin-preview-verified-identity.mjs';
 
-const ADMIN_PROJECT = 'https://qwngmsedyepghskoagaj.supabase.co';
+const ADMIN_PROJECT = 'https://dqhxgwzjwzvpqiilteld.supabase.co';
 const PERMISSIONS = new Set(['creators.review', 'creators.approve', 'campaigns.review', 'campaigns.publish']);
 const denied = () => new Error('Not authorized');
 
@@ -25,7 +25,7 @@ export async function authorizeMarketplaceWith(token, permission, verifyIdentity
 export async function authorizeMarketplace(token, permission, publishableKey) {
   if (typeof publishableKey !== 'string' || !publishableKey.trim()) throw denied();
   return authorizeMarketplaceWith(token, permission,
-    value => verifyPreviewIdentity(value, publishableKey),
+    value => verifyProductionIdentity(value, publishableKey),
     async (value, key) => {
       const client = createClient(ADMIN_PROJECT, publishableKey, {
         auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },

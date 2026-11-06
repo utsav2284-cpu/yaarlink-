@@ -1,14 +1,14 @@
-// Server-only groundwork: no route imports this module yet. Auth verification is
-// always sent to the dedicated Preview project, never to a caller-supplied URL.
+// Server-only identity verification. Project URLs are fixed here, never supplied by requests.
 import { createClient } from '@supabase/supabase-js';
 
 const PREVIEW = 'https://qwngmsedyepghskoagaj.supabase.co';
+const PRODUCTION = 'https://dqhxgwzjwzvpqiilteld.supabase.co';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const denied = () => new Error('Not authorized');
 
 // The injected verifier is a server-side dependency, not request data. In
 // production use verifyPreviewIdentity(), which fixes the service and verifier.
-export async function verifyIdentityWithAuth(token, getUser, now = Date.now()) {
+async function verifyAtProject(token, getUser, project, now) {
   if (typeof token !== 'string' || token.length > 8192 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token)) throw denied();
   let user;
   try {
@@ -21,7 +21,7 @@ export async function verifyIdentityWithAuth(token, getUser, now = Date.now()) {
   // Decoding is not verification: this happens only after the exact token was
   // accepted by Preview Auth's getUser endpoint, and is bound to that response.
   if (!payload || typeof payload !== 'object' || Array.isArray(payload) ||
-      payload.iss !== `${PREVIEW}/auth/v1` || payload.aud !== 'authenticated' ||
+      payload.iss !== `${project}/auth/v1` || payload.aud !== 'authenticated' ||
       payload.role !== 'authenticated' || !UUID.test(payload.sub ?? '') ||
       user.id !== payload.sub || !UUID.test(payload.session_id ?? '') ||
       !Number.isSafeInteger(payload.exp) || payload.exp <= Math.floor(now / 1000) ||
@@ -34,6 +34,24 @@ export async function verifyIdentityWithAuth(token, getUser, now = Date.now()) {
       .map(item => Object.freeze({ method: 'totp', timestamp: item.timestamp }))
     : [];
   return Object.freeze({ sub: payload.sub, session_id: payload.session_id, aal: payload.aal, amr: Object.freeze(amr) });
+}
+
+export async function verifyIdentityWithAuth(token, getUser, now = Date.now()) {
+  return verifyAtProject(token, getUser, PREVIEW, now);
+}
+
+// Exposed only for synthetic tests; the real wrapper fixes both the remote
+// verifier and expected issuer to the Production project.
+export async function verifyProductionIdentityWithAuth(token, getUser, now = Date.now()) {
+  return verifyAtProject(token, getUser, PRODUCTION, now);
+}
+
+export async function verifyProductionIdentity(token, publishableKey) {
+  if (typeof publishableKey !== 'string' || !publishableKey.trim()) throw denied();
+  const client = createClient(PRODUCTION, publishableKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+  });
+  return verifyProductionIdentityWithAuth(token, jwt => client.auth.getUser(jwt));
 }
 
 export async function verifyPreviewIdentity(token, publishableKey) {

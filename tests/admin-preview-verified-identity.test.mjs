@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { verifyIdentityWithAuth } from '../backend/admin-preview-verified-identity.mjs';
+import { verifyIdentityWithAuth, verifyProductionIdentityWithAuth } from '../backend/admin-preview-verified-identity.mjs';
 const uid = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const sid = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
 const now = 1800000000000;
@@ -27,4 +27,13 @@ test('malformed TOTP evidence cannot be converted into a fresh verification', as
   const identity = await verifyIdentityWithAuth(token({...base,amr}), verified, now);
   assert.deepEqual(identity.amr,[]);
  }
+});
+
+
+test('Production verification is pinned to the Production issuer, not Preview', async () => {
+ const production = {...base, iss:'https://dqhxgwzjwzvpqiilteld.supabase.co/auth/v1'};
+ const result = await verifyProductionIdentityWithAuth(token(production), verified, now);
+ assert.equal(result.sub, uid);
+ await assert.rejects(verifyProductionIdentityWithAuth(token(base), verified, now), /Not authorized/);
+ await assert.rejects(verifyIdentityWithAuth(token(production), verified, now), /Not authorized/);
 });
