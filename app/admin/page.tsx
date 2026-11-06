@@ -80,7 +80,7 @@ export default function AdminControlCenter() {
         <h1 style={{ fontSize:28, margin:"0 0 4px" }}>{section}</h1>
         <p style={{ color:"#6b7280", marginTop:0 }}>Authenticated Admin Control Center (Preview data; synthetic records are labelled in the database).</p>
         {loading && <p>Loading…</p>}
-        {err && <p role="alert" style={{ ...card, background:"#fef2f2", borderColor:"#fca5a5" }}>{err}</p>}
+        {err && <p role="alert" style={{ ...card, background:"#fef2f2", borderColor:"#fca5a5" }}>{err} <a href="/admin/setup">First administrator setup</a></p>}
         {msg && <p style={{ ...card, background:"#f0fdf4", borderColor:"#86efac" }}>{msg}</p>}
 
         {section==="Overview" && <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))", gap:14 }}>

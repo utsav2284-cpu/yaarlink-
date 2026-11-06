@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { adminAuth, adminSupabase } from "@/lib/admin-supabase";
+import { adminAuth } from "@/lib/admin-supabase";
 
 const card: React.CSSProperties = { background: "#fff", border: "1px solid #e5e7eb", borderRadius: 14, padding: 24, maxWidth: 480, margin: "6vh auto" };
 const input: React.CSSProperties = { width: "100%", padding: 11, border: "1px solid #d1d5db", borderRadius: 10, margin: "6px 0 14px", boxSizing: "border-box" };
@@ -10,7 +10,7 @@ const btn: React.CSSProperties = { padding: "11px 16px", borderRadius: 10, borde
 export default function AdminMfa() {
   const router = useRouter();
   const [qr, setQr] = useState(""); const [secret, setSecret] = useState(""); const [factorId, setFactorId] = useState("");
-  const [code, setCode] = useState(""); const [error, setError] = useState(""); const [info, setInfo] = useState(""); const [codes, setCodes] = useState<string[]>([]);
+  const [code, setCode] = useState(""); const [error, setError] = useState("");
 
   useEffect(() => { (async () => {
     const { data: { session } } = await adminAuth().getSession();
@@ -39,11 +39,6 @@ export default function AdminMfa() {
     if (aal?.currentLevel !== "aal2") { setError("MFA did not reach AAL2. Try verifying again."); return; }
     router.replace("/admin");
   }
-  async function genCodes() {
-    const { data, error } = await adminSupabase().schema("admin").rpc("generate_my_recovery_codes");
-    if (error) { setError("Recovery codes require an active admin profile (available after bootstrap/invite acceptance)."); return; }
-    setCodes((data as string[]) ?? []); setInfo("These codes are shown once and stored hashed. Recovery-code redemption is not yet implemented; do not rely on them to regain access. They do not grant AAL2.");
-  }
 
   return (
     <main style={{ minHeight: "100vh", background: "#f6f7fb", padding: 20, fontFamily: "system-ui,sans-serif", color: "#111827" }}>
@@ -54,13 +49,12 @@ export default function AdminMfa() {
         {qr && <><div dangerouslySetInnerHTML={{ __html: qr }} style={{ width: 200, margin: "12px auto" }} /><p>Manual key: <code>{secret}</code></p></>}
         <form onSubmit={verify}>
           <label>6-digit code<input style={input} inputMode="numeric" autoComplete="one-time-code" value={code} onChange={e => setCode(e.target.value)} required /></label>
-          {error && <p role="alert" style={{ color: "#dc2626" }}>{error}</p>}{info && <p style={{ color: "#15803d" }}>{info}</p>}
+          {error && <p role="alert" style={{ color: "#dc2626" }}>{error}</p>}
           <button style={{ ...btn, width: "100%" }}>Verify &amp; continue</button>
         </form>
         <hr style={{ margin: "20px 0" }} />
-        <button onClick={genCodes} style={{ ...btn, background: "#475569" }}>Generate recovery codes</button>
-        {codes.length > 0 && <ul>{codes.map(c => <li key={c}><code>{c}</code></li>)}</ul>}
-        <p style={{ fontSize: 12, color: "#6b7280" }}>Lost your authenticator? Recovery requires a security-admin assisted factor reset (<code>security.manage</code>) — recovery codes never grant AAL2 alone.</p>
+        <p><a href="/admin/setup">First administrator setup</a> — only for an existing trusted bootstrap invitation.</p>
+        <p style={{ fontSize: 12, color: "#6b7280" }}>Lost your authenticator? Contact your trusted operator. Recovery codes are not available; never share an authenticator code or password with support.</p>
       </div>
     </main>
   );

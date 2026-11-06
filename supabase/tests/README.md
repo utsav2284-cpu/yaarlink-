@@ -64,3 +64,18 @@ links show an error. Check no external `next` parameter redirects off site. Test
 with the browser that initiated PKCE, since its verifier is stored there.
 Recovery-code redemption is not implemented; generated codes must not be relied
 on for recovery. A local HTTP 200 or mocked test is not an email-flow test.
+
+The bootstrap implementation now exposes only `admin.claim_invited_first_owner`
+for the authenticated invitee; it validates a separately delivered 32-byte
+bootstrap token, verified Auth email, live TOTP and a fresh TOTP AMR before
+calling the internal `claim_first_owner`. A privileged trusted operator must
+create the pre-existing invitation out of band; this repository does not yet
+provide the controlled operator invitation-creation tool. The owner's claim UI
+requires no SQL, but bootstrap is not operational until that operator procedure
+and actual email flow are established and tested. `bootstrap_claim.sql` is a
+transaction-rolled-back synthetic claim test.
+
+Recovery-code generation was disabled: the prior SQL SHA-256 generator is not
+compatible with the approved server-side peppered bcrypt/Argon2 design. Redemption,
+rate limiting, security events and the approved assisted recovery process are not
+implemented. Do not rely on old codes or use them for authorization.
