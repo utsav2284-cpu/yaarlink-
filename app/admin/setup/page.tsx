@@ -28,7 +28,7 @@ export default function BootstrapSetup() {
       setEmail(data.user.email);
       if (result.error) { setError("Could not verify authenticator status. Try again later."); return; }
       setFactor(result.data?.totp?.find(f => f.status === "verified")?.id ?? "");
-    } catch { if (!cancelled) setError("Unable to contact Preview authentication. Try again later."); }
+    } catch { if (!cancelled) setError("Unable to contact admin authentication. Try again later."); }
   })(); return () => { cancelled = true; }; }, []);
 
   async function validate(e: FormEvent) {

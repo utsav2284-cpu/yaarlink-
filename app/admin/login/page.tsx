@@ -33,7 +33,7 @@ export default function AdminLogin() {
       if (error) { setError("Invalid credentials, or this account is not an invited administrator."); return; }
       const { data: aal } = await adminAuth().mfa.getAuthenticatorAssuranceLevel();
       router.replace(aal?.nextLevel === "aal2" || !aal ? "/admin/mfa" : "/admin");
-    } catch { setError("Admin Preview is not configured in this environment."); } finally { setBusy(false); }
+    } catch { setError("Admin authentication is not configured in this environment."); } finally { setBusy(false); }
   }
   async function reset() {
     setError(""); setInfo("");
@@ -51,7 +51,7 @@ export default function AdminLogin() {
     <main style={{ minHeight: "100vh", background: "#f6f7fb", padding: 20, fontFamily: "system-ui,sans-serif", color: "#111827" }}>
       <form onSubmit={login} style={card}>
         <div style={{ fontWeight: 800, fontSize: 22 }}>YaarLink <span style={{ color: "#2563eb" }}>Admin</span></div>
-        <p style={{ color: "#6b7280" }}>Administrator sign-in · Preview environment · Invitation-only. There is no public registration.</p>
+        <p style={{ color: "#6b7280" }}>Administrator sign-in · Invitation-only. There is no public registration.</p>
         <label>Email<input style={input} type="email" required value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" /></label>
         <label>Password<input style={input} type="password" required value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" /></label>
         {error && <p role="alert" style={{ color: "#dc2626" }}>{error}</p>}

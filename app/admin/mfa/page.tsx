@@ -35,7 +35,7 @@ export default function AdminMfa() {
           setReady(true);
         }
       } catch {
-        if (!cancelled) setError("Could not verify authenticator status. Check the Preview configuration and try again.");
+        if (!cancelled) setError("Could not verify authenticator status. Check the admin configuration and try again.");
       }
     })();
     return () => { cancelled = true; };

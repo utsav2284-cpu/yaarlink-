@@ -12,6 +12,7 @@ const badge = (s: string): React.CSSProperties => ({ background: s==="approved"|
 
 export default function AdminControlCenter() {
   const router = useRouter();
+  const production = process.env.NEXT_PUBLIC_VERCEL_ENV === "production";
   const [ready, setReady] = useState(false);
   const [section, setSection] = useState<(typeof SECTIONS)[number]>("Overview");
   const [creators, setCreators] = useState<Row[]>([]);
@@ -32,9 +33,9 @@ export default function AdminControlCenter() {
       db.schema("admin").rpc("marketplace_review_queue", { p_kind: "creator" }),
       db.schema("admin").rpc("marketplace_review_queue", { p_kind: "campaign" }),
     ]);
-    if (c.error || k.error) { setCreators([]); setCampaigns([]); setSelected(null); setErr("Marketplace review is unavailable. The Preview marketplace database or review permissions are not configured."); }
+    if (c.error || k.error) { setCreators([]); setCampaigns([]); setSelected(null); setErr("Marketplace review is unavailable. The marketplace database or review permissions are not configured."); }
     else { setCreators((c.data ?? []) as Row[]); setCampaigns((k.data ?? []) as Row[]); setErr(""); }
-    } catch { setCreators([]); setCampaigns([]); setSelected(null); setErr("Could not load the Preview marketplace review queues. Check the Preview configuration and try again."); }
+    } catch { setCreators([]); setCampaigns([]); setSelected(null); setErr("Could not load the marketplace review queues. Check the admin configuration and try again."); }
     finally { setLoading(false); }
   }, []);
 
@@ -52,7 +53,7 @@ export default function AdminControlCenter() {
       if (registrationError) { setErr("Unable to register this admin session. Access remains denied; contact an administrator."); setLoading(false); return; }
       await load();
     } catch {
-      if (!cancelled) { setReady(true); setLoading(false); setErr("Cannot connect to Preview admin authentication. Check the Preview configuration and try again."); }
+      if (!cancelled) { setReady(true); setLoading(false); setErr("Cannot connect to admin authentication. Check the admin configuration and try again."); }
     }
   })(); return () => { cancelled = true; }; }, [router, load]);
 
@@ -68,7 +69,7 @@ export default function AdminControlCenter() {
     try {
       const { error } = await adminSupabase().schema("admin").rpc("marketplace_review_decision", { p_kind: kind, p_id: id, p_action: action, p_reason: reason || null });
       if (error) { setErr("Review could not be completed. Check the record state and your permissions, then try again."); return; }
-      setMsg("Review saved in the Preview marketplace database. Public visibility depends on the Preview app using this same database and the record meeting listing requirements.");
+      setMsg("Review saved in the selected marketplace database. Public visibility depends on the app using this same database and the record meeting listing requirements.");
       setReason(""); setSelected(null); await load();
     } catch { setErr("Review could not be completed. Check your connection and try again."); }
   }
@@ -79,7 +80,7 @@ export default function AdminControlCenter() {
     <main className="admin-layout" style={{ display:"flex", minHeight:"100vh", background:"#f6f7fb", color:"#111827", fontFamily:"system-ui,sans-serif" }}>
       <aside style={{ width:260, background:"#0f172a", color:"#e2e8f0", padding:20, flexShrink:0 }} className="admin-sidebar">
         <div style={{ fontWeight:800, fontSize:20, color:"#fff" }}>YaarLink <span style={{ color:"#38bdf8" }}>Admin</span></div>
-        <div style={{ fontSize:12, margin:"6px 0 20px", color:"#94a3b8" }}>Control Center · Preview · AAL2 verified</div>
+        <div style={{ fontSize:12, margin:"6px 0 20px", color:"#94a3b8" }}>Control Center · {production ? "Production" : "Preview"} · AAL2 verified</div>
         <nav style={{ display:"grid", gap:6 }}>
           {SECTIONS.slice(0, 3).map(s => <button key={s} onClick={() => { setSection(s); setTab("all"); setSelected(null); }} style={{ textAlign:"left", padding:"10px 12px", borderRadius:10, border:0, cursor:"pointer", background: section===s ? "#1d4ed8" : "transparent", color: section===s ? "#fff" : "#cbd5e1", fontWeight: section===s ? 700 : 500 }}>{s}</button>)}
         </nav>
@@ -88,8 +89,8 @@ export default function AdminControlCenter() {
 
       <section style={{ flex:1, padding:24, minWidth:0 }}>
         <h1 style={{ fontSize:28, margin:"0 0 4px" }}>{section}</h1>
-        <p style={{ color:"#6b7280", marginTop:0 }}>Review creators and campaigns in Preview.</p>
-        <p role="status" style={{ ...card, background:"#fffbeb", borderColor:"#fcd34d", color:"#78350f" }}><strong>Preview only:</strong> review uses marketplace records in the Preview database, when configured. Production is unaffected. Public visibility requires the Preview app to use that same database.</p>
+        <p style={{ color:"#6b7280", marginTop:0 }}>Review creators and campaigns.</p>
+        <p role="status" style={{ ...card, background:"#fffbeb", borderColor:"#fcd34d", color:"#78350f" }}><strong>{production ? "Production:" : "Preview only:"}</strong> review uses marketplace records in the selected project, when configured. Public visibility requires the app to use that same database.</p>
         {loading && <p>Loading…</p>}
         {err && <p role="alert" style={{ ...card, background:"#fef2f2", borderColor:"#fca5a5" }}>{err} <a href="/admin/setup">First administrator setup</a></p>}
         {msg && <p style={{ ...card, background:"#f0fdf4", borderColor:"#86efac" }}>{msg}</p>}
