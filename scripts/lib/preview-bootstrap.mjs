@@ -47,7 +47,7 @@ export async function provision(client, input, { writeToken = writeTokenFile, re
     throw err;
   }
 }
-async function writeTokenFile(path, token, publicKeyFile, expectedFingerprint) {
+export async function writeTokenFile(path, token, publicKeyFile, expectedFingerprint) {
   const pem = await readFile(publicKeyFile, 'utf8');
   if (!/^-----BEGIN (?:RSA )?PUBLIC KEY-----/.test(pem)) throw new Error('A recipient public key is required.');
   const key = createPublicKey(pem);
