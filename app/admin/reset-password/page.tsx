@@ -10,9 +10,12 @@ export default function AdminResetPassword() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (password.length < 12) { setError("Use at least 12 characters (the Preview Auth minimum must also be configured server-side)."); return; }
-    const { error } = await adminAuth().updateUser({ password });
-    if (error) setError("This reset link is invalid or expired. Request a new one from the sign-in page.");
-    else router.replace("/admin/mfa");
+    setError("");
+    try {
+      const { error } = await adminAuth().updateUser({ password });
+      if (error) setError("This reset link is invalid or expired. Request a new one from the sign-in page.");
+      else router.replace("/admin/mfa");
+    } catch { setError("The password could not be updated. Check the Preview configuration and try again."); }
   }
   return (
     <main style={{ minHeight: "100vh", background: "#f6f7fb", padding: 20, fontFamily: "system-ui,sans-serif" }}>

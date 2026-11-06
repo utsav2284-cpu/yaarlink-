@@ -26,9 +26,13 @@ export default function AdminLogin() {
   async function reset() {
     setError(""); setInfo("");
     if (!email.trim()) { setError("Enter your email first, then request a password reset."); return; }
-    const { error } = await adminAuth().resetPasswordForEmail(email.trim(), { redirectTo: `${window.location.origin}/admin/auth/callback` });
-    if (error) setError("Could not send the reset email. Check the address and try again.");
-    else setInfo("If this email belongs to an invited administrator, a reset link has been sent.");
+    setBusy(true);
+    try {
+      const { error } = await adminAuth().resetPasswordForEmail(email.trim(), { redirectTo: `${window.location.origin}/admin/auth/callback` });
+      if (error) setError("Could not request a reset email. Check the configuration and try again.");
+      else setInfo("If the account is eligible, a reset email may arrive; delivery depends on email configuration.");
+    } catch { setError("Could not request a reset email. Check the configuration and try again."); }
+    finally { setBusy(false); }
   }
 
   return (
@@ -41,7 +45,7 @@ export default function AdminLogin() {
         {error && <p role="alert" style={{ color: "#dc2626" }}>{error}</p>}
         {info && <p style={{ color: "#15803d" }}>{info}</p>}
         <button disabled={busy} style={{ width: "100%", padding: 12, borderRadius: 10, border: 0, background: "#1d4ed8", color: "#fff", fontWeight: 700, cursor: "pointer" }}>{busy ? "Signing in…" : "Sign in"}</button>
-        <button type="button" onClick={reset} style={{ width: "100%", padding: 10, marginTop: 10, background: "transparent", border: 0, color: "#2563eb", cursor: "pointer" }}>Forgot password?</button>
+        <button type="button" disabled={busy} onClick={reset} style={{ width: "100%", padding: 10, marginTop: 10, background: "transparent", border: 0, color: "#2563eb", cursor: "pointer" }}>Forgot password?</button>
         <p style={{ fontSize: 12, color: "#6b7280" }}>MFA (authenticator app) is mandatory after sign-in. <a href="/admin/setup">First administrator setup</a> (trusted invitation required). Demo visual preview: <a href="/admin-preview">/admin-preview</a> (synthetic, no admin powers).</p>
       </form>
     </main>

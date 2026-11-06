@@ -71,3 +71,11 @@ Test actual synthetic invite, confirmation and reset emails separately: verify
 links return to the exact origin, establish the right session, reject expired
 or reused links, and never redirect to a supplied external destination. No such
 email, browser, or live PostgREST test has been completed by this script.
+
+The authenticated admin browser client is pinned to
+`https://qwngmsedyepghskoagaj.supabase.co`. If `NEXT_PUBLIC_SUPABASE_URL` is
+set to a different value, admin access fails closed instead of contacting that
+project. Configure the deployment's public URL and publishable key for the
+dedicated Preview project; do not copy Production configuration into Preview.
+This does not establish the browser's own external origin or configure Auth
+redirects and email delivery.
