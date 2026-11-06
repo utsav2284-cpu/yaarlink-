@@ -5,7 +5,7 @@ const emailFlows = new Set<string>(["invite", "recovery", "signup", "email"]);
 
 // Never accepts a caller-supplied destination. A verified link can only lead to
 // the local password-setup or MFA page; it never bypasses subsequent authorization.
-export async function verifyAdminCallback(url: URL, auth: ReturnType<typeof adminAuth>): Promise<"/admin/reset-password" | "/admin/mfa"> {
+export async function verifyAdminCallback(url: URL, auth: ReturnType<typeof adminAuth>): Promise<"/admin/setup/password" | "/admin/reset-password" | "/admin/mfa"> {
   const hash = new URLSearchParams(url.hash.slice(1));
   if (url.searchParams.has("error") || hash.has("error")) throw new Error("invalid");
   const code = url.searchParams.get("code");
@@ -28,5 +28,5 @@ export async function verifyAdminCallback(url: URL, auth: ReturnType<typeof admi
   } else throw new Error("invalid");
   const { data, error } = await auth.getUser();
   if (error || !data.user) throw new Error("invalid");
-  return flow === "invite" || flow === "recovery" ? "/admin/reset-password" : "/admin/mfa";
+  return flow === "invite" ? "/admin/setup/password" : flow === "recovery" ? "/admin/reset-password" : "/admin/mfa";
 }

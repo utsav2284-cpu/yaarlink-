@@ -13,10 +13,10 @@ function fakeAuth(fail = false) {
   return {auth, calls};
 }
 const url = suffix => new URL(`https://example.test/admin/auth/callback${suffix}`);
-test('implicit invite and recovery go to local password setup', async () => {
+test('implicit invite and recovery go to their local password setup pages', async () => {
   for (const flow of ['invite', 'recovery']) {
     const {auth, calls} = fakeAuth();
-    assert.equal(await verifyAdminCallback(url(`#type=${flow}&access_token=x&refresh_token=y`), auth), '/admin/reset-password');
+    assert.equal(await verifyAdminCallback(url(`#type=${flow}&access_token=x&refresh_token=y`), auth), flow === 'invite' ? '/admin/setup/password' : '/admin/reset-password');
     assert.deepEqual(calls.map(c => c[0]), ['session','user']);
   }
 });
@@ -34,4 +34,9 @@ test('missing, conflicting, invalid and expired credentials fail closed', async 
     await assert.rejects(verifyAdminCallback(url(suffix), fakeAuth().auth));
   }
   await assert.rejects(verifyAdminCallback(url('?token_hash=expired&type=recovery'), fakeAuth(true).auth));
+});
+
+test('verified invitation goes to first administrator password setup, never an external destination', async () => {
+  const {auth} = fakeAuth();
+  assert.equal(await verifyAdminCallback(url('?token_hash=x&type=invite&next=https://evil.test'), auth), '/admin/setup/password');
 });

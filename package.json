@@ -22,7 +22,8 @@
     "local:db:down": "docker compose down",
     "local:db:logs": "docker compose logs -f db",
     "local:services": "node scripts/local-dev-services.mjs",
-    "local:bootstrap": "node --env-file=.env.local scripts/database-bootstrap.mjs --verify-write"
+    "local:bootstrap": "node --env-file=.env.local scripts/database-bootstrap.mjs --verify-write",
+    "test:admin-browser": "node tests/browser/admin-invitation.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.119.0",
@@ -45,6 +46,7 @@
     "drizzle-kit": "0.31.11",
     "eslint": "9.39.4",
     "eslint-config-next": "16.4.3",
+    "playwright-core": "1.56.1",
     "postcss": "8.5.32",
     "tailwindcss": "4.1.17",
     "typescript": "5.9.3"
