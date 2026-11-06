@@ -2,7 +2,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { adminAuth, adminSupabase } from "@/lib/admin-supabase";
+import { adminAuth, adminRpc } from "@/lib/admin-supabase";
 
 const box: React.CSSProperties = { background: "white", border: "1px solid #e5e7eb", borderRadius: 14, padding: 24, maxWidth: 500, margin: "6vh auto" };
 const field: React.CSSProperties = { width: "100%", padding: 11, margin: "6px 0 14px", boxSizing: "border-box", border: "1px solid #d1d5db", borderRadius: 10 };
@@ -38,7 +38,7 @@ export default function BootstrapSetup() {
     if (!/^[a-f0-9]{64}$/i.test(token)) { setError(invalid); return; }
     setBusy(true);
     try {
-      const { data, error } = await adminSupabase().schema("admin").rpc("validate_first_owner_invitation", { p_invitation_token: token });
+      const { data, error } = await adminRpc("validate_first_owner_invitation", { p_invitation_token: token });
       if (error) { setError("Invitation verification is unavailable. Please try again later or contact your trusted operator."); return; }
       if (data !== true) { setError(invalid); return; }
       setValidated(true);
@@ -59,7 +59,7 @@ export default function BootstrapSetup() {
       const verified = await auth.mfa.verify({ factorId: factor, challengeId: challenge.data.id, code: totp.trim() });
       setTotp("");
       if (verified.error) throw new Error("mfa");
-      const { data, error } = await adminSupabase().schema("admin").rpc("claim_invited_first_owner", { p_display_name: displayName.trim(), p_invitation_token: token });
+      const { data, error } = await adminRpc("claim_invited_first_owner", { p_display_name: displayName.trim(), p_invitation_token: token });
       setInvitation(""); setValidated(false);
       if (error || !data) {
         if (error?.message?.includes("invalid_invitation") || error?.message?.includes("bootstrap_invitation_not_found")) setError(invalid);

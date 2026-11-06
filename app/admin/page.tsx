@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { adminAuth, adminSupabase } from "@/lib/admin-supabase";
+import { adminAuth, adminRpc } from "@/lib/admin-supabase";
 
 type Row = Record<string, string | number | boolean | null>;
 const SECTIONS = ["Overview","Creators","Campaigns"] as const;
@@ -28,10 +28,9 @@ export default function AdminControlCenter() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-    const db = adminSupabase();
     const [c, k] = await Promise.all([
-      db.schema("admin").rpc("marketplace_review_queue", { p_kind: "creator" }),
-      db.schema("admin").rpc("marketplace_review_queue", { p_kind: "campaign" }),
+      adminRpc("marketplace_review_queue", { p_kind: "creator" }),
+      adminRpc("marketplace_review_queue", { p_kind: "campaign" }),
     ]);
     if (c.error || k.error) { setCreators([]); setCampaigns([]); setSelected(null); setErr("Marketplace review is unavailable. The marketplace database or review permissions are not configured."); }
     else { setCreators((c.data ?? []) as Row[]); setCampaigns((k.data ?? []) as Row[]); setErr(""); }
@@ -47,7 +46,7 @@ export default function AdminControlCenter() {
       const { data: aal, error: aalError } = await adminAuth().mfa.getAuthenticatorAssuranceLevel();
       if (aalError) throw aalError;
       if (aal?.currentLevel !== "aal2") { if (!cancelled) router.replace("/admin/mfa"); return; }
-      const { error: registrationError } = await adminSupabase().schema("admin").rpc("register_my_session");
+      const { error: registrationError } = await adminRpc("register_my_session");
       if (cancelled) return;
       setReady(true);
       if (registrationError) { setErr("Unable to register this admin session. Access remains denied; contact an administrator."); setLoading(false); return; }
@@ -67,7 +66,7 @@ export default function AdminControlCenter() {
     setErr(""); setMsg("");
     const id = String(selected.id);
     try {
-      const { error } = await adminSupabase().schema("admin").rpc("marketplace_review_decision", { p_kind: kind, p_id: id, p_action: action, p_reason: reason || null });
+      const { error } = await adminRpc("marketplace_review_decision", { p_kind: kind, p_id: id, p_action: action, p_reason: reason || null });
       if (error) { setErr("Review could not be completed. Check the record state and your permissions, then try again."); return; }
       setMsg("Review saved in the selected marketplace database. Public visibility depends on the app using this same database and the record meeting listing requirements.");
       setReason(""); setSelected(null); await load();

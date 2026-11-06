@@ -13,6 +13,7 @@ export default function AdminDiagnostics() {
   const [results, setResults] = useState<Result[]>([]);
   const [busy, setBusy] = useState(false);
   async function run() {
+    if (process.env.NEXT_PUBLIC_VERCEL_ENV === "production") { setResults([{name:"Diagnostic stopped",detail:"Preview diagnostics cannot run against Production."}]); return; }
     setBusy(true); setResults([]);
     const rows: Result[] = [];
     const add = (name: string, detail: string) => rows.push({ name, detail });
