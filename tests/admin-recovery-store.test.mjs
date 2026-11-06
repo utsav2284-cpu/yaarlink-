@@ -31,6 +31,7 @@ test('store locks the profile and commits non-secret recovery events', async()=>
  assert.equal(result,'ok'); assert.equal(calls.at(-1)[0],'commit');
  assert.ok(calls.some(([q])=>q.includes('pg_advisory_xact_lock')));
  assert.ok(calls.some(([q])=>q==='set local role preview_recovery_runtime'));
+ assert.ok(calls.some(([q])=>q.includes('admin.recovery_has_fresh_totp()')));
  assert.ok(calls.some(([q])=>q.includes('admin.log_recovery_event'))); assert.equal(wasReleased(),true);
 });
 test('inactive profile or database failure rolls back and releases', async()=>{

@@ -21,7 +21,7 @@ export function createRecoveryStore(pool, claims) {
         if (locked.rowCount !== 1) throw new Error('Not authorized');
         const tx = {
           async authorizeGeneration() {
-            const r = await client.query('select admin.is_active_admin() and admin.has_aal2() and admin.session_is_current() and admin.has_verified_totp_factor() as allowed');
+            const r = await client.query('select admin.is_active_admin() and admin.has_aal2() and admin.session_is_current() and admin.has_verified_totp_factor() and admin.recovery_has_fresh_totp() as allowed');
             return r.rows[0]?.allowed === true;
           },
           async authorizeRedemption() {

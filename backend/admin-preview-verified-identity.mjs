@@ -27,8 +27,13 @@ export async function verifyIdentityWithAuth(token, getUser, now = Date.now()) {
       !Number.isSafeInteger(payload.exp) || payload.exp <= Math.floor(now / 1000) ||
       !Number.isSafeInteger(payload.iat) || payload.iat > Math.floor(now / 1000) + 60 ||
       !['aal1', 'aal2'].includes(payload.aal)) throw denied();
-  // Pass only claims used by the DB predicates, not arbitrary metadata.
-  return Object.freeze({ sub: payload.sub, session_id: payload.session_id, aal: payload.aal });
+  // Preserve only signed TOTP evidence needed for the database freshness check.
+  // An absent or malformed AMR cannot grant freshness. Never accept flags.
+  const amr = Array.isArray(payload.amr) && payload.amr.length <= 32
+    ? payload.amr.filter(item => item && item.method === 'totp' && Number.isSafeInteger(item.timestamp) && item.timestamp >= 0)
+      .map(item => Object.freeze({ method: 'totp', timestamp: item.timestamp }))
+    : [];
+  return Object.freeze({ sub: payload.sub, session_id: payload.session_id, aal: payload.aal, amr: Object.freeze(amr) });
 }
 
 export async function verifyPreviewIdentity(token, publishableKey) {
