@@ -129,3 +129,17 @@ test('connection: tolerates the dashboard sslmode suffix but never weakens TLS',
     assert.equal(validateProductionConnection(`${base}?sslmode=${mode}`).ssl.rejectUnauthorized, true);
   }
 });
+
+test('preflight runs contact-free and reports readiness without leaking the private key', () => {
+  // The preflight reads the real default key under .local/keys/, which this test
+  // never creates. It must therefore exit cleanly with a clear message rather
+  // than throwing, and must never print key material it may have read.
+  const out = execFileSync('node', ['scripts/owner-preflight.mjs'], {
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  assert.doesNotMatch(out, /PRIVATE KEY/);
+  assert.doesNotMatch(out, /^[A-Za-z0-9+/=]{40,}$/m, 'preflight printed something that looks like base64 key material');
+  assert.match(out, /Local prerequisites are satisfied|blocking problem/);
+});

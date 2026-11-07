@@ -32,6 +32,17 @@ openssl pkey -pubin -in .local/keys/owner-public.pem -outform DER | openssl dgst
 The private key never leaves the machine. Delete the whole `.local/keys/` directory after
 the claim succeeds.
 
+## Step 1b — Local readiness check (contact-free)
+
+```bash
+node scripts/owner-preflight.mjs
+```
+
+Checks key presence and mode, re-derives the fingerprint two independent ways,
+confirms RSA size, and echoes the pinned owner email and callback. It opens no
+network connection and prints no key material. Items shown as ⏳ are supplied in
+Steps 3 and 4.
+
 ## Step 2 — Confirm the authorised recipient
 
 The owner email is pinned in source:
