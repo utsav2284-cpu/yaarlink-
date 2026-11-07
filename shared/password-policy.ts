@@ -1,5 +1,18 @@
-/** Bounds shared by the server policy, form attributes, and localized UI copy. */
-export const PASSWORD_MIN_LENGTH = 6;
+/**
+ * Bounds shared by the server policy, form attributes, and localized UI copy.
+ *
+ * The minimum was 6, which is too short to resist offline cracking once a
+ * database dump leaks: six characters is only a few seconds of GPU work no
+ * matter how many character classes the rule demands. Ten is the shortest
+ * length that is defensible for a password that must also pass the breach and
+ * context checks below. Every user-facing string reads this constant through
+ * the {min} placeholder, so the UI copy, the input minLength attributes, and
+ * the server error text all move together.
+ *
+ * Raising this does not lock out existing accounts: the minimum is enforced
+ * when a password is created or changed, not when it is used to log in.
+ */
+export const PASSWORD_MIN_LENGTH = 10;
 export const PASSWORD_MAX_LENGTH = 256;
 
 /** Count Unicode code points so astral characters count as one character. */

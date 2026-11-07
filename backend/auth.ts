@@ -19,12 +19,23 @@ import { availableUserRoles, primaryUserRole, type UserRole } from "@/shared/use
 export const SESSION_COOKIE = "__Host-yl_session";
 const SESSION_DAYS = 7;
 const SESSION_SIGN_PREFIX = "yl_session:";
-const PBKDF2_ITERATIONS = 100_000;
+/**
+ * PBKDF2-SHA256 work factor for new and upgraded password hashes.
+ *
+ * OWASP's current guidance for PBKDF2-HMAC-SHA256 is 600,000 iterations. The
+ * previous value of 100,000 was five times weaker than that, which only matters
+ * if a password dump leaks, but that is exactly the scenario hashing exists for.
+ * Cost measured on the audit host: ~12 ms at 100k, ~74 ms at 600k, so a login
+ * still completes well inside interactive latency.
+ */
+const PBKDF2_ITERATIONS = 600_000;
 // A valid-format, non-account PBKDF2 hash used only to spend equivalent
 // verification work for unknown accounts and malformed stored hashes. It is
-// not the hash of a usable credential.
+// not the hash of a usable credential. Its iteration count is parsed out of the
+// encoded string, so keeping this in sync with PBKDF2_ITERATIONS is what stops
+// the unknown-account path from being measurably faster than the real one.
 const DUMMY_PASSWORD_HASH =
-  "pbkdf2$100000$eWFhcmxpbmstZHVtbXkxNg$PCmJkPkbXYEiubgq4VuyMxyuXSi6zZ8NO6JkAQhtkhw";
+  `pbkdf2$${PBKDF2_ITERATIONS}$eWFhcmxpbmstZHVtbXkxNg$PCmJkPkbXYEiubgq4VuyMxyuXSi6zZ8NO6JkAQhtkhw`;
 // Tokens claiming an `iat` further ahead than this are rejected (small allowance for clock skew).
 const MAX_CLOCK_SKEW_MS = 60_000;
 const SESSION_TOUCH_INTERVAL_MS = 15 * 60_000;
@@ -95,7 +106,12 @@ async function burnPasswordVerification(password: string): Promise<void> {
   }
 }
 
-/** Returns { ok, needsRehash } — needsRehash is true for legacy bcrypt hashes. */
+/**
+ * Returns { ok, needsRehash }. needsRehash is true for legacy bcrypt hashes and
+ * for PBKDF2 hashes written with a weaker iteration count than the current
+ * policy, so raising PBKDF2_ITERATIONS transparently upgrades existing accounts
+ * the next time their owner logs in.
+ */
 export async function verifyPassword(password: string, stored: string) {
   try {
     if (stored.startsWith("pbkdf2$")) {
@@ -112,7 +128,11 @@ export async function verifyPassword(password: string, stored: string) {
         hash
       ) {
         const calc = await pbkdf2(password, salt, iterations);
-        return { ok: safeEqual(calc, hash), needsRehash: false };
+        // Verify against the stored cost first, then report the upgrade below.
+        // Checking the weaker encoding before deciding to rehash means a
+        // downgraded or truncated iteration count still has to match a real
+        // derived key, so it cannot be used to shortcut verification.
+        return { ok: safeEqual(calc, hash), needsRehash: iterations < PBKDF2_ITERATIONS };
       }
     } else if (stored.startsWith("$2")) {
       return { ok: await bcrypt.compare(password, stored), needsRehash: true };
