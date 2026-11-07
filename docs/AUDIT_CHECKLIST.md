@@ -95,6 +95,34 @@ read-only DB inspector + seeding endpoints :4026.
 - [x] Creator signup → verify → login; incomplete profile blocks applications (409)
 - [x] 17 internal links, 0 broken; 404s correct
 
+### Admin surface (re-verified on current build)
+- [x] Unauthenticated `/admin`, `/admin/login`, `/admin/setup`, `/admin/mfa`,
+      `/admin/diagnostics`, `/admin/reset-password`, `/admin-preview` all render
+      the public shell + "Checking secure session (AAL2 required)…" and then gate
+- [x] Zero marketplace data in unauthenticated `/admin` HTML (no names, titles,
+      display_name, verification_status, or table markup)
+- [x] `/admin` was crawlable → FIXED (see below)
+
+### SEO hardening (FIXED)
+- [x] robots.txt disallows `/admin`, `/admin/`, `/admin-preview`
+- [x] `/admin/*` and `/admin-preview` emit `noindex, nofollow, nocache`
+- [x] Public pages still `index, follow`; `/login`, `/signup` keep `noindex`
+
+### Accessibility (verified, no change needed)
+- [x] Global unlayered `:focus-visible` rule with 3px outline + double inset
+      shadow, deliberately unlayered so `outline-none` cannot remove it;
+      confirmed present in the shipped CSS
+- [x] 12 controls use bare `outline-none` → still get the global ring (not a bug)
+- [x] Escape key closes menus; backdrop div is `aria-hidden` (mouse-only)
+- [x] Skip-to-content link present
+
+### API edge cases
+- [x] Any `Content-Type` (or none) → clean 400, never 500
+- [x] Malformed JSON, `[]`, `null`, `"str"` → 400 `invalid_request`
+- [x] NoSQL-injection shape `{"$ne":null}` → treated as invalid string, 400
+- [x] 8 parallel same-email signups → exactly 1 row; 5×202 idempotent, 3×429
+- [x] Idempotency key replay returns same campaign, 1 row
+
 ## Known limitations (not fixable in repo)
 - TRACE → 500 with server-side stack log. Thrown inside Next's request
   constructor before middleware; proxy guard was attempted and reverted as
@@ -102,7 +130,7 @@ read-only DB inspector + seeding endpoints :4026.
 - No browser available: visual/responsive verification is source + CSS
   inspection, not pixel rendering. Marked BLOCKED for visual confirmation.
 
-## Not yet done
-- [ ] Admin route auth-gate re-verification on current build
-- [ ] Keyboard/focus-order inspection on key flows
-- [ ] Final full suite + build + commit
+## Audit complete
+- [x] Admin route auth-gate re-verification on current build
+- [x] Keyboard/focus-order inspection on key flows
+- [x] Final full suite + build + commit
