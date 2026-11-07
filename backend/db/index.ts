@@ -2,6 +2,7 @@ import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool, type PoolClient } from "pg";
 import { logError, logEvent, serializeLogError } from "@/backend/observability";
 import { getDatabasePoolConfig } from "./connection-config";
+import { isPreviewRuntime, previewSearchPathStatement, previewTargetForEnvironment } from "./preview-target";
 import { shouldLogSlowQuery, slowQueryThresholdMs, sqlFingerprint, sqlOperation } from "./slow-query";
 
 /**
@@ -168,11 +169,85 @@ function attachPoolErrorHandler(pool: Pool): Pool {
   return pool;
 }
 
+/**
+ * Apply the Preview search_path to a freshly checked-out connection.
+ *
+ * The connection string already requests `search_path` as a startup parameter,
+ * but a shared pooler may not forward startup parameters. Re-asserting it here
+ * means no Preview query can run with an unqualified name resolving to public,
+ * whichever approved transport is in use.
+ *
+ * ORDERING IS DELIBERATE: this wrapper is applied AFTER instrumentPool(), so the
+ * instrumented query is the one used to issue SET. That keeps the SET inside the
+ * same accounting as every other statement. Outside Preview the statement is
+ * null and this function returns the pool untouched, so Production behaviour -
+ * including its exact execution order - is unchanged.
+ */
+function withPreviewSearchPath(pool: Pool, statement: string | null): Pool {
+  if (!statement) return pool;
+  const originalConnect = pool.connect.bind(pool) as (...args: unknown[]) => unknown;
+
+  /**
+   * A checked-out client is only handed to the caller once search_path has been
+   * applied. If the statement fails the client is released and the caller
+   * receives the error: the pool never yields a connection whose search_path is
+   * unproven, because that is exactly what would silently resolve to public.
+   */
+  const apply = async (client: PoolClient | undefined): Promise<PoolClient> => {
+    if (!client) throw new Error("Preview connection rejected: no client was returned");
+    try {
+      await client.query(statement);
+      return client;
+    } catch (error) {
+      client.release();
+      throw new Error(
+        `Preview connection rejected: could not apply search_path (${(error as Error).message})`,
+      );
+    }
+  };
+
+  const patchedConnect = (...args: unknown[]): unknown => {
+    const maybeCallback = args[0];
+    if (typeof maybeCallback === "function") {
+      const callback = maybeCallback as (...cb: unknown[]) => unknown;
+      const rest = args.slice(1);
+      // Preserve the callback contract: never invoke it synchronously from
+      // inside itself, and never before the search_path statement resolves.
+      return originalConnect(...rest, (error: unknown, client?: PoolClient) => {
+        if (error) {
+          callback(error, client);
+          return;
+        }
+        apply(client).then(
+          (ready) => callback(null, ready),
+          (applyError) => callback(applyError, client),
+        );
+      });
+    }
+
+    const result = originalConnect(...args);
+    if (result && typeof (result as { then?: unknown }).then === "function") {
+      return (result as Promise<PoolClient>).then(apply);
+    }
+    return result;
+  };
+
+  pool.connect = patchedConnect as Pool["connect"];
+  return pool;
+}
+
 /** Shared pool for Node servers. Kept on globalThis to survive dev hot reloads. */
 export function getPool(): Pool {
   if (!globalForDb.__arenaNextJsPostgresqlPool) {
+    // Fails closed in Preview, and returns null (no enforcement) everywhere
+    // else, so Production configuration can never require app_preview.
+    const previewTarget = previewTargetForEnvironment(process.env);
+    const pool = new Pool(getDatabasePoolConfig());
     globalForDb.__arenaNextJsPostgresqlPool = attachPoolErrorHandler(
-      instrumentPool(new Pool(getDatabasePoolConfig())),
+      withPreviewSearchPath(
+        instrumentPool(pool),
+        previewTarget ? previewSearchPathStatement(previewTarget.schema) : null,
+      ),
     );
   }
   return globalForDb.__arenaNextJsPostgresqlPool;

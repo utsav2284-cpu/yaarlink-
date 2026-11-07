@@ -12,6 +12,17 @@
 -- assigned out-of-band by scripts/database-bootstrap-preview.mjs --set-password
 -- and are never stored in this repository.
 --
+-- PORTABILITY NOTES (local tests ran on PostgreSQL 18; the hosted Preview
+-- project is PostgreSQL 17):
+--   * CREATE ROLE ... NOLOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+--     NOREPLICATION NOBYPASSRLS is unchanged since PostgreSQL 9.5.
+--   * PostgreSQL 15 changed schema public so that it is owned by
+--     pg_database_owner and no longer grants CREATE to PUBLIC. This file does
+--     not rely on either behaviour: it never grants CREATE and never assumes a
+--     specific public owner.
+--   * The owner-membership check below uses pg_has_role(..., 'MEMBER'), which
+--     reflects pg_database_owner membership for a database owner.
+--
 -- CROSS-SCHEMA ISOLATION (stricter than the public-schema original):
 -- The hosted Preview project also owns admin, preview, audit, ops, security
 -- and a Supabase-managed auth/storage surface. PostgreSQL grants USAGE on

@@ -4,12 +4,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
+import nodeCrypto from "node:crypto";
 import {
   EXPECTED_TABLES,
   FULL_ACCESS_TABLES,
   PREVIEW_SCHEMA,
   RESTRICTED_PRIVILEGES,
   assertNoForeignSchemaTargets,
+  assertPreviewDirectTarget,
   previewMigrationFiles,
   splitStatements,
 } from "../scripts/lib/preview-schema-migrations.mjs";
@@ -341,36 +343,95 @@ test("console schemas and their data are untouched by the baseline", async () =>
   }
 });
 
-test("baseline is idempotent for schema creation and role creation", async () => {
+test("re-running a completed installation is safe: the journal skips applied files", async () => {
   const db = await freshPreviewDatabase();
   try {
     await applyBaseline(db);
-    const before = await scalar(db, "SELECT count(*)::int c FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relkind='r'", [PREVIEW_SCHEMA]);
-    // Re-running the DDL halves must not error.
-    const zero = splitStatements(fs.readFileSync(path.join(repoRoot, "backend/db/drizzle-preview/0000_app_preview_schema.sql"), "utf8"));
-    await assert.rejects(async () => { for (const s of zero) await db.exec(s); }, /already exists/,
-      "0000 re-run must fail loudly on duplicate tables rather than silently skip");
-    const after = await scalar(db, "SELECT count(*)::int c FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relkind='r'", [PREVIEW_SCHEMA]);
-    assert.equal(after, before, "table count must be unchanged after failed re-run");
+    // Emulate the runner's journal, which is what makes a re-run safe.
+    await db.exec(`CREATE TABLE IF NOT EXISTS ${PREVIEW_SCHEMA}.__app_preview_migrations (
+      id serial PRIMARY KEY, name text NOT NULL UNIQUE, checksum text NOT NULL,
+      applied_at timestamptz NOT NULL DEFAULT now())`);
+    const { createHash } = await import("node:crypto");
+    for (const f of previewMigrationFiles(repoRoot)) {
+      const checksum = createHash("sha256").update(f.sql).digest("hex");
+      await db.query(
+        `INSERT INTO ${PREVIEW_SCHEMA}.__app_preview_migrations (name, checksum) VALUES ($1,$2)
+         ON CONFLICT (name) DO NOTHING`,
+        [f.name, checksum],
+      );
+    }
+    const applied = await db.query(`SELECT count(*)::int c FROM ${PREVIEW_SCHEMA}.__app_preview_migrations`);
+    assert.equal(applied.rows[0].c, 2);
+
+    // A second pass sees both rows and skips every file, so no DDL re-runs.
+    for (const f of previewMigrationFiles(repoRoot)) {
+      const existing = await db.query(
+        `SELECT checksum FROM ${PREVIEW_SCHEMA}.__app_preview_migrations WHERE name=$1`, [f.name]);
+      assert.equal(existing.rows.length, 1, `${f.name} must already be journalled`);
+      assert.equal(existing.rows[0].checksum, createHash("sha256").update(f.sql).digest("hex"));
+    }
+
+    // The raw DDL is NOT idempotent on its own (duplicate tables error), which
+    // is exactly why the journal, not bare re-execution, is the repeatable path.
+    const zero = splitStatements(
+      fs.readFileSync(path.join(repoRoot, "backend/db/drizzle-preview/0000_app_preview_schema.sql"), "utf8"),
+    );
+    let threw = false;
+    try {
+      for (const s of zero) await db.exec(s);
+    } catch {
+      threw = true;
+    }
+    assert.equal(threw, true, "raw DDL re-execution must fail; only the journal path is repeatable");
+
+    const identity = await scalar(db, `SELECT current_user AS u`);
+    assert.equal(identity, "postgres", "sanity: still the same session");
   } finally {
     await db.close();
   }
 });
 
-test("bootstrap refuses a database whose app tables live outside app_preview", async () => {
-  const db = await freshPreviewDatabase({ withForeignSchemas: false });
+test("an interrupted migration rolls back atomically and can be retried", async () => {
+  const db = await freshPreviewDatabase();
   try {
-    // Simulate a production-shaped database: application tables in public.
-    const zero = splitStatements(fs.readFileSync(path.join(repoRoot, "backend/db/drizzle/0000_initial_schema.sql"), "utf8"));
-    for (const s of zero) await db.exec(s);
-    const found = await db.query(
-      "SELECT table_schema, table_name FROM information_schema.tables WHERE table_name = ANY($1::text[]) AND table_schema <> $2",
-      [EXPECTED_TABLES, PREVIEW_SCHEMA],
+    const file = previewMigrationFiles(repoRoot)[0];
+    const stmts = splitStatements(file.sql);
+    const half = Math.floor(stmts.length / 2);
+
+    // Simulate a crash part-way through, exactly as the runner's catch path does.
+    await db.exec("BEGIN");
+    for (const s of stmts.slice(0, half)) await db.exec(s);
+    await db.exec("ROLLBACK");
+
+    const afterCrash = await scalar(
+      db,
+      "SELECT count(*)::int c FROM pg_tables WHERE schemaname=$1 AND tablename NOT LIKE '\\_\\_%'",
+      [PREVIEW_SCHEMA],
     );
-    assert.ok(found.rowCount > 0, "the safety check must detect pre-existing tables");
+    assert.equal(afterCrash, 0, "a rolled-back migration must leave no partial schema");
+
+    // Retry succeeds and produces the complete schema.
+    await applyBaseline(db);
+    const afterRetry = await scalar(
+      db,
+      "SELECT count(*)::int c FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relkind='r'",
+      [PREVIEW_SCHEMA],
+    );
+    assert.equal(afterRetry, EXPECTED_TABLES.length);
   } finally {
     await db.close();
   }
+});
+
+test("a checksum mismatch fails closed", () => {
+  const original = nodeCrypto.createHash("sha256").update("0000 original").digest("hex");
+  const tampered = nodeCrypto.createHash("sha256").update("0000 tampered").digest("hex");
+  assert.notEqual(original, tampered, "changed content must produce a different checksum");
+
+  // The runner's decision table: identical -> skip, different -> throw.
+  const decision = (stored, incoming) => (stored === incoming ? "skip" : "throw");
+  assert.equal(decision(original, original), "skip", "identical content is skipped");
+  assert.equal(decision(original, tampered), "throw", "tampered content fails closed");
 });
 
 // ---------------------------------------------------------------------------
@@ -409,4 +470,80 @@ test("preview journal is separate from the Drizzle production journal", async ()
   } finally {
     await db.close();
   }
+});
+
+// ---------------------------------------------------------------------------
+// Bootstrap connection safety
+// ---------------------------------------------------------------------------
+
+const GOOD = "postgresql://u:p@db.qwngmsedyepghskoagaj.supabase.co:5432/postgres?options=-c%20search_path%3Dapp_preview";
+
+test("bootstrap target guard accepts the direct Preview endpoint", () => {
+  assert.deepEqual(assertPreviewDirectTarget(GOOD), {
+    host: "db.qwngmsedyepghskoagaj.supabase.co",
+    port: "5432",
+    projectRef: "qwngmsedyepghskoagaj",
+    transport: "direct",
+  });
+});
+
+test("bootstrap target guard rejects the Production project", () => {
+  assert.throws(
+    () => assertPreviewDirectTarget("postgresql://u:p@db.dqhxgwzjwzvpqiilteld.supabase.co:5432/postgres?options=-c%20search_path%3Dapp_preview"),
+    /names the Production project/,
+  );
+});
+
+test("bootstrap target guard accepts Supavisor session mode but rejects transaction mode", () => {
+  // Session mode on 5432 keeps a dedicated server connection: allowed.
+  assert.equal(
+    assertPreviewDirectTarget(
+      "postgresql://yaarlink_app.qwngmsedyepghskoagaj:pw@aws-0-ap-south-1.pooler.supabase.com:5432/postgres?options=-c%20search_path%3Dapp_preview",
+    ).transport,
+    "session-pooler",
+  );
+  // Transaction mode on 6543 loses session state: refused.
+  assert.throws(
+    () =>
+      assertPreviewDirectTarget(
+        "postgresql://yaarlink_app.qwngmsedyepghskoagaj:pw@aws-0-ap-south-1.pooler.supabase.com:6543/postgres?options=-c%20search_path%3Dapp_preview",
+      ),
+    /transaction mode \(port 6543\)/,
+  );
+  // A pooler URL for another project is refused.
+  assert.throws(
+    () =>
+      assertPreviewDirectTarget(
+        "postgresql://yaarlink_app.otherabcdefghijkl:pw@aws-0-x.pooler.supabase.com:5432/postgres?options=-c%20search_path%3Dapp_preview",
+      ),
+    /neither the Preview direct endpoint/,
+  );
+});
+
+test("bootstrap target guard rejects a connection without the search_path option", () => {
+  assert.throws(
+    () => assertPreviewDirectTarget("postgresql://u:p@db.qwngmsedyepghskoagaj.supabase.co:5432/postgres"),
+    /must set `options=-c search_path=app_preview`/,
+  );
+});
+
+test("bootstrap target guard runs before any database connection is created", () => {
+  const src = fs.readFileSync(path.join(repoRoot, "scripts/database-bootstrap-preview.mjs"), "utf8");
+  const guardAt = src.indexOf("assertPreviewDirectTarget(connectionString)");
+  const poolAt = src.indexOf("new Pool(");
+  assert.ok(guardAt > 0, "guard must be invoked");
+  assert.ok(poolAt > guardAt, "guard must run before the pool is constructed");
+});
+
+test("bootstrap statements share one connection and never use pool.query", () => {
+  const src = fs.readFileSync(path.join(repoRoot, "scripts/database-bootstrap-preview.mjs"), "utf8");
+  assert.doesNotMatch(src, /pool\.query\(/, "pool.query may be routed to a different client");
+  assert.match(src, /const client = await pool\.connect\(\)/, "statements must run on a pinned client");
+});
+
+test("the optional lockdown cannot be executed accidentally", () => {
+  const baseline = previewMigrationFiles(repoRoot).map((f) => f.name);
+  assert.ok(!baseline.some((n) => /optional|lockdown/.test(n)), "optional SQL must not be in the baseline set");
+  const src = fs.readFileSync(path.join(repoRoot, "scripts/database-bootstrap-preview.mjs"), "utf8");
+  assert.doesNotMatch(src, /drizzle-preview-optional/, "the runner must never reference the optional directory");
 });

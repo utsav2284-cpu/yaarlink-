@@ -30,6 +30,7 @@ import {
   PREVIEW_SCHEMA,
   RESTRICTED_PRIVILEGES,
   assertNoForeignSchemaTargets,
+  assertPreviewDirectTarget,
   previewMigrationFiles,
   splitStatements,
 } from "./lib/preview-schema-migrations.mjs";
@@ -52,6 +53,8 @@ if (!connectionString) {
     "Set BOOTSTRAP_DATABASE_URL or PROVISIONING_DATABASE_URL to an administrator connection. DATABASE_URL is intentionally not accepted for bootstrapping.",
   );
 }
+
+assertPreviewDirectTarget(connectionString);
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -416,9 +419,21 @@ try {
     console.info(
       `  migrations applied this run: ${applied.length === 0 ? "none" : applied.join(", ")}`,
     );
-    console.info(
-      `  yaarlink_app USAGE on public: ${isolation.publicUsage} (harmless: ${isolation.publicTableCount} table(s) in public)`,
-    );
+    if (isolation.publicUsage) {
+      console.info(
+        "  NOTE: yaarlink_app still resolves USAGE on public via the PUBLIC pseudo-role.",
+      );
+      console.info(
+        `        That is PostgreSQL's default schema ACL and is NOT removed by revoking from the role. It is harmless here because public holds ${isolation.publicTableCount} table(s); the audit above proves no table privilege outside app_preview.`,
+      );
+      if (isolation.publicTableCount > 0) {
+        console.info(
+          "        WARNING: public is not empty. Review before authorizing this bootstrap.",
+        );
+      }
+    } else {
+      console.info("  yaarlink_app USAGE on public: false (PUBLIC grant already revoked).");
+    }
   } finally {
     client.release();
   }

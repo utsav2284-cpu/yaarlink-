@@ -117,3 +117,83 @@ export function assertNoForeignSchemaTargets(sql, fileName) {
     );
   }
 }
+
+/** The dedicated Preview Supabase project. Anything else is refused. */
+export const PREVIEW_PROJECT_REF = "qwngmsedyepghskoagaj";
+/** Production project ref - explicitly named so it can be rejected clearly. */
+export const PRODUCTION_PROJECT_REF = "dqhxgwzjwzvpqiilteld";
+
+/**
+ * Guard the bootstrap target.
+ *
+ * Three independent failure modes are blocked:
+ *
+ * 1. Wrong project. The Preview bootstrap must never touch Production.
+ *
+ * 2. Session-state-losing transport. Migrations issue unqualified DDL that
+ *    depends on `search_path`. Supabase's Supavisor transaction mode (port
+ *    6543) multiplexes each transaction onto a different server connection, so
+ *    session settings do not survive; a 6543 connection would run DDL against
+ *    `public`. Session mode (5432) keeps a dedicated server connection and is
+ *    safe.
+ *
+ * 3. Missing `search_path`. Even on a safe transport the URL must request the
+ *    Preview schema explicitly.
+ *
+ * Note on transports: the direct endpoint db.<ref>.supabase.co is IPv6-only
+ * unless the project holds the paid IPv4 add-on, and Vercel Functions cannot
+ * open outbound IPv6. The Supavisor session-mode pooler is IPv4-reachable on
+ * every plan. Both are therefore accepted here.
+ */
+export function assertPreviewDirectTarget(connectionString) {
+  let url;
+  try {
+    url = new URL(connectionString);
+  } catch {
+    throw new Error("Target is not a valid PostgreSQL URL.");
+  }
+  if (url.protocol !== "postgresql:" && url.protocol !== "postgres:") {
+    throw new Error("Target must be a postgresql:// URL.");
+  }
+
+  const host = url.hostname.toLowerCase();
+  const port = url.port || "5432";
+  let username = "";
+  try {
+    username = decodeURIComponent(url.username);
+  } catch {
+    throw new Error("Target username is not a valid identifier.");
+  }
+
+  if (host.includes(PRODUCTION_PROJECT_REF) || username.includes(PRODUCTION_PROJECT_REF)) {
+    throw new Error(
+      `Refusing to bootstrap: target names the Production project (${PRODUCTION_PROJECT_REF}).`,
+    );
+  }
+
+  const direct = host === `db.${PREVIEW_PROJECT_REF}.supabase.co`;
+  const sessionPooler = host.endsWith(".pooler.supabase.com") && username.endsWith(`.${PREVIEW_PROJECT_REF}`);
+
+  if (port === "6543") {
+    throw new Error(
+      "Refusing to bootstrap through transaction mode (port 6543): session state such as search_path does not survive, so unqualified DDL would target public. Use the direct endpoint or Supavisor session mode on 5432.",
+    );
+  }
+  if (port !== "5432") {
+    throw new Error(`Refusing to bootstrap on port ${port}; 5432 is required.`);
+  }
+  if (!direct && !sessionPooler) {
+    throw new Error(
+      `Refusing to bootstrap: target is neither the Preview direct endpoint nor a Supavisor endpoint for ${PREVIEW_PROJECT_REF}.`,
+    );
+  }
+
+  const options = url.searchParams.get("options") ?? "";
+  if (!/search_path\s*=\s*app_preview/.test(options)) {
+    throw new Error(
+      "Target connection string must set `options=-c search_path=app_preview`; migrations issue unqualified DDL.",
+    );
+  }
+
+  return { host, port, projectRef: PREVIEW_PROJECT_REF, transport: direct ? "direct" : "session-pooler" };
+}
