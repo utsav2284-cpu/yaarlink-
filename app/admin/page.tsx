@@ -79,7 +79,7 @@ export default function AdminControlCenter() {
 
   return (
     <main className="admin-layout" style={{ display:"flex", minHeight:"100vh", background:"#f6f7fb", color:"#111827", fontFamily:"system-ui,sans-serif" }}>
-      <aside style={{ width:260, background:"#0f172a", color:"#e2e8f0", padding:20, flexShrink:0 }} className="admin-sidebar">
+      <aside style={{ width:"var(--admin-sidebar-width, 260px)", background:"#0f172a", color:"#e2e8f0", padding:20, flexShrink:0 }} className="admin-sidebar">
         <div style={{ fontWeight:800, fontSize:20, color:"#fff" }}>YaarLink <span style={{ color:"#38bdf8" }}>Admin</span></div>
         <div style={{ fontSize:12, margin:"6px 0 20px", color:"#94a3b8" }}>Control Center · {production ? "Production" : "Preview"} · {assuranceVerified ? "AAL2 session" : "Authentication unavailable"}</div>
         <nav style={{ display:"grid", gap:6 }}>
@@ -111,16 +111,16 @@ export default function AdminControlCenter() {
           <div style={card}>
             {(section==="Creators"?filteredCreators:filteredCampaigns).length===0 ? <p style={{ color:"#6b7280" }}>No records available in this queue. If an error is shown above, the marketplace is not connected.</p> :
             (section==="Creators"?filteredCreators:filteredCampaigns).map(r => (
-              <div key={String(r.id)} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 0", borderBottom:"1px solid #eef2f7" }}>
-                <div><strong>{String(r.display_name ?? r.title ?? "")}</strong><div style={{ color:"#6b7280", fontSize:13 }}>{String(r.platform ?? r.business_name ?? "")} · {String(r.category ?? r.description ?? "")}</div></div>
+                <div key={String(r.id)} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:8, padding:"12px 0", borderBottom:"1px solid #eef2f7" }}>
+                <div style={{ minWidth:0 }}><strong>{String(r.display_name ?? r.title ?? "")}</strong><div style={{ color:"#6b7280", fontSize:13 }}>{String(r.platform ?? r.business_name ?? "")} · {String(r.category ?? r.description ?? "")}</div></div>
                 <div style={{ display:"flex", gap:8, alignItems:"center" }}><span style={badge(String(r.status))}>{String(r.status).replaceAll("_"," ")}</span>
-                <button onClick={() => { setSelected(r); setKind(section==="Creators"?"creator":"campaign"); }} style={{ padding:"8px 12px", borderRadius:8, cursor:"pointer" }}>View / Review</button></div>
+                <button aria-label={`View and review ${String(r.display_name ?? r.title ?? "")}`} onClick={() => { setSelected(r); setKind(section==="Creators"?"creator":"campaign"); }} style={{ padding:"10px 12px", borderRadius:8, cursor:"pointer" }}>View / Review</button></div>
               </div>))}
           </div>
 
           {selected && <div style={{ ...card, marginTop:16 }}>
             <h3 style={{ marginTop:0 }}>{kind==="creator" ? "Creator review" : "Campaign review"} — {String(selected.display_name ?? selected.title)}</h3>
-            <pre style={{ whiteSpace:"pre-wrap", background:"#f8fafc", padding:12, borderRadius:10, fontSize:12 }}>{JSON.stringify(selected, null, 2)}</pre>
+            <pre style={{ whiteSpace:"pre-wrap", overflowWrap:"anywhere", wordBreak:"break-word", background:"#f8fafc", padding:12, borderRadius:10, fontSize:12, maxWidth:"100%" }}>{JSON.stringify(selected, null, 2)}</pre>
             <label>Reason (mandatory for rejection)<textarea value={reason} onChange={e=>setReason(e.target.value)} style={{ width:"100%", padding:10, borderRadius:10, border:"1px solid #d1d5db", minHeight:70, boxSizing:"border-box" }} /></label>
             <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:10 }}>
               <button disabled={selected.status !== "pending"} onClick={()=>act("approve")}>{kind === "creator" ? "Approve creator" : "Approve & publish campaign"}</button>
@@ -133,7 +133,26 @@ export default function AdminControlCenter() {
 
 
       </section>
-      <style>{`@media (max-width: 760px){ .admin-layout{flex-direction:column} .admin-sidebar{width:auto !important} .admin-sidebar nav{display:flex !important; overflow-x:auto; padding-bottom:4px} .admin-sidebar nav button{white-space:nowrap} }`}</style>
+      <style>{`
+        /* Touch targets: 44px is the WCAG 2.5.5 / Apple HIG minimum. The
+           review, tab and logout buttons carried only 8-10px of vertical
+           padding, which is around 30px tall and easy to miss on a phone. */
+        .admin-sidebar button, .admin-layout section button, .admin-layout section input, .admin-layout section textarea { min-height:44px; }
+        .admin-layout section button { min-width:44px; }
+        /* Long values must never widen the page: identifiers, emails and the
+           JSON review block are all unbroken strings. */
+        .admin-layout, .admin-layout section { max-width:100%; }
+        .admin-layout section { overflow-wrap:anywhere; }
+        @media (max-width: 760px){
+          .admin-layout { flex-direction:column; }
+          .admin-sidebar { width:auto !important; padding:16px !important; }
+          .admin-sidebar nav { display:flex !important; overflow-x:auto; padding-bottom:4px; gap:8px; -webkit-overflow-scrolling:touch; }
+          .admin-sidebar nav button { white-space:nowrap; }
+          .admin-sidebar > button { width:100%; margin-top:12px !important; }
+          .admin-layout section { padding:16px !important; }
+          .admin-layout section h1 { font-size:22px !important; }
+        }
+      `}</style>
     </main>
   );
 }
