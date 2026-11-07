@@ -17,6 +17,16 @@ export function validateProductionAuthInviteConfig(config, callback) {
 }
 
 export function validateProductionServiceKey(key) {
+  if (typeof key !== 'string' || !key) throw new Error('Invalid Production service key');
+  // Supabase now issues two service-key shapes:
+  //   * legacy JWT        — eyJ... . <claims> . <sig>, carries ref + role
+  //   * publishable/new   — sb_secret_<random>
+  // The legacy form can be pinned to this project by inspecting its claims.
+  // The new form is opaque, so its project/binding is proven instead by the
+  // authenticated listUsers() probe against the hardcoded PRODUCTION_URL that
+  // runs before any invitation is requested. Rejecting it here would silently
+  // break operator setup with a misleading "invalid key" message.
+  if (/^sb_secret_[A-Za-z0-9_-]{20,}$/.test(key)) return;
   let claims;
   try { claims = JSON.parse(Buffer.from(key.split('.')[1], 'base64url').toString('utf8')); }
   catch { throw new Error('Invalid Production service key'); }

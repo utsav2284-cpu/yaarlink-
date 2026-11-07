@@ -25,5 +25,8 @@ export function productionOwnerInput(reference, tokenFile, dryRun, publicKeyFile
 export async function provisionProductionOwner(client, input, deps) {
   if (!input || input.email !== AUTHORIZED_OWNER || typeof input.dryRun !== 'boolean') throw new Error('Unauthorized owner recipient');
   const validated = productionOwnerInput(input.reference, input.tokenFile, input.dryRun, input.publicKeyFile, input.expectedFingerprint);
-  return provision(client, validated, deps);
+  // Only an explicit, reviewed opt-in may retire an expired invitation. The
+  // default stays fail-closed so an abandoned invitation is never silently
+  // replaced.
+  return provision(client, { ...validated, retireExpired: input.retireExpired === true }, deps);
 }
