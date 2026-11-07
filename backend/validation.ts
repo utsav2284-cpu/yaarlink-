@@ -35,25 +35,85 @@ export type JsonObjectResult =
   | { ok: false; response: Response };
 
 /**
+ * Hard ceiling for any JSON request body, in bytes.
+ *
+ * The longest field any route accepts is a 2,000-character text value, and a
+ * campaign with every optional field filled is still a few kilobytes, so 64 KiB
+ * leaves generous headroom. Without a cap `await req.json()` buffers whatever
+ * the client sends, so an unauthenticated caller could make the function
+ * allocate and parse an arbitrarily large string before the per-field length
+ * rules ever run. This bounds that allocation; it is not a business rule, so
+ * the limit does not belong in the shared password/field constants.
+ */
+export const MAX_JSON_BODY_BYTES = 64 * 1024;
+
+/**
+ * Read at most `MAX_JSON_BODY_BYTES` from the request body. Returns null when
+ * the limit is exceeded so the caller can answer 413 instead of failing
+ * ambiguously. A declared Content-Length above the cap short-circuits before
+ * any body is read; the streaming byte count still catches a lying or
+ * chunked upload.
+ */
+async function readBodyWithByteLimit(req: Request): Promise<string | null> {
+  const declaredLength = Number(req.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_JSON_BODY_BYTES) return null;
+  if (!req.body) return "";
+
+  const reader = req.body.getReader();
+  const decoder = new TextDecoder();
+  let body = "";
+  let bytes = 0;
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > MAX_JSON_BODY_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        return null;
+      }
+      body += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  return body + decoder.decode();
+}
+
+/**
  * Read a request body under one API contract: the body must be valid JSON and
  * its top-level value must be an object. Arrays, `null`, numbers, strings and
- * malformed JSON are client errors (400), never unhandled 500s.
+ * malformed JSON are client errors (400), never unhandled 500s. A body larger
+ * than `MAX_JSON_BODY_BYTES` is rejected with 413 before it is parsed.
  */
 export async function readJsonObject(
   req: Request,
   options: { allowEmpty?: boolean; headers?: HeadersInit } = {},
 ): Promise<JsonObjectResult> {
   const headers = options.headers ?? NO_STORE_HEADERS;
-  let parsed: unknown;
 
+  const text = await readBodyWithByteLimit(req);
+  if (text === null) {
+    return {
+      ok: false,
+      response: Response.json(
+        { error: "This request is too large.", code: "payload_too_large" },
+        { status: 413, headers },
+      ),
+    };
+  }
+
+  let parsed: unknown;
   try {
-    if (options.allowEmpty) {
-      const text = await req.text();
-      if (!text.trim()) return { ok: true, body: {} };
-      parsed = JSON.parse(text) as unknown;
-    } else {
-      parsed = (await req.json()) as unknown;
+    if (!text.trim()) {
+      if (!options.allowEmpty) {
+        return { ok: false, response: invalidRequestResponse("Please send a valid JSON object.", headers) };
+      }
+      return { ok: true, body: {} };
     }
+    parsed = JSON.parse(text) as unknown;
   } catch {
     return { ok: false, response: invalidRequestResponse("Please send a valid JSON object.", headers) };
   }
