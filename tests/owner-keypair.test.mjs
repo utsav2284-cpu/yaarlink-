@@ -18,12 +18,21 @@ const tmp = resolve('/tmp', `yaarlink-owner-key-${process.pid}`);
 const priv = resolve(tmp, 'owner-private.pem');
 const pub = resolve(tmp, 'owner-public.pem');
 
-test('owner keypair: fingerprint matches an independent openssl computation', () => {
+test('owner keypair: fingerprint matches an independent openssl computation', (t) => {
   rmSync(tmp, { recursive: true, force: true });
   const result = generateOwnerKeypair({ privateKeyPath: priv, publicKeyPath: pub, bits: 2048 });
-  const openssl = execFileSync('sh', ['-c', `openssl pkey -pubin -in '${pub}' -outform DER | openssl dgst -sha256 -hex`], { encoding: 'utf8' });
-  assert.equal(openssl.trim().split('=').pop().trim(), result.fingerprint);
   assert.match(result.fingerprint, /^[0-9a-f]{64}$/);
+  // Cross-check with openssl when it is available. Generation itself never
+  // needs openssl, so the suite must not fail on a host without it.
+  let openssl = '';
+  try {
+    openssl = execFileSync('openssl', ['pkey', '-pubin', '-in', pub, '-outform', 'DER'], { encoding: 'buffer' });
+  } catch {
+    t.diagnostic('openssl not available; cross-check skipped');
+    return;
+  }
+  const digest = execFileSync('openssl', ['dgst', '-sha256', '-hex'], { input: openssl, encoding: 'utf8' });
+  assert.equal(digest.trim().split('=').pop().trim(), result.fingerprint);
 });
 
 test('owner keypair: refuses to overwrite an existing key', () => {
@@ -50,6 +59,11 @@ test('owner keypair: rejects ciphertext produced for a different key', () => {
   assert.ok(decryptBootstrapToken({ ciphertextPath, privateKeyPath: priv }).length === 64);
   writeFileSync(ciphertextPath, Buffer.from('not ciphertext'));
   assert.throws(() => decryptBootstrapToken({ ciphertextPath, privateKeyPath: priv }));
+});
+
+test('owner keypair: generated private key is PKCS#1 PEM readable by OpenSSL 3', () => {
+  const header = readFileSync(priv, 'utf8').split('\n')[0];
+  assert.match(header, /BEGIN RSA PRIVATE KEY/);
 });
 
 test('owner keypair: writes the token to a 0600 file rather than stdout', () => {

@@ -3,10 +3,9 @@
 // opens a database connection, never reads a password from the environment,
 // and never prints private key material. Run it before starting the 24-hour
 // invitation window so a missing piece is found first.
-import { existsSync, readFileSync, statSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
 import { AUTHORIZED_OWNER, PRODUCTION_REF, validateProductionConnection } from './lib/production-bootstrap.mjs';
-import { DEFAULT_PRIVATE_KEY, DEFAULT_PUBLIC_KEY, publicKeyFingerprint } from './lib/owner-keypair.mjs';
+import { DEFAULT_PRIVATE_KEY, DEFAULT_PUBLIC_KEY, WINDOWS, fileMode, fingerprintFromFile, publicKeyFingerprint, rsaBits } from './lib/owner-keypair.mjs';
 import { PRODUCTION_CALLBACK } from './lib/production-auth-invite.mjs';
 
 const results = [];
@@ -19,30 +18,25 @@ function check(label, fn) {
   }
 }
 
-check('Owner private key exists (mode 0600)', () => {
+check('Owner private key exists', () => {
   if (!existsSync(DEFAULT_PRIVATE_KEY)) throw new Error(`missing ${DEFAULT_PRIVATE_KEY}; run: node scripts/owner-key.mjs generate`);
-  const { mode } = statSync(DEFAULT_PRIVATE_KEY);
-  const permissions = (mode & 0o777).toString(8).padStart(3, '0');
-  if (permissions !== '600') throw new Error(`mode is ${permissions}, expected 600`);
-  return 'ok';
+  const mode = fileMode(DEFAULT_PRIVATE_KEY);
+  if (mode === null) return 'present (Windows: use NTFS ACLs, file modes are not applied)';
+  if (mode !== '600') throw new Error(`mode is ${mode}, expected 600`);
+  return `mode ${mode}`;
 });
 
-check('Owner public key fingerprint is independently reproducible', () => {
+check('Owner public key fingerprint is reproducible from disk', () => {
   if (!existsSync(DEFAULT_PUBLIC_KEY)) throw new Error('missing public key');
-  const fromNode = publicKeyFingerprint(readFileSync(DEFAULT_PUBLIC_KEY, 'utf8'));
-  const fromOpenssl = execFileSync(
-    'sh',
-    ['-c', `openssl pkey -pubin -in '${DEFAULT_PUBLIC_KEY}' -outform DER | openssl dgst -sha256 -hex`],
-    { encoding: 'utf8' },
-  ).trim().split('=').pop().trim();
-  if (fromNode !== fromOpenssl) throw new Error('Node and openssl disagree on the fingerprint; regenerate the pair');
-  return fromNode;
+  const fromFile = fingerprintFromFile(DEFAULT_PUBLIC_KEY);
+  const fromPem = publicKeyFingerprint(readFileSync(DEFAULT_PUBLIC_KEY, 'utf8'));
+  if (fromFile !== fromPem) throw new Error('fingerprint is not reproducible; regenerate the pair');
+  return fromFile;
 });
 
 check('Private key is RSA and at least 2048 bits', () => {
-  const text = execFileSync('openssl', ['pkey', '-in', DEFAULT_PRIVATE_KEY, '-text', '-noout'], { encoding: 'utf8' });
-  const bits = Number((text.match(/\((\d+) bit,/) ?? [])[1] ?? 0);
-  if (!bits || bits < 2048) throw new Error(`key is ${bits || 'unknown'} bits`);
+  const bits = rsaBits(DEFAULT_PRIVATE_KEY);
+  if (!bits || bits < 2048) throw new Error(`key is ${bits || 'unreadable'} bits`);
   return `${bits} bit`;
 });
 
