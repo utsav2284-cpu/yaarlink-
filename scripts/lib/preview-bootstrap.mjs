@@ -27,8 +27,25 @@ export async function provision(client, input, { writeToken = writeTokenFile, re
     if (identity.rows[0]?.role !== 'postgres' || identity.rows[0]?.db !== 'postgres' || identity.rows[0]?.tls !== true) throw new Error('Trusted Preview operator connection required.');
     const state = await client.query('select owner_claimed_at from admin.admin_bootstrap_state where id=true for update');
     if (state.rows.length !== 1 || state.rows[0].owner_claimed_at !== null) throw new Error('Bootstrap is unavailable or already claimed.');
+    // Default is fail-closed: a pending bootstrap invitation, even an expired
+    // one, requires deliberate operator review before a new one is issued.
+    // Claim is impossible once expires_at has passed, so an abandoned 24-hour
+    // invitation would otherwise strand the project with no way to re-issue
+    // from this tool. An operator who has reviewed the state may pass
+    // retireExpired to retire only genuinely expired rows, in the same
+    // transaction and with an audit record explaining the re-issue.
     const pending = await client.query("select exists(select 1 from admin.admin_invitations where invitation_kind='bootstrap' and status='pending') as exists");
-    if (pending.rows[0]?.exists) throw new Error('A pending bootstrap invitation already exists; operator review is required, even if expired.');
+    if (pending.rows[0]?.exists) {
+      if (!input.retireExpired) throw new Error('A pending bootstrap invitation already exists; operator review is required, even if expired.');
+      const retired = await client.query(
+        "update admin.admin_invitations set status='expired', updated_at=now() where invitation_kind='bootstrap' and status='pending' and expires_at<=now() returning id",
+      );
+      const retiredRows = retired?.rows ?? [];
+      for (const row of retiredRows) {
+        await client.query("select audit.append_audit(null, 'bootstrap.invitation_expired', 'admin_invitation', $1, 'success', '{}'::jsonb)", [String(row.id)]);
+      }
+      if (retiredRows.length === 0) throw new Error('A live, unexpired bootstrap invitation exists; wait for it to expire or resolve it before re-issuing.');
+    }
     if (input.dryRun) { await client.query('rollback'); return { dryRun: true }; }
     const token = randomBytes(32);
     const hash = createHash('sha256').update(token).digest();

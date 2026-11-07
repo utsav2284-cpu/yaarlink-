@@ -6,11 +6,11 @@ import { validateProductionConnection, productionOwnerInput, provisionProduction
 
 async function main() {
   const args=process.argv.slice(2), parsed={};
-  const allowed=new Set(['--authorization-ref','--token-file','--recipient-public-key','--recipient-key-sha256','--execute','--dry-run']);
+  const allowed=new Set(['--authorization-ref','--token-file','--recipient-public-key','--recipient-key-sha256','--execute','--dry-run','--retire-expired-invitation']);
   for(let i=0;i<args.length;i++) {
     const name=args[i];
     if(!allowed.has(name)||parsed[name]!==undefined) throw new Error('Invalid arguments');
-    if(name==='--execute'||name==='--dry-run') parsed[name]=true;
+    if(name==='--execute'||name==='--dry-run'||name==='--retire-expired-invitation') parsed[name]=true;
     else { if(!args[i+1]||args[i+1].startsWith('--')) throw new Error('Missing argument'); parsed[name]=args[++i]; }
   }
   if(!!parsed['--execute']===!!parsed['--dry-run']) throw new Error('Choose exactly one mode');
@@ -21,8 +21,9 @@ async function main() {
     await client.connect();
     // Execute always performs the same non-mutating preflight first. The
     // following transaction independently rechecks and locks bootstrap state.
-    if (!input.dryRun) await provisionProductionOwner(client,{...input,dryRun:true});
-    await provisionProductionOwner(client,input);
+    const retireExpired = parsed['--retire-expired-invitation'] === true;
+    if (!input.dryRun) await provisionProductionOwner(client,{...input,dryRun:true,retireExpired});
+    await provisionProductionOwner(client,{...input,retireExpired});
   }
   finally { await client.end().catch(()=>{}); }
   console.log(input.dryRun ? `Production ${PRODUCTION_REF} operator dry run passed; nothing was created.` : 'Production bootstrap invitation created; ciphertext saved. Auth invitation and delivery are separate and not yet confirmed.');
