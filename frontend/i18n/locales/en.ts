@@ -980,6 +980,9 @@ export const enMessages = {
   "nf.body": "The link may be old or mistyped. Let's get you back on track.",
   "nf.home": "Go home",
   "nf.browse": "Browse campaigns",
+  "nf.errorTitle": "Something went wrong on our side",
+  "nf.errorBody": "This page could not load. Nothing you did caused it — please try again.",
+  "nf.errorRetry": "Try again",
 
   "brand.phBusiness": "e.g. Your café or shop name",
   "brand.phName": "e.g. Harpreet Singh",
