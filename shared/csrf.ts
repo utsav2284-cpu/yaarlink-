@@ -1,7 +1,7 @@
 /**
  * Cross-site request forgery guard for cookie-authenticated API mutations.
  *
- * Session cookies already use SameSite (user: Lax, admin: Strict), which
+ * Session cookies already use SameSite=Lax, which
  * stops classic cross-site form POSTs in modern browsers. This check is the
  * second layer: for state-changing `/api` requests, a browser-supplied
  * `Origin` (or `Referer` fallback) must name this site, and a request the

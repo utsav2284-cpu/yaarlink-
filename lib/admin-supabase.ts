@@ -1,0 +1,38 @@
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { requireAdminSupabaseTarget } from "./admin-target-config";
+import { isLocalAdminTarget } from "./admin-local-config";
+
+// Production and Preview use their own pinned identity projects. The public
+// key is not authorization: privileged operations still require database RPC
+// checks. Missing Production setup fails closed.
+const deployment = process.env.NEXT_PUBLIC_VERCEL_ENV;
+// Production uses separately named, non-secret public identifiers so a
+// different integration cannot silently point the admin client at another DB.
+const configuredUrl = deployment === "production" ? process.env.NEXT_PUBLIC_YAARLINK_ADMIN_SUPABASE_URL : process.env.NEXT_PUBLIC_SUPABASE_URL;
+const publishableKey = (deployment === "production" ? process.env.NEXT_PUBLIC_YAARLINK_ADMIN_PUBLISHABLE_KEY : process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) ?? "";
+
+let client: SupabaseClient<any, any, any> | null = null;
+export function adminSupabase(): SupabaseClient<any, any, any> {
+  const local = isLocalAdminTarget(process.env.NEXT_PUBLIC_YAARLINK_LOCAL_ADMIN, process.env.NODE_ENV, deployment, typeof window === "undefined" ? undefined : window.location.origin);
+  const { url, production } = local ? { url: "http://127.0.0.1:54321", production: false } : requireAdminSupabaseTarget(deployment, configuredUrl);
+  if (!publishableKey) throw new Error("Admin authentication is not configured (missing publishable key).");
+  client ??= createClient(url, publishableKey, { db: { schema: production ? "public" : "preview" }, auth: { detectSessionInUrl: false, ...(local ? { flowType: "pkce" as const } : {}) } });
+  return client;
+}
+export function adminAuth() {
+  return adminSupabase().auth;
+}
+
+// Production exposes only narrow public RPC wrappers; Preview uses its existing
+// admin schema. The selected project was already pinned by adminSupabase().
+const RPCS = {
+  register_my_session: "production_admin_register_session",
+  validate_first_owner_invitation: "production_admin_validate_invitation",
+  claim_invited_first_owner: "production_admin_claim_owner",
+  marketplace_review_queue: "production_admin_review_queue",
+  marketplace_review_decision: "production_admin_review_decision",
+} as const;
+export function adminRpc(name: keyof typeof RPCS, args?: Record<string, unknown>) {
+  const production = deployment === "production";
+  return adminSupabase().schema(production ? "public" : "admin").rpc(production ? RPCS[name] : name, args);
+}

@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   getBearerToken,
-  hasCookie,
   isDiagnosticTokenValid,
   toPublicDatabaseHealth,
 } from "../backend/health-diagnostics.ts";
@@ -73,16 +72,7 @@ test("optional diagnostic token must be strong and distinct when configured", ()
     { name: "HEALTH_DIAGNOSTIC_TOKEN", reason: "shared" },
   );
   assert.deepEqual(
-    healthDiagnosticTokenProblem({ HEALTH_DIAGNOSTIC_TOKEN: strongToken, ADMIN_PASSWORD: strongToken }),
+    healthDiagnosticTokenProblem({ HEALTH_DIAGNOSTIC_TOKEN: strongToken, BOT_CHALLENGE_SECRET: strongToken }),
     { name: "HEALTH_DIAGNOSTIC_TOKEN", reason: "shared" },
   );
-});
-
-test("admin-cookie presence check matches only the exact non-empty cookie", () => {
-  const name = "__Host-yl_admin";
-  assert.equal(hasCookie(`theme=light; ${name}=signed-token; other=1`, name), true);
-  assert.equal(hasCookie(`${name}=`, name), false);
-  assert.equal(hasCookie(`x${name}=signed-token`, name), false);
-  assert.equal(hasCookie(`${name}x=signed-token`, name), false);
-  assert.equal(hasCookie(null, name), false);
 });

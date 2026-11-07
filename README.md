@@ -51,7 +51,7 @@ npm run db:bootstrap
 
 You should see `Database bootstrap verified: 16 tables, RLS enabled, app-role grants checked.` This creates the schema, enables RLS on every application table, creates the least-privilege `yaarlink_app` role/policies/grants, and refuses to treat an existing unjournalled database as an empty one. Do not use `drizzle-kit push` for initial provisioning; a schema push does not apply the role/RLS migration.
 
-   The newly created `yaarlink_app` role is intentionally `NOLOGIN` with no password in source control. Before deploying, use a provider/admin session to give that role a unique password and `LOGIN`; never put that password in Git, shell history shared with others, an issue, or chat.
+   The newly created `yaarlink_app` role is intentionally `NOLOGIN` with no password in source control. Before deploying, use a privileged database-provider session to give that role a unique password and `LOGIN`; never put that password in Git, shell history shared with others, an issue, or chat.
 
 4. For the running application, use the **Transaction pooler** connection string **for the `yaarlink_app` role** and set/replace its SSL mode with `sslmode=verify-full`. This becomes `DATABASE_URL`. Do not use the database-owner/`postgres` role as the runtime application user.
 5. On Vercel, set `DATABASE_CA_CERT` to the complete downloaded PEM certificate, including `-----BEGIN CERTIFICATE-----` and `-----END CERTIFICATE-----`. The application passes that CA to node-postgres with hostname verification enabled.
@@ -65,7 +65,7 @@ Never use `sslmode=no-verify`, `disable`, `prefer`, `require`, or `verify-ca` fo
 3. Set:
    - Install Command: `npm ci`
    - Build Command: `npm run build`
-   - Output Directory: leave as the Next.js default (do not set a custom `dist`, `out`, Cloudflare/OpenNext, or other adapter output)
+   - Output Directory: leave as the Next.js default (do not set a custom `dist`, `out`, or other adapter output)
    - Production Branch: `main`
 4. In **Settings → Environment Variables**, add these server-side values for Production:
 
@@ -73,13 +73,12 @@ Never use `sslmode=no-verify`, `disable`, `prefer`, `require`, or `verify-ca` fo
 |---|---|
 | `DATABASE_URL` | Supabase Transaction pooler URL with `sslmode=verify-full` |
 | `DATABASE_CA_CERT` | Complete Supabase root-certificate PEM downloaded in step 2 |
-| `ADMIN_PASSWORD` | Unique passphrase of at least 16 characters |
 | `SESSION_SECRET` | Fresh output from `openssl rand -hex 32` |
-| `ADMIN_SESSION_SECRET` | A different fresh output from `openssl rand -hex 32` |
 | `RESEND_API_KEY` | Resend API key |
 | `EMAIL_FROM` | Verified sender, e.g. `YaarLink <no-reply@theyaar.com>` |
 
-Optional variables are documented in `.env.example`: `APP_URL`, `ADMIN_TOTP_SECRET`, `BOT_CHALLENGE_SECRET`, `HEALTH_DIAGNOSTIC_TOKEN`, `PWNED_PASSWORDS_RANGE_URL`, and `SLOW_QUERY_THRESHOLD_MS`.
+Optional variables are documented in `.env.example`: `APP_URL`, `BOT_CHALLENGE_SECRET`, `HEALTH_DIAGNOSTIC_TOKEN`, `PWNED_PASSWORDS_RANGE_URL`, and `SLOW_QUERY_THRESHOLD_MS`.
+
 
 The server refuses to start when a required auth secret is missing, weak, copied from `.env.example`, or shared. The app needs no project-defined `NEXT_PUBLIC_*` variables, and the build fails if an unapproved or secret-like public variable name is configured. Signup also fails closed until the two email settings are present and the sending domain is verified in Resend.
 
@@ -98,11 +97,10 @@ HTTPS certificates are provisioned by Vercel automatically.
 
 ## 5 · Check everything works
 
-- `https://www.theyaar.com/api/health` → HTTP 200 with only `{"ok":true,"status":"ok","checkedAt":"…"}`. A failure returns HTTP 503 with `"status":"degraded"`. Detailed schema/pool diagnostics require an admin session or `HEALTH_DIAGNOSTIC_TOKEN` in an `Authorization: Bearer …` header; keep the token out of URLs.
+- `https://www.theyaar.com/api/health` → HTTP 200 with only `{"ok":true,"status":"ok","checkedAt":"…"}`. A failure returns HTTP 503 with `"status":"degraded"`. Detailed schema/pool diagnostics require `HEALTH_DIAGNOSTIC_TOKEN` in an `Authorization: Bearer …` header; keep the token out of URLs.
 - A page response includes an enforcing `Content-Security-Policy` header (not `Content-Security-Policy-Report-Only`) and a `Reporting-Endpoints` header
 - Sign up as a brand → verify the emailed link → create a campaign → it appears on your dashboard with the budget 🔒
 - Sign up as a creator (another email) → verify the emailed link → apply to the campaign → the brand sees it on their dashboard
-- `https://www.theyaar.com/admin` → your `ADMIN_PASSWORD` → all data, budgets and contacts
 - Contact page → WhatsApp / Call / Email / Instagram all open on your phone
 
 Logs: Vercel → your project → **Logs**. Application errors are one-line JSON with `level`, a stable `event`, `route`/`component`, and `requestId`; the same request ID is returned in the `x-request-id` response header. CSP violations use the `security.csp_report` event after being sanitized by `/api/security/csp-report`. A malformed public contact/social entry in `config/site.ts` produces a `startup.site_configuration_warning` with field/code pairs only (never the values), and the affected link builder returns no link instead of a broken one. See [`docs/OBSERVABILITY.md`](./docs/OBSERVABILITY.md) for slow-query logging, external log-drain setup, and uptime-monitor configuration.
@@ -114,8 +112,6 @@ Logs: Vercel → your project → **Logs**. Application errors are one-line JSON
 | What | Where |
 |---|---|
 | Phone, WhatsApp, email, Instagram, city, domain | `config/site.ts` |
-| Admin password and other secrets | Vercel → Settings → Environment Variables (redeploy after changing them) |
-| All data | `/admin` on your site, or Supabase → Table Editor |
 | English / Hindi / Punjabi text | `frontend/i18n/locales/en.ts`, `hi.ts`, and `pa.ts` |
 | Categories, languages, formats | `shared/constants.ts` |
 | Colours, fonts, animations | `app/globals.css` |
@@ -126,7 +122,6 @@ Logs: Vercel → your project → **Logs**. Application errors are one-line JSON
 
 For an existing database that predates the data-model/reporting fields, run the reviewed transactional migration `backend/db/migrations/20261102_data_model_reporting.sql` before deploying code that expects it. Use the Direct/Session provisioning connection with verified TLS, for example `psql "$PROVISIONING_DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/db/migrations/20261102_data_model_reporting.sql`, then verify `/api/health`. This migration also performs the historical listed-date, contact-source, brand-link, campaign-expiry, settings, and audit-table backfills that a schema-only push cannot reproduce. A brand-new database provisioned with `npm run db:bootstrap` does not need those legacy backfills.
 
-If an older existing database still contains legacy listing values such as a creator `platform` of `cr.both` or an application with `creator_id IS NULL`, use the separate reviewed repair file `backend/db/migrations/20261103_legacy_listing_integrity_repair.sql` after the same verified-backup gate. It canonicalizes known platform aliases, relinks an application only to the applicant's own provable creator profile, and then enforces the platform/NOT-NULL/foreign-key invariants; it deliberately does not delete or suspend test-looking listings. Review any public rows it lists in the commented queries and use the Admin UI's Suspend/Reject/Delete actions for confirmed test/spam content.
 
 ---
 
@@ -158,7 +153,7 @@ GitHub Actions runs the same checks and separately proves `npm run db:bootstrap:
 ## How it's built (for future developers)
 
 - **Login:** signed, httpOnly cookie (`backend/auth.ts`). Passwords are hashed with PBKDF2 via Web Crypto.
-- **Privacy:** budgets, phone numbers and applications are never in public APIs. Brands see only their own campaigns + applications (`/api/me/dashboard`); the owner sees everything at `/admin`.
-- **Database:** `backend/db/index.ts` uses one shared node-postgres pool per warm Node/Vercel instance, with an explicit size/timeout policy and an idle-client error handler. `backend/db/connection-config.ts` fails closed when a remote database URL does not require verified TLS. `/api/health` internally verifies connectivity and required tables/columns, but anonymous callers receive only overall status; the detailed checks and pool counters require admin/diagnostic authorization.
+- **Privacy:** budgets, phone numbers and applications are never in public APIs. Brands see only their own campaigns + applications (`/api/me/dashboard`); private records remain available only through authenticated account APIs.
+- **Database:** `backend/db/index.ts` uses one shared node-postgres pool per warm Node/Vercel instance, with an explicit size/timeout policy and an idle-client error handler. `backend/db/connection-config.ts` fails closed when a remote database URL does not require verified TLS. `/api/health` internally verifies connectivity and required tables/columns, but anonymous callers receive only overall status; the detailed checks and pool counters require diagnostic bearer-token authorization.
 - **Security headers:** `proxy.ts` generates a per-request CSP nonce so the enforcing policy can allow Next.js bootstrap/RSC scripts without `unsafe-inline`; the root layout renders dynamically for that nonce. Static security headers live in `next.config.ts`, and sanitized CSP reports are collected at `/api/security/csp-report`.
 - **Observability:** `proxy.ts` establishes `x-request-id`; `shared/observability.ts` emits bounded, redacted JSON logs; `instrumentation.ts` handles unhandled server errors; and the pooled database client logs slow queries as duration/operation/hash-only fingerprints. External drains and uptime alerting remain owner-configured integrations, as documented in `docs/OBSERVABILITY.md`.

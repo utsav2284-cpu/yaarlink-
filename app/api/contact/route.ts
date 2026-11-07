@@ -14,7 +14,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
-// Messages are owner-only — read them via /api/admin/data.
+// Messages are delivered to the configured site owner email.
 
 function errorResponse(result: { error: string; code: string; field?: string }, status = 400) {
   return Response.json(

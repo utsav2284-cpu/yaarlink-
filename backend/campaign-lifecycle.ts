@@ -53,7 +53,7 @@ export async function markCampaignExpired(
 }
 
 /**
- * Lazily materialize the expired state when owner/admin surfaces are read.
+ * Lazily materialize the expired state when owner-account surfaces are read.
  * Public queries also filter on `expiresAt`, so a campaign is hidden at the
  * deadline even before this best-effort status transition has run.
  */

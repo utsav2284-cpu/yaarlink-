@@ -1,0 +1,3 @@
+-- Applied to Preview as admin_preview_fix_recovery_codes_digest (20261105200100).
+-- BUG: admin.generate_my_recovery_codes used extensions.sha256(bytea), which does not exist.
+-- Fixed to encode(extensions.digest(convert_to(v_code,'UTF8'),'sha256'),'hex').

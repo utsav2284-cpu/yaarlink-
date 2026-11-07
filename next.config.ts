@@ -18,6 +18,13 @@ const STATIC_SECURITY_HEADERS = [
 ];
 
 const nextConfig: NextConfig = {
+  // Make the deployment classification available to browser code even when
+  // Vercel does not expose its NEXT_PUBLIC_ system metadata automatically.
+  // This value is only a target selector, never a security credential.
+  env: { NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV ?? "development" },
+  // Arena's authenticated Preview proxy uses an e2b.app hostname; this affects
+  // Next development resources only and does not configure Auth redirects.
+  allowedDevOrigins: ["*.e2b.app"],
   // Document CSP is generated per request in proxy.ts because it contains a
   // nonce. The headers below do not vary by request, so they stay static.
   async headers() {

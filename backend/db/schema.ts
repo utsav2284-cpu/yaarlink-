@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, foreignKey, index, jsonb, pgTable, uuid, text, integer, timestamp, unique, uniqueIndex } from "drizzle-orm/pg-core";
+import { bigint, check, foreignKey, index, jsonb, pgTable, uuid, text, integer, timestamp, unique, uniqueIndex, type AnyPgColumn } from "drizzle-orm/pg-core";
 
 export const users = pgTable(
   "users",
@@ -537,9 +537,8 @@ export const reports = pgTable(
   ],
 );
 
-// Non-secret key/value platform settings (campaign expiry policy, the admin
-// session-version and TOTP replay counters). Credentials and signing secrets
-// come only from server environment variables — never from this table.
+// Non-secret key/value platform settings such as campaign expiry policy.
+// Credentials and signing secrets live only in the environment.
 export const settings = pgTable("settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
@@ -573,9 +572,8 @@ export const adminAuditLogs = pgTable(
   ],
 );
 
-// Append-only domain history for user, admin and system changes to the
-// marketplace records themselves. This is separate from the security-
-// focused admin login/moderation log above: application status history and
+// Append-only domain history for user and system changes to the
+// marketplace records themselves. This is separate from the legacy audit log above: application status history and
 // profile/campaign/application reporting read from these events. Only field
 // names and status transitions are recorded, never the old/new contact,
 // message, note or other free-text values. `entityId` intentionally has no

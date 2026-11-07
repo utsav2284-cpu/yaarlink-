@@ -17,9 +17,16 @@
     "db:check": "drizzle-kit check --config=drizzle.config.json",
     "db:generate": "drizzle-kit generate --config=drizzle.config.json",
     "db:bootstrap": "node scripts/database-bootstrap.mjs",
-    "db:bootstrap:verify": "node scripts/database-bootstrap.mjs --verify-write"
+    "db:bootstrap:verify": "node scripts/database-bootstrap.mjs --verify-write",
+    "local:db:up": "docker compose up -d db",
+    "local:db:down": "docker compose down",
+    "local:db:logs": "docker compose logs -f db",
+    "local:services": "node scripts/local-dev-services.mjs",
+    "local:bootstrap": "node --env-file=.env.local scripts/database-bootstrap.mjs --verify-write",
+    "test:admin-browser": "node tests/browser/admin-invitation.mjs"
   },
   "dependencies": {
+    "@supabase/supabase-js": "2.119.0",
     "bcryptjs": "3.0.3",
     "drizzle-orm": "0.45.4",
     "next": "16.4.3",
@@ -29,6 +36,7 @@
     "react-dom": "19.2.6"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.15",
     "@tailwindcss/postcss": "4.1.17",
     "@types/node": "22.19.15",
     "@types/pg": "8.23.1",
@@ -38,6 +46,7 @@
     "drizzle-kit": "0.31.11",
     "eslint": "9.39.4",
     "eslint-config-next": "16.4.3",
+    "playwright-core": "1.56.1",
     "postcss": "8.5.32",
     "tailwindcss": "4.1.17",
     "typescript": "5.9.3"

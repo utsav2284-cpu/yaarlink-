@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SITE } from "@/config/site";
+import { adminAuthCspOrigin } from "@/lib/admin-csp";
+import { localAdminCspAllowed } from "@/lib/admin-local-config";
 import { isAllowedMutationOrigin } from "@/shared/csrf";
 import { REQUEST_ID_HEADER, requestIdFromHeaders } from "@/shared/observability";
 
@@ -9,6 +11,20 @@ const CSP_REPORT_GROUP = "csp-endpoint";
 function isHttpsRequest(request: NextRequest): boolean {
   if (request.nextUrl.protocol === "https:") return true;
   return request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() === "https";
+}
+
+/**
+ * Arena's live-preview proxy frames the app from an `*.e2b.app` origin. The
+ * default `frame-ancestors 'none'` would block that embed entirely, and the
+ * matching static `X-Frame-Options: DENY` is overwritten here for the same
+ * reason (that header cannot express a single allowed ancestor). This keys off
+ * the request host only, so theyaar.com and every other origin keep the
+ * deny-all policy. `reportEndpointUrl` already trusts the same forwarded host,
+ * so this adds no new trust.
+ */
+function isPreviewProxyHost(request: NextRequest): boolean {
+  const host = effectiveRequestHost(request).toLowerCase().split(":")[0];
+  return host === "e2b.app" || host.endsWith(".e2b.app");
 }
 
 function effectiveRequestHost(request: NextRequest): string {
@@ -41,6 +57,8 @@ function reportEndpointUrl(request: NextRequest): string {
 
 function buildContentSecurityPolicy(request: NextRequest, nonce: string): string {
   const isDevelopment = process.env.NODE_ENV === "development";
+  const previewFrameable = isPreviewProxyHost(request);
+  const localAuth = localAdminCspAllowed(process.env.NEXT_PUBLIC_YAARLINK_LOCAL_ADMIN, process.env.NODE_ENV, process.env.VERCEL, request.headers.get("host") ?? undefined, request.headers.get("x-forwarded-host"));
 
   const directives = [
     "default-src 'self'",
@@ -51,7 +69,7 @@ function buildContentSecurityPolicy(request: NextRequest, nonce: string): string
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
-    `connect-src 'self'${isDevelopment ? " ws: wss:" : ""}`,
+    `connect-src 'self' ${adminAuthCspOrigin(process.env.VERCEL_ENV)}${localAuth ? " http://127.0.0.1:54321" : ""}${isDevelopment ? " ws: wss:" : ""}`,
     "media-src 'none'",
     "object-src 'none'",
     "frame-src 'none'",
@@ -59,7 +77,7 @@ function buildContentSecurityPolicy(request: NextRequest, nonce: string): string
     "manifest-src 'self'",
     "base-uri 'self'",
     "form-action 'self'",
-    "frame-ancestors 'none'",
+    previewFrameable ? "frame-ancestors 'self' https://*.e2b.app" : "frame-ancestors 'none'",
     ...(isHttpsRequest(request) ? ["upgrade-insecure-requests"] : []),
     `report-to ${CSP_REPORT_GROUP}`,
     // report-uri is deprecated, but remains the fallback for browsers that do
@@ -70,7 +88,7 @@ function buildContentSecurityPolicy(request: NextRequest, nonce: string): string
   return directives.join("; ");
 }
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const requestId = requestIdFromHeaders(request.headers);
   const requestHeaders = new Headers(request.headers);
   if (requestId) requestHeaders.set(REQUEST_ID_HEADER, requestId);
@@ -131,6 +149,9 @@ export function proxy(request: NextRequest) {
   if (requestId) response.headers.set(REQUEST_ID_HEADER, requestId);
   response.headers.set("Content-Security-Policy", contentSecurityPolicy);
   response.headers.set("Reporting-Endpoints", `${CSP_REPORT_GROUP}="${reportEndpoint}"`);
+  // Modern browsers honour frame-ancestors and ignore X-Frame-Options, but the
+  // static DENY would still block older engines used inside the preview pane.
+  if (isPreviewProxyHost(request)) response.headers.set("X-Frame-Options", "SAMEORIGIN");
 
   return response;
 }

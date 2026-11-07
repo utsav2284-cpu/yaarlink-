@@ -218,7 +218,7 @@ async function assertTablesRlsAndPolicies(client) {
     commandsByTable.get("admin_audit_logs")?.size === 2 &&
       commandsByTable.get("admin_audit_logs")?.has("r") &&
       commandsByTable.get("admin_audit_logs")?.has("a"),
-    "admin_audit_logs must have only SELECT and INSERT policies for yaarlink_app",
+    "legacy audit table must have only SELECT and INSERT policies for yaarlink_app",
   );
   assert(
     commandsByTable.get("audit_events")?.size === 3 &&
@@ -273,6 +273,7 @@ async function assertAppRoleWrites(pool) {
     await expectPermissionDenied(client, "DELETE admin_audit_logs", () =>
       client.query("DELETE FROM public.admin_audit_logs WHERE id = $1", [adminAudit.id]),
     );
+
 
     const auditEvent = await one(
       client,
