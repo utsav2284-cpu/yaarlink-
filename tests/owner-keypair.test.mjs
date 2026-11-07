@@ -12,6 +12,7 @@ import {
 } from '../scripts/lib/owner-keypair.mjs';
 import { writeTokenFile } from '../scripts/lib/preview-bootstrap.mjs';
 import { validateProductionServiceKey } from '../scripts/lib/production-auth-invite.mjs';
+import { validateProductionConnection } from '../scripts/lib/production-bootstrap.mjs';
 
 const tmp = resolve('/tmp', `yaarlink-owner-key-${process.pid}`);
 const priv = resolve(tmp, 'owner-private.pem');
@@ -80,5 +81,51 @@ test('service key: still rejects a JWT bound to another project or a non-service
   assert.throws(() => validateProductionServiceKey(anonRole), /Invalid Production service key/);
   for (const bad of ['', 'not-a-key', 'sb_secret_short', null, undefined]) {
     assert.throws(() => validateProductionServiceKey(bad), /Invalid Production service key/);
+  }
+});
+
+// --- Production connection pinning -------------------------------------------
+// The direct host is IPv6-only and many networks (including this sandbox) have
+// no IPv6 route, so the session-pooler path is the one that actually works from
+// a laptop in India. Supabase moves projects between pooler fleets, so every
+// fleet hostname must be accepted while the project ref stays pinned.
+test('connection: accepts the pinned session pooler across fleets and the direct host', () => {
+  const pw = 'p%40ss%2Bword';
+  const good = [
+    'postgresql://postgres.dqhxgwzjwzvpqiilteld:' + pw + '@aws-0-ap-northeast-2.pooler.supabase.com:5432/postgres',
+    'postgresql://postgres.dqhxgwzjwzvpqiilteld:' + pw + '@aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres',
+    'postgresql://postgres.dqhxgwzjwzvpqiilteld:' + pw + '@aws-0-us-east-1.pooler.supabase.com:5432/postgres',
+    'postgresql://postgres.dqhxgwzjwzvpqiilteld:' + pw + '@aws-0-ap-northeast-2.pooler.supabase.com/postgres',
+    'postgresql://postgres:' + pw + '@db.dqhxgwzjwzvpqiilteld.supabase.co:5432/postgres',
+  ];
+  for (const uri of good) assert.equal(validateProductionConnection(uri).ssl.rejectUnauthorized, true);
+  // Percent-decoded credentials are handed to pg without touching the URI shape.
+  assert.equal(validateProductionConnection(good[0]).password, 'p@ss+word');
+});
+
+test('connection: rejects another tenant, lookalikes and every weakening parameter', () => {
+  const ref = 'dqhxgwzjwzvpqiilteld';
+  const base = `postgresql://postgres.${ref}:pw@aws-0-ap-northeast-2.pooler.supabase.com:5432/postgres`;
+  const bad = [
+    `postgresql://postgres.othertenantref:pw@aws-0-ap-northeast-2.pooler.supabase.com:5432/postgres`,
+    `postgresql://postgres.${ref}:pw@aws-0-ap-northeast-2.pooler.supabase.com.evil.io:5432/postgres`,
+    `postgresql://postgres.${ref}:pw@evil-aws-0-ap-northeast-2.pooler.supabase.com:5432/postgres`,
+    `postgresql://postgres:pw@db.otherref.supabase.co:5432/postgres`,
+    `postgresql://postgres.${ref}.evil:pw@aws-0-ap-northeast-2.pooler.supabase.com:5432/postgres`,
+    `${base}?sslmode=disable`,
+    `${base}?sslmode=no-verify`,
+    `${base}?host=evil.io`,
+    `${base}?options=-c%20search_path%3Dpublic`,
+    `${base}?pgbouncer=true`,
+    `postgresql://postgres.${ref}:pw@aws-0-ap-northeast-2.pooler.supabase.com:6543/postgres`,
+    `postgresql://postgres.${ref}:pw@aws-0-ap-northeast-2.pooler.supabase.com:5432/other`,
+  ];
+  for (const uri of bad) assert.throws(() => validateProductionConnection(uri), /pinned TLS-verified/);
+});
+
+test('connection: tolerates the dashboard sslmode suffix but never weakens TLS', () => {
+  const base = 'postgresql://postgres.dqhxgwzjwzvpqiilteld:pw@aws-0-ap-northeast-2.pooler.supabase.com:5432/postgres';
+  for (const mode of ['require', 'verify-ca', 'verify-full']) {
+    assert.equal(validateProductionConnection(`${base}?sslmode=${mode}`).ssl.rejectUnauthorized, true);
   }
 });

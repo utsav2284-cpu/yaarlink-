@@ -46,8 +46,15 @@ email to match the invitation exactly. If it differs, change it in a reviewed co
 
 ## Step 3 — Create the bootstrap invitation (needs the production DB password)
 
+**Use the Session pooler, not the Direct connection.** `db.dqhxgwzjwzvpqiilteld.supabase.co`
+publishes an IPv6 address only. Most home and office networks in India are IPv4-only, where
+that host fails with `ENETUNREACH` before any password is checked. The pooler has IPv4.
+
 ```bash
-export ADMIN_PRODUCTION_OPERATOR_DATABASE_URL='postgresql://postgres:PASSWORD@db.dqhxgwzjwzvpqiilteld.supabase.co:5432/postgres'
+# Session pooler (IPv4). The username carries the project ref after a dot.
+export ADMIN_PRODUCTION_OPERATOR_DATABASE_URL='postgresql://postgres.dqhxgwzjwzvpqiilteld:PASSWORD@aws-0-ap-northeast-2.pooler.supabase.com:5432/postgres'
+# If the password contains @ : / or ?, percent-encode it (p@ss -> p%40ss).
+# Do not append ?sslmode=... to this value; see "Credential handling" below.
 FP=$(openssl pkey -pubin -in .local/keys/owner-public.pem -outform DER | openssl dgst -sha256 -hex | sed 's/.*= //')
 
 node scripts/provision-production-owner.mjs --dry-run \
@@ -114,6 +121,23 @@ curl -s https://www.theyaar.com/api/campaigns
 ```
 
 Both should now return one record.
+
+## Credential handling
+
+- **Password special characters.** The URI must be valid, so `@`, `:`, `/`, `?` and `#`
+  in the password must be percent-encoded. `p@ss` becomes `p%40ss`. The script
+  percent-decodes it before handing it to `pg`, so the real password is used.
+- **`?sslmode=...` is optional.** The dashboard's Connect dialog sometimes appends
+  `?sslmode=require`; that now validates and is ignored, because TLS is always enforced
+  by the returned `ssl` config (`rejectUnauthorized: true`). `sslmode=disable` and
+  `no-verify` are still rejected.
+- **Port 5432 only.** Port 6543 is the transaction pooler and is rejected; session-mode
+  advisory locks and `FOR UPDATE` are needed by the provisioning transaction.
+- **Fleet names vary.** `aws-0-` and `aws-1-` in the same region are both accepted, since
+  Supabase can move a project between pooler fleets. The project ref in the username is
+  what pins the connection, so another tenant's database can never be addressed.
+- **Never export the password into a shared shell.** Prefer the Supabase dashboard's
+  copy button, paste it directly at the prompt, and `unset` the variable afterwards.
 
 ## Before approving, check these two records
 
