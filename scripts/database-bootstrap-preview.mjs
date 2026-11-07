@@ -68,7 +68,17 @@ function sha256(text) {
   return createHash("sha256").update(text).digest("hex");
 }
 
-/** Refuse to run against a database that already holds production tables. */
+/**
+ * Refuse to run against a database that already holds the marketplace schema.
+ *
+ * The check is deliberately scoped to schema `public` rather than to a list of
+ * table names anywhere in the database. The dedicated Preview project is a
+ * different application: it legitimately owns `auth.users` and
+ * `preview.notifications`, which share names with marketplace tables. A
+ * name-based scan would therefore refuse a perfectly valid Preview target,
+ * while a schema-based scan still catches the case it exists to prevent - a
+ * Production-shaped database whose application tables live in `public`.
+ */
 async function assertTargetIsSafe(client) {
   const version = await one(client, "SHOW server_version_num");
   assert(
@@ -76,19 +86,19 @@ async function assertTargetIsSafe(client) {
     "PostgreSQL 13 or newer is required so gen_random_uuid() is available without an extension.",
   );
 
-  const foreign = await client.query(
-    `SELECT table_schema, table_name
+  const publicTables = await client.query(
+    `SELECT table_name
        FROM information_schema.tables
-      WHERE table_name = ANY($1::text[])
-        AND table_schema <> $2
-      ORDER BY table_schema, table_name`,
-    [EXPECTED_TABLES, JOURNAL_SCHEMA],
+      WHERE table_schema = 'public'
+        AND table_name = ANY($1::text[])
+      ORDER BY table_name`,
+    [EXPECTED_TABLES],
   );
   assert(
-    foreign.rowCount === 0,
-    `Refusing to bootstrap: application tables already exist outside ${JOURNAL_SCHEMA} (${foreign.rows
+    publicTables.rowCount === 0,
+    `Refusing to bootstrap: ${publicTables.rowCount} marketplace table(s) already exist in schema public (${publicTables.rows
       .slice(0, 5)
-      .map((r) => `${r.table_schema}.${r.table_name}`)
+      .map((r) => `public.${r.table_name}`)
       .join(", ")}). This script only ever manages ${JOURNAL_SCHEMA}.`,
   );
 

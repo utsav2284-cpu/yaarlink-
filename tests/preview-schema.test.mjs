@@ -435,6 +435,72 @@ test("a checksum mismatch fails closed", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Target safety: schema-scoped, not name-scoped
+// ---------------------------------------------------------------------------
+
+test("the safety check keys on schema public, not on table names anywhere", async () => {
+  // Reproduce the real Preview project: it legitimately owns auth.users and
+  // preview.notifications, which collide by name with marketplace tables.
+  const db = await freshPreviewDatabase();
+  try {
+    // `preview` already exists in the fixture; `auth` does not.
+    await db.exec("CREATE SCHEMA IF NOT EXISTS auth");
+    await db.exec("CREATE TABLE IF NOT EXISTS auth.users (id uuid PRIMARY KEY)");
+    await db.exec("CREATE TABLE IF NOT EXISTS preview.notifications (id int)");
+
+    const colliding = await db.query(
+      `SELECT table_schema, table_name FROM information_schema.tables
+        WHERE table_name = ANY($1::text[]) AND table_schema <> $2`,
+      [EXPECTED_TABLES, PREVIEW_SCHEMA],
+    );
+    assert.ok(
+      colliding.rowCount >= 2,
+      "the hosted project genuinely has name collisions; a name-based check would have blocked bootstrap",
+    );
+
+    const inPublic = await db.query(
+      `SELECT table_name FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = ANY($1::text[])`,
+      [EXPECTED_TABLES],
+    );
+    assert.equal(inPublic.rowCount, 0, "a clean public schema must pass");
+
+    await applyBaseline(db);
+    const placed = await scalar(
+      db,
+      "SELECT count(*)::int c FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relkind='r'",
+      [PREVIEW_SCHEMA],
+    );
+    assert.equal(placed, EXPECTED_TABLES.length);
+  } finally {
+    await db.close();
+  }
+});
+
+test("a production-shaped database is still refused", async () => {
+  const db = await freshPreviewDatabase({ withForeignSchemas: false });
+  try {
+    const zero = splitStatements(
+      fs.readFileSync(path.join(repoRoot, "backend/db/drizzle/0000_initial_schema.sql"), "utf8"),
+    );
+    for (const s of zero) await db.exec(s);
+
+    const inPublic = await db.query(
+      `SELECT table_name FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = ANY($1::text[])`,
+      [EXPECTED_TABLES],
+    );
+    assert.equal(
+      inPublic.rowCount,
+      EXPECTED_TABLES.length,
+      "the guard must still detect a populated public schema",
+    );
+  } finally {
+    await db.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Journal
 // ---------------------------------------------------------------------------
 
