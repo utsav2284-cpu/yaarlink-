@@ -13,6 +13,20 @@ function isHttpsRequest(request: NextRequest): boolean {
   return request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() === "https";
 }
 
+/**
+ * Arena's live-preview proxy frames the app from an `*.e2b.app` origin. The
+ * default `frame-ancestors 'none'` would block that embed entirely, and the
+ * matching static `X-Frame-Options: DENY` is overwritten here for the same
+ * reason (that header cannot express a single allowed ancestor). This keys off
+ * the request host only, so theyaar.com and every other origin keep the
+ * deny-all policy. `reportEndpointUrl` already trusts the same forwarded host,
+ * so this adds no new trust.
+ */
+function isPreviewProxyHost(request: NextRequest): boolean {
+  const host = effectiveRequestHost(request).toLowerCase().split(":")[0];
+  return host === "e2b.app" || host.endsWith(".e2b.app");
+}
+
 function effectiveRequestHost(request: NextRequest): string {
   // `nextUrl.host` can be the server's bind address (for example 0.0.0.0)
   // behind a platform proxy, so prefer the forwarded/request host the
@@ -43,6 +57,7 @@ function reportEndpointUrl(request: NextRequest): string {
 
 function buildContentSecurityPolicy(request: NextRequest, nonce: string): string {
   const isDevelopment = process.env.NODE_ENV === "development";
+  const previewFrameable = isPreviewProxyHost(request);
   const localAuth = localAdminCspAllowed(process.env.NEXT_PUBLIC_YAARLINK_LOCAL_ADMIN, process.env.NODE_ENV, process.env.VERCEL, request.headers.get("host") ?? undefined, request.headers.get("x-forwarded-host"));
 
   const directives = [
@@ -62,7 +77,7 @@ function buildContentSecurityPolicy(request: NextRequest, nonce: string): string
     "manifest-src 'self'",
     "base-uri 'self'",
     "form-action 'self'",
-    "frame-ancestors 'none'",
+    previewFrameable ? "frame-ancestors 'self' https://*.e2b.app" : "frame-ancestors 'none'",
     ...(isHttpsRequest(request) ? ["upgrade-insecure-requests"] : []),
     `report-to ${CSP_REPORT_GROUP}`,
     // report-uri is deprecated, but remains the fallback for browsers that do
@@ -134,6 +149,9 @@ export async function proxy(request: NextRequest) {
   if (requestId) response.headers.set(REQUEST_ID_HEADER, requestId);
   response.headers.set("Content-Security-Policy", contentSecurityPolicy);
   response.headers.set("Reporting-Endpoints", `${CSP_REPORT_GROUP}="${reportEndpoint}"`);
+  // Modern browsers honour frame-ancestors and ignore X-Frame-Options, but the
+  // static DENY would still block older engines used inside the preview pane.
+  if (isPreviewProxyHost(request)) response.headers.set("X-Frame-Options", "SAMEORIGIN");
 
   return response;
 }
