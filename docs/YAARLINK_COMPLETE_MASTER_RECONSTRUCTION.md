@@ -1388,6 +1388,160 @@ YaarLink 2.0 is not "done" when every menu item exists. The core product is read
 
 ---
 
+# 21. Additional recommended capabilities to make YaarLink more complete
+
+**Status:** New proposals for product consideration. None of the following should be treated as implemented until verified in code and production. These additions extend the two source documents; they do not replace any original requirement.
+
+## 21.1 Guided onboarding and activation
+- Separate onboarding paths for creators, brands and agency staff.
+- Save-and-resume onboarding with clear progress and validation.
+- Role-specific checklists showing the next useful action.
+- Profile completeness guidance without forcing unnecessary personal information.
+- Brand campaign brief templates by objective and industry.
+- Sample/demo content clearly labelled as examples, never mixed with real marketplace data.
+- First-value milestones: creator publishes an approved profile; brand completes verification and publishes an approved campaign; agency creates a client and project.
+- Track onboarding drop-off using privacy-conscious product analytics.
+
+## 21.2 Help centre and customer support operations
+- Public searchable help centre, FAQs, policy pages and getting-started guides.
+- In-product support request form with category, urgency and related campaign/order.
+- Support ticket lifecycle: open, assigned, waiting for user, escalated, resolved and closed.
+- Internal-only notes separated from user-visible replies.
+- Attachments stored privately and access-controlled.
+- Service-level targets, assignment queues and escalation rules.
+- Dispute evidence timeline with decision reason and appeal route.
+- User-visible status and notification history.
+- Support analytics: response time, resolution time, backlog and repeat issues.
+
+## 21.3 Trust centre and quality operations
+- Transparent verification explanations for creators, brands and businesses.
+- Public explanation of what a verification badge does and does not mean.
+- Report listing/profile/message/content controls.
+- Moderation case queue with severity, category, evidence, assigned reviewer and decision.
+- Appeal and reinstatement workflow.
+- Repeat-abuse and duplicate-account review using proportionate signals and human judgment.
+- Policy version history and acknowledgement where appropriate.
+- Separate operational flags from public labels; never publicly accuse a person based on an unverified automated signal.
+
+## 21.4 Marketplace quality and supply-demand management
+- Category and niche taxonomy with controlled vocabulary and synonyms.
+- Duplicate listing detection and stale campaign expiry.
+- Profile quality checks for missing fields, broken social links and outdated metrics.
+- Campaign quality checklist before submission.
+- Search relevance monitoring and zero-result analysis.
+- Waitlists or saved searches for creators when suitable campaigns are unavailable.
+- Brand demand insights by category and location using aggregated, privacy-safe data.
+- Human-curated collections only when selection criteria are transparent and not misleading.
+
+## 21.5 Growth, referrals and partner operations
+- Referral links for approved brand and creator invitations.
+- Referral attribution with clear eligibility, expiry and anti-abuse controls.
+- Partner/agency onboarding and partner profile pages.
+- Referral reward records only after the legal, tax and financial model is approved.
+- Campaign case studies based on verified, permissioned outcomes.
+- Landing-page and SEO content management with review workflow.
+- Email preference centre and consent-aware lifecycle messaging.
+- Growth experiments behind feature flags, with holdout and rollback controls.
+- Do not use dark patterns, misleading urgency or unsolicited bulk messaging.
+
+## 21.6 Content and asset management
+- Shared asset library scoped to an organisation, campaign or collaboration.
+- Asset metadata: owner, source, upload date, version, usage rights, expiry and permitted channels.
+- Brand asset kits: logos, colours, product references and approved claims.
+- Creative brief templates and reusable deliverable checklists.
+- Expiring usage-rights reminders and content takedown workflow.
+- Secure file previews, upload validation, malware scanning where available and download audit events.
+- Clear retention and deletion rules for raw drafts and final assets.
+
+## 21.7 Subscription and entitlement management
+- Plan catalogue, feature entitlements and usage limits.
+- Trial, upgrade, downgrade, cancellation and renewal states.
+- Seat and organisation limits.
+- Usage metering for campaigns, seats, exports or other clearly defined features.
+- Billing history, tax invoice references and failed-payment handling.
+- Grace periods and access downgrade rules.
+- Admin-controlled promotional codes with audit trail.
+- Never gate access to a user's own data or make cancellation intentionally difficult.
+- Publish plan limits and fees before purchase; do not hard-code plan checks only in the UI.
+
+## 21.8 Platform integration and developer operations
+- Central integration registry showing connected provider, scopes, owner, status and last successful sync.
+- OAuth consent and revocation flow where supported.
+- Webhook endpoint registry with signature verification, replay protection and idempotency.
+- Retry queue and dead-letter handling for failed provider events.
+- API versioning and documented rate limits if public APIs are introduced.
+- Secrets stored only server-side and rotated under an operational policy.
+- Provider outage status and graceful fallback to manual evidence where appropriate.
+- Never request third-party account passwords or scrape restricted data.
+
+## 21.9 Product analytics and experimentation
+- Event taxonomy for signup, verification, profile completion, campaign creation, applications and completed collaborations.
+- Funnel reports by role and acquisition source, with privacy safeguards.
+- Cohort retention and activation reporting.
+- Search quality, campaign fill rate, time-to-first-response and collaboration completion metrics.
+- Data dictionary defining each KPI, formula, time window and source.
+- Separate internal analytics from client-facing campaign performance.
+- Feature flags, staged rollout, experiment owner, success metric and rollback condition.
+- Avoid collecting unnecessary sensitive or personally identifying analytics data.
+
+## 21.10 Reliability, operations and release management
+- Health checks for database, email, storage, background jobs and external integrations.
+- Structured logs with request IDs and sensitive-data redaction.
+- Error monitoring, latency and availability dashboards.
+- Backup schedule, restore drills and documented recovery objectives.
+- Staging environment isolated from production data and credentials.
+- Feature flags for risky releases and emergency kill switches.
+- Database migration preflight, backup, rollback and post-deploy verification.
+- Deployment checklist and release notes.
+- Incident runbooks for account compromise, data exposure, payment-provider outage, email outage and failed migration.
+- Accessibility, responsive design, performance budgets and browser compatibility checks in release gates.
+
+## 21.11 Accessibility, localisation and inclusive UX
+- Keyboard navigation and visible focus states.
+- Semantic labels, accessible forms and screen-reader feedback.
+- Sufficient contrast and reduced-motion support.
+- Responsive layouts for mobile, tablet and desktop.
+- Consistent English, Hindi and Punjabi terminology across all key workflows.
+- Locale-aware date, time, currency and number formatting.
+- Clear error messages and recovery guidance.
+- Plain-language explanations for verification, usage rights, fees and collaboration states.
+- Test critical flows with assistive technology and real mobile browsers.
+
+## 21.12 Data governance and privacy operations
+- Data inventory mapping each field to purpose, owner, sensitivity and retention.
+- Consent ledger for social connections, marketing communications and analytics where applicable.
+- Access/export/deletion request tracking with identity verification and completion evidence.
+- Retention schedules for inactive accounts, verification evidence, messages and uploaded assets.
+- Legal hold and dispute exceptions documented with restricted access.
+- Data correction workflow for inaccurate creator metrics and profile information.
+- Privacy-safe aggregation for internal reporting.
+- Periodic access reviews for agency, support, finance and platform admin roles.
+
+## 21.13 Recommended product KPIs
+Define each KPI with a formula, owner, source and reporting period before displaying it:
+- Creator activation rate: new creators who complete required profile steps.
+- Brand activation rate: new brands that complete verification and publish an approved campaign.
+- Campaign fill rate: campaigns with at least one accepted collaboration divided by eligible published campaigns.
+- Time to first qualified application.
+- Application-to-collaboration conversion.
+- Collaboration completion rate.
+- On-time deliverable rate.
+- Revision rate and approval turnaround time.
+- Repeat brand rate and creator repeat-collaboration rate.
+- UGC order completion and dispute rate.
+- Support first-response and resolution time.
+- Marketplace liquidity by category and geography.
+- Platform reliability and notification delivery success.
+Do not optimise a KPI in a way that encourages low-quality applications, unsafe content, misleading metrics or unfair treatment.
+
+## 21.14 Prioritisation of these additions
+- **Foundation / early:** onboarding checklists, support tickets, policy/help centre, taxonomy, asset permissions, event definitions, accessibility and operational monitoring.
+- **After core collaboration:** trust centre, marketplace quality tools, content asset library, data governance workflows and useful KPI dashboards.
+- **Growth stage:** referrals, partner operations, subscription entitlements, product experiments and developer integrations.
+- **Scale stage:** advanced cohort analytics, automated quality assistance and deeper integrations after data quality and governance are proven.
+
+---
+
 # Appendix C — Original reconstruction blueprint (preserved in full)
 
 The following is the complete original reconstruction blueprint as it existed on branch `rebuild/yaarlink-unified-platform-blueprint`. It is retained in full to preserve every original requirement, workflow, route proposal, database rule, security rule, acceptance test and implementation constraint. The consolidated sections above are the primary current reference; this appendix is the source archive.
