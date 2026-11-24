@@ -47,7 +47,8 @@ repository root, so an import reads like the folder it comes from: `@/backend/au
 ├── tests/                       # Node test suite
 ├── .github/workflows/           # CI: quality checks + disposable-PostgreSQL bootstrap
 ├── .github/dependabot.yml       # Scheduled npm and GitHub Actions update PRs
-├── docs/                        # Structure, deployment, backup and observability notes
+├── docs/                        # Structure, deployment, backup, observability and product blueprint
+│   └── YAARLINK_2_0_MASTER_PRODUCT_BLUEPRINT.md # Canonical product scope, current-state map and roadmap
 ├── instrumentation.ts           # Startup secret/site-config checks + unhandled-error logging
 ├── proxy.ts                     # Document CSP nonce/reporting + API/document request IDs
 └── <tooling configs>            # next/tsconfig/drizzle/postcss/eslint and .nvmrc at the root
