@@ -75,3 +75,9 @@ Tool configs (`next.config.ts`, `tsconfig.json`, `drizzle.config.json`, `eslint.
 `postcss.config.mjs`) stay at the repository root because the tools look for them there;
 `drizzle.config.json` points at the schema at `backend/db/schema.ts` and writes
 journalled migrations/snapshots to `backend/db/drizzle/`.
+
+
+## Canonical YaarLink product specification
+
+- `YAARLINK_COMPLETE_MASTER_RECONSTRUCTION.md` — **single source of truth** combining the complete original reconstruction blueprint and the YaarLink 2.0 master product blueprint, including current-state inventory, all planned modules, architecture, workflows, security, data model, roadmap and acceptance tests. Update this document as the product evolves.
+- `YAARLINK_2_0_MASTER_PRODUCT_BLUEPRINT.md` — earlier standalone 2.0 source document; retained for history. Use the complete master reconstruction above for current planning and implementation.
